@@ -19,7 +19,7 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '2.4.3';
+  const APP_VERSION = '2.5.0';
 
   function getAutoLayoutMode() {
     const user = Store.user;
@@ -32,9 +32,13 @@
   let layoutMode = getAutoLayoutMode();
   let activeTab = 'hoy'; // 'hoy' | 'rutinas' | 'salud' | 'evolucion' | 'ajustes'
   let activeModal = null; // null | { type, ... }
-  let previousModal = null; // Para volver al modal anterior al cerrar el visor de GIF (👁️)
+  let previousModal = null; // Para volver al modal anterior al cerrar el visor (👁️)
   let lastDeletedSerie = null;
   let lastDeletedBatchIds = null;
+  let draftSugerenciaCapturas = [];
+  let draftSugerenciaTexto = '';
+  let isDictatingSugerencia = false;
+  let activeSpeechRecognition = null;
 
   // Estado persistente de formularios de Salud y Ficha Física para que guardar uno NUNCA modifique ni reinicie el otro
   let draftReadiness = {
@@ -394,79 +398,83 @@
   // ==========================================
   function renderAuthView() {
     return `
-      <div style="min-height: 92vh; display: flex; align-items: center; justify-content: center; padding: 20px;">
-        <div style="width: 100%; max-width: 920px; display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px; align-items: stretch;">
+      <div style="min-height: 94vh; display: flex; align-items: center; justify-content: center; padding: 16px;">
+        <div style="width: 100%; max-width: 920px; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; align-items: stretch;">
           
-          <!-- Columna Izquierda: Presentación y Accesos Rápidos de Demostración -->
-          <div class="card" style="justify-content: space-between; background: linear-gradient(145deg, #111827, #0b0f19); border-color: #1f2937;">
-            <div style="display: flex; flex-direction: column; gap: 14px;">
-              <div class="brand-badge">
-                <div class="brand-icon" style="width: 44px; height: 44px; font-size: 18px;">IT</div>
-                <div>
-                  <span class="badge badge-neon">Plataforma B2B2C · PC & Móvil</span>
-                  <h1 style="font-size: 24px; font-weight: 900; margin-top: 2px;">Mi Gimnasio — IronTrack</h1>
-                </div>
-              </div>
-
-              <p style="font-size: 14px; color: var(--text-muted); line-height: 1.55;">
-                Diseñado con <strong>dos interfaces dedicadas</strong>:
-              </p>
-
-              <ul style="list-style: none; display: flex; flex-direction: column; gap: 10px; font-size: 13px; color: var(--text-main);">
-                <li>📱 <strong>Interfaz del Alumno (Móvil y PC):</strong> Cuenta 100% limpia al iniciar. Armá tus rutinas eligiendo del <strong>Catálogo de 28 Ejercicios Estandarizados</strong> con el botón <strong>+</strong>, definí tus días y horarios, registrá tu salud física/psicológica, fotos con sello de fecha y seguí tu evolución.</li>
-                <li>💻 <strong>Interfaz del Profesor (PC CRM Clínico):</strong> Vinculá a cualquier alumno ingresando su <strong>Código Único (ej. GYM-1024)</strong>, mirá o editá su rutina, creale rutinas nuevas, registrá observaciones clínicas y adjuntá fotos.</li>
-              </ul>
-            </div>
-
-            <div style="border-top: 1px dashed #2d3748; padding-top: 14px; display: flex; flex-direction: column; gap: 8px;">
-              <span style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: var(--neon-lime);">
-                ⚡ Entrar con 1 clic (Cuentas listas y limpias de fábrica):
-              </span>
-              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                <button type="button" class="btn-primary" data-action="quick-demo-login" data-username="juan" data-mode="phone-alumno">
-                  📱 Entrar como Alumno (Juan)
-                </button>
-                <button type="button" class="btn-secondary" data-action="quick-demo-login" data-username="profe" data-mode="pc-profesor" style="border-color: #38bdf8; color: #38bdf8;">
-                  💻 Entrar como Profesor
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Columna Derecha: Login o Creación de Cuenta Limpia -->
+          <!-- Columna 1: Iniciar Sesión o Crear Cuenta (Alumno / Docente) -->
           <div class="card">
-            <div class="card-header">
-              <h2 class="card-title">Iniciar Sesión</h2>
-              <span class="badge badge-emerald">100% Offline</span>
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;">
+              ${getAppBrandHTML('Ingreso Personal · Alumno o Docente')}
+              <span class="badge badge-blue">v${APP_VERSION}</span>
             </div>
+
+            <p style="font-size: 13px; color: var(--text-muted); line-height: 1.45;">
+              Ingresá con tu usuario y contraseña personal, o creá tu cuenta nueva eligiendo si sos <strong>Alumno</strong> o <strong>Docente / Profesor</strong>.
+            </p>
 
             <form data-action="submit-login" style="display: flex; flex-direction: column; gap: 12px;">
               <div class="form-group">
                 <label class="form-label" for="login-username">Usuario</label>
-                <input type="text" id="login-username" class="form-input" placeholder="Ej: juan o profe" required autocomplete="username" autocapitalize="none">
+                <input type="text" id="login-username" class="form-input" placeholder="Ingresá tu nombre de usuario" required autocomplete="username" autocapitalize="none">
               </div>
 
               <div class="form-group">
                 <label class="form-label" for="login-pin">Contraseña o PIN</label>
-                <input type="password" id="login-pin" class="form-input" placeholder="PIN (por defecto: 1234)" required inputmode="numeric">
+                <input type="password" id="login-pin" class="form-input" placeholder="Ingresá tu contraseña o PIN" required>
               </div>
 
-              <button type="submit" class="btn-primary" style="margin-top: 4px;">
-                Ingresar a mi cuenta
+              <button type="submit" class="btn-primary" style="margin-top: 2px;">
+                Ingresar con mi Usuario y Contraseña
               </button>
 
               <button type="button" class="btn-secondary" data-action="login-biometrics">
-                ⚡ Ingresar con Face ID / Huella
+                ⚡ Ingresar con Face ID / Huella Digital
               </button>
             </form>
 
-            <div style="border-top: 1px solid var(--border-subtle); padding-top: 12px; text-align: center;">
-              <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">
-                ¿Querés empezar desde cero con tu propio usuario?
-              </p>
-              <button type="button" class="btn-secondary" data-action="open-register-modal" style="color: var(--neon-lime); border-color: rgba(196,240,0,0.4);">
-                + Crear Cuenta Nueva Limpia (Alumno o Profesor)
+            <div style="border-top: 1px solid var(--border-subtle); padding-top: 14px; display: flex; flex-direction: column; gap: 8px;">
+              <span style="font-size: 12px; font-weight: 700; color: var(--text-main); text-align: center;">
+                ¿Sos nuevo o te compartieron este enlace? Elegí tu rol:
+              </span>
+              <button type="button" class="btn-primary" data-action="open-register-modal">
+                + Crear Cuenta Nueva (Elegir Alumno o Docente)
               </button>
+            </div>
+          </div>
+
+          <!-- Columna 2: Información de Roles y Acceso Rápido de Prueba -->
+          <div class="card" style="justify-content: space-between;">
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+              <div class="card-header">
+                <h2 class="card-title">¿Cómo funciona Fitness MiniApp?</h2>
+                <span class="badge badge-emerald">100% Offline</span>
+              </div>
+
+              <div style="display: flex; flex-direction: column; gap: 10px; font-size: 13px; color: var(--text-muted); line-height: 1.5;">
+                <div style="background: var(--bg-elevated); padding: 12px; border-radius: var(--radius-md); border: 1px solid var(--border-subtle);">
+                  <strong style="color: var(--text-main); display: block; margin-bottom: 4px;">🏃 Modo Alumno / Atleta (Móvil y PC)</strong>
+                  Cada alumno tiene su sesión privada aislada y un <strong>Código Único (ej. GYM-1024)</strong>. Podés armar tu rutina del día con los 49 ejercicios ilustrados (Posición Inicial y Final), editar o quitar cualquier ejercicio, cargar series y registrar tu estado psicofísico.
+                </div>
+                <div style="background: var(--bg-elevated); padding: 12px; border-radius: var(--radius-md); border: 1px solid var(--border-subtle);">
+                  <strong style="color: var(--text-main); display: block; margin-bottom: 4px;">📋 Modo Docente / Profesor (Panel Clínico)</strong>
+                  Vinculá a tus alumnos con su código único, supervisá su carga semanal, prescribí o editá sus rutinas y registrá observaciones clínicas.
+                </div>
+              </div>
+            </div>
+
+            <div style="border-top: 1px solid var(--border-subtle); padding-top: 12px; display: flex; flex-direction: column; gap: 8px;">
+              <span style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: var(--text-dim);">
+                Cuentas Demo de Prueba Rápida (PIN: 1234):
+              </span>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                <button type="button" class="btn-secondary" data-action="quick-demo-login" data-username="juan" data-mode="phone-alumno">
+                  🏃 Demo Alumno (Juan)
+                </button>
+                <button type="button" class="btn-secondary" data-action="quick-demo-login" data-username="profe" data-mode="pc-profesor">
+                  📋 Demo Docente (Profe)
+                </button>
+              </div>
+              ${getCopyrightSealHTML()}
             </div>
           </div>
 
@@ -646,42 +654,56 @@
     // 3. Segmento Entrenamiento & AMRAP
     const bloquesAmrapHoy = (state.bloquesAmrap || []).filter(b => !b.deleted);
 
+    const excluidosSesionMap = (state.ejerciciosExcluidosHoy && state.ejerciciosExcluidosHoy[entActivo.id]) || {};
+
     let ejerciciosList = [];
     if (rutinaAsociada && Array.isArray(rutinaAsociada.ejercicios)) {
-      ejerciciosList = rutinaAsociada.ejercicios.map(re => {
-        const ej = (state.ejercicios || []).find(e => e.id === re.ejercicioId);
-        return {
-          ejercicio: ej || { id: re.ejercicioId, nombre: 'Ejercicio', grupoMuscular: 'general', equipo: 'barra' },
-          targetSets: re.seriesObjetivo || 3,
-          targetReps: re.repsObjetivo || '8-10',
-          notaProfesor: re.notaProfesor || ''
-        };
-      });
+      ejerciciosList = rutinaAsociada.ejercicios
+        .filter(re => !excluidosSesionMap[re.ejercicioId])
+        .map(re => {
+          const ej = (state.ejercicios || []).find(e => e.id === re.ejercicioId)
+            || Engine.CATALOGO_EJERCICIOS.find(e => e.id === re.ejercicioId);
+          return {
+            ejercicio: ej || { id: re.ejercicioId, nombre: 'Ejercicio', grupoMuscular: 'general', equipo: 'barra' },
+            targetSets: re.seriesObjetivo || 3,
+            targetReps: re.repsObjetivo || '8-10',
+            notaProfesor: re.notaProfesor || '',
+            sesionItemId: ''
+          };
+        });
     }
 
     // Ejercicios agregados del catálogo a la sesión de hoy (segmento entrenamiento)
     const idsEnLista = new Set(ejerciciosList.map(item => item.ejercicio.id));
     (state.ejerciciosSesionHoy || [])
-      .filter(item => !item.deleted && item.segmento !== 'activacion' && item.segmento !== 'movilidad')
+      .filter(item => !item.deleted && (!item.entrenamientoId || item.entrenamientoId === entActivo.id) && item.segmento !== 'activacion' && item.segmento !== 'movilidad' && !excluidosSesionMap[item.ejercicioId])
       .forEach(item => {
-        if (!idsEnLista.has(item.ejercicioId)) {
-          const ej = (state.ejercicios || []).find(e => e.id === item.ejercicioId)
-            || Engine.CATALOGO_EJERCICIOS.find(e => e.id === item.ejercicioId);
-          if (ej) {
-            idsEnLista.add(ej.id);
-            ejerciciosList.push({
-              ejercicio: ej,
-              targetSets: item.seriesObjetivo || ej.seriesSugeridas || 3,
-              targetReps: item.repsObjetivo || ej.repsSugeridas || '8-10',
-              notaProfesor: item.notas || ''
-            });
-          }
+        const existingIdx = ejerciciosList.findIndex(x => x.ejercicio.id === item.ejercicioId);
+        const ej = (state.ejercicios || []).find(e => e.id === item.ejercicioId)
+          || Engine.CATALOGO_EJERCICIOS.find(e => e.id === item.ejercicioId);
+        if (existingIdx >= 0 && ej) {
+          ejerciciosList[existingIdx] = {
+            ejercicio: ej,
+            targetSets: item.seriesObjetivo || ejerciciosList[existingIdx].targetSets || 3,
+            targetReps: item.repsObjetivo || ejerciciosList[existingIdx].targetReps || '8-10',
+            notaProfesor: item.notas || ejerciciosList[existingIdx].notaProfesor || '',
+            sesionItemId: item.id
+          };
+        } else if (!idsEnLista.has(item.ejercicioId) && ej) {
+          idsEnLista.add(ej.id);
+          ejerciciosList.push({
+            ejercicio: ej,
+            targetSets: item.seriesObjetivo || ej.seriesSugeridas || 3,
+            targetReps: item.repsObjetivo || ej.repsSugeridas || '8-10',
+            notaProfesor: item.notas || '',
+            sesionItemId: item.id
+          });
         }
       });
 
-    // Incluir cualquier ejercicio que ya tenga series registradas en esta sesión
+    // Incluir cualquier ejercicio que ya tenga series registradas en esta sesión (si no fue excluido)
     seriesEntreno.forEach(s => {
-      if (!idsEnLista.has(s.ejercicioId)) {
+      if (!idsEnLista.has(s.ejercicioId) && !excluidosSesionMap[s.ejercicioId]) {
         const ej = (state.ejercicios || []).find(e => e.id === s.ejercicioId)
           || Engine.CATALOGO_EJERCICIOS.find(e => e.id === s.ejercicioId);
         if (ej && ej.grupoMuscular !== 'movilidad') {
@@ -690,26 +712,12 @@
             ejercicio: ej,
             targetSets: ej.seriesSugeridas || 3,
             targetReps: ej.repsSugeridas || '8-10',
-            notaProfesor: ''
+            notaProfesor: '',
+            sesionItemId: ''
           });
         }
       }
     });
-
-    // Si aún no hay ejercicios cargados, sugerimos por defecto Press de Banca Plano
-    if (ejerciciosList.length === 0) {
-      const ejPress = (state.ejercicios || []).find(e => e.id === 'ej-press-banca-plano')
-        || Engine.CATALOGO_EJERCICIOS.find(e => e.id === 'ej-press-banca-plano')
-        || (state.ejercicios || [])[0];
-      if (ejPress) {
-        ejerciciosList.push({
-          ejercicio: ejPress,
-          targetSets: 3,
-          targetReps: '6-8',
-          notaProfesor: '3 series de entre 6 y 8 reps con 35 kg · RPE 8/9 (RIR 1/2)'
-        });
-      }
-    }
 
     return `
         <!-- Encabezado de Sesión Activa -->
@@ -932,27 +940,41 @@
         </div>
       ` : ''}
 
-      <!-- Tarjetas de Ejecución de cada Ejercicio (Sin tiempo, con Cargar 1 Serie y Cargar Serie Completa) -->
-      ${ejerciciosList.map((item, idx) => {
+      <!-- Tarjetas de Ejecución de cada Ejercicio (Con botones para Ver 👁️, Editar/Cambiar ✏️ y Quitar ✕) -->
+      ${ejerciciosList.length === 0 ? `
+        <div class="card" style="text-align: center; padding: 24px 16px;">
+          <p style="font-size: 14px; font-weight: 700; color: var(--text-main);">
+            Aún no hay ejercicios de fuerza cargados en tu sesión de hoy.
+          </p>
+          <p style="font-size: 12.5px; color: var(--text-dim); margin-top: 4px;">
+            Elegí libremente los ejercicios que hiciste hoy desde el catálogo sin ninguno impuesto por defecto.
+          </p>
+          <div style="margin-top: 10px; display: flex; justify-content: center;">
+            <button type="button" class="btn-primary" data-action="open-catalog-for-workout" style="width: auto;">
+              + Añadir Ejercicio del Catálogo a Hoy
+            </button>
+          </div>
+        </div>
+      ` : ejerciciosList.map((item, idx) => {
         const ej = item.ejercicio;
         const seriesDelEj = seriesEntreno.filter(s => s.ejercicioId === ej.id);
         const ultimaSerie = Engine.getUltimaSerieEjercicio(state, ej.id);
-        const defaultPeso = ultimaSerie ? ultimaSerie.pesoKg : (ej.id === 'ej-press-banca-plano' || ej.id === 'ej-press-banca' ? 35 : 40);
+        const defaultPeso = ultimaSerie ? ultimaSerie.pesoKg : 30;
         const defaultReps = ultimaSerie ? ultimaSerie.reps : 8;
         const defaultSeriesCant = item.targetSets || ej.seriesSugeridas || 3;
 
         return `
           <div class="card">
             <div class="card-header">
-              <div>
+              <div style="flex: 1; min-width: 190px;">
                 <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
                   <span class="badge badge-neon">#${idx + 1} · ${h(ej.grupoMuscular)}</span>
                   <span class="badge badge-amber">${h(ej.equipo)}</span>
                   <span class="badge badge-blue">Objetivo: ${item.targetSets} series × ${h(item.targetReps)} reps</span>
                 </div>
-                <h3 style="font-size: 18px; font-weight: 800; margin-top: 6px; color: var(--text-main);">${h(ej.nombre)}</h3>
+                <h3 style="font-size: 17px; font-weight: 800; margin-top: 6px; color: var(--text-main);">${h(ej.nombre)}</h3>
                 <p style="font-size: 12px; color: var(--text-dim); margin-top: 2px;">
-                  Última marca: <strong style="color: var(--text-muted);">${ultimaSerie ? `${ultimaSerie.pesoKg} kg × ${ultimaSerie.reps} reps (1RM: ${Engine.compute1RM(ultimaSerie.pesoKg, ultimaSerie.reps)} kg)` : (ej.id === 'ej-press-banca-plano' || ej.id === 'ej-press-banca' ? '35 kg × 8 reps' : 'Sin marca previa')}</strong>
+                  Última marca: <strong style="color: var(--text-muted);">${ultimaSerie ? `${ultimaSerie.pesoKg} kg × ${ultimaSerie.reps} reps (1RM: ${Engine.compute1RM(ultimaSerie.pesoKg, ultimaSerie.reps)} kg)` : 'Sin marca previa'}</strong>
                 </p>
                 ${item.notaProfesor ? `<p style="font-size: 12px; color: var(--text-dim); margin-top: 4px;">Indicación: ${h(item.notaProfesor)}</p>` : ''}
               </div>
@@ -960,6 +982,12 @@
               <div style="display: flex; gap: 6px; align-items: center;">
                 <button type="button" class="btn-eye-icon" data-action="view-ejercicio" data-ejercicio-id="${h(ej.id)}" title="Ver posición inicial y final">
                   ${renderIcon('eye')}
+                </button>
+                <button type="button" class="btn-icon-action" data-action="open-edit-sesion-ej" data-ejercicio-id="${h(ej.id)}" data-entrenamiento-id="${h(entActivo.id)}" data-series="${item.targetSets}" data-reps="${h(item.targetReps)}" data-notas="${h(item.notaProfesor || ej.notas || '')}" title="Cambiar o editar este ejercicio">
+                  ✏️
+                </button>
+                <button type="button" class="btn-icon-action danger" data-action="delete-sesion-ej" data-ejercicio-id="${h(ej.id)}" data-entrenamiento-id="${h(entActivo.id)}" title="Quitar este ejercicio de la rutina de hoy">
+                  ✕
                 </button>
               </div>
             </div>
@@ -995,9 +1023,9 @@
               </table>
             ` : ''}
 
-            <!-- Controles de Carga Rápida: 1 Serie Individual o Serie Completa con mismos datos -->
+            <!-- Controles de Carga Rápida: Grilla 3x2 en móvil para máxima legibilidad -->
             <div style="padding-top: 10px;">
-              <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px;">
+              <div class="serie-inputs-grid">
                 <div>
                   <label class="form-label" style="font-size: 10px;">Series</label>
                   <input type="number" min="1" max="15" id="input-cant-series-${h(ej.id)}" class="serie-input" value="${defaultSeriesCant}" inputmode="numeric" title="Cantidad de series para Cargar Serie Completa">
@@ -1977,24 +2005,27 @@
     if (activeModal.type === 'register') {
       overlay.innerHTML = `
         <div class="modal-card">
-          <div class="card-header">
-            <h2 class="card-title">Crear Cuenta Nueva (100% Limpia)</h2>
-            <button type="button" data-action="close-modal" style="font-size: 18px; font-weight: 900; color: var(--text-muted);">✕</button>
+          <div class="modal-header-sticky">
+            <div>
+              <span class="badge badge-blue">Registro Personal</span>
+              <h2 class="card-title" style="margin-top: 4px;">Crear Cuenta Nueva</h2>
+            </div>
+            <button type="button" class="btn-close-modal" data-action="close-modal" title="Cerrar">✕</button>
           </div>
           <p style="font-size: 13px; color: var(--text-dim);">
-            Tu cuenta se creará sin rutinas ni datos precargados para que armes todo desde cero con el catálogo estandarizado.
+            Elegí si ingresás como <strong>Alumno</strong> o como <strong>Docente / Profesor</strong> y creá tu usuario y contraseña.
           </p>
           <form data-action="submit-register" style="display: flex; flex-direction: column; gap: 12px;">
             <div class="form-group">
-              <label class="form-label">Rol en la plataforma</label>
+              <label class="form-label">¿Sos Alumno o Docente / Profesor?</label>
               <select id="reg-role" class="form-input">
-                <option value="alumno" selected>Alumno / Atleta (Recibe un Código Único GYM-XXXX)</option>
-                <option value="profesor">Profesor / Entrenador (Panel CRM para vincular alumnos)</option>
+                <option value="alumno" selected>🏃 Soy Alumno / Atleta (Recibe Código Único GYM-XXXX)</option>
+                <option value="profesor">📋 Soy Docente / Profesor (Panel Clínico de Alumnos)</option>
               </select>
             </div>
             <div class="form-group">
               <label class="form-label">Nombre de usuario (sin espacios)</label>
-              <input type="text" id="reg-username" class="form-input" placeholder="Ej: martin" required>
+              <input type="text" id="reg-username" class="form-input" placeholder="Ej: martin" required autocapitalize="none">
             </div>
             <div class="form-group">
               <label class="form-label">Tu Nombre y Apellido</label>
@@ -2002,11 +2033,11 @@
             </div>
             <div class="form-group">
               <label class="form-label">Contraseña o PIN</label>
-              <input type="password" id="reg-pin" class="form-input" placeholder="Ej: 1234" required>
+              <input type="password" id="reg-pin" class="form-input" placeholder="Creá tu contraseña o PIN" required>
             </div>
             <div style="display: flex; gap: 10px; margin-top: 6px;">
               <button type="button" class="btn-secondary" data-action="close-modal">Cancelar</button>
-              <button type="submit" class="btn-primary">Crear Cuenta Limpia e Iniciar</button>
+              <button type="submit" class="btn-primary">Crear Cuenta e Ingresar</button>
             </div>
           </form>
         </div>
@@ -2025,7 +2056,7 @@
                 ${draftRutina.id ? 'Editar Rutina' : 'Armar Rutina desde Cero'}
               </h2>
             </div>
-            <button type="button" data-action="close-modal" style="font-size: 18px; font-weight: 900; color: var(--text-muted);">✕</button>
+            <button type="button" class="btn-close-modal" data-action="close-modal" title="Cerrar">✕</button>
           </div>
 
           <div class="form-group">
@@ -2113,7 +2144,7 @@
               <span class="badge badge-neon">${esModoAmrap ? 'Sumar Ejercicio dentro de tu Rutina AMRAP' : 'Catálogo Total (Activación · Movilidad · Fuerza · AMRAP)'}</span>
               <h2 class="card-title" style="margin-top: 4px; color: var(--text-main);">Seleccioná un Ejercicio para Añadir</h2>
             </div>
-            <button type="button" data-action="close-modal" style="font-size: 18px; font-weight: 900; color: var(--text-muted);">✕</button>
+            <button type="button" class="btn-close-modal" data-action="close-modal" title="Cerrar">✕</button>
           </div>
 
           <!-- Buscador y Filtros por Segmento -->
@@ -2180,7 +2211,7 @@
         <div class="modal-card">
           <div class="card-header">
             <h2 class="card-title">+ Sumar Ejercicio Personalizado al Catálogo</h2>
-            <button type="button" data-action="close-modal" style="font-size: 18px; font-weight: 900; color: var(--text-muted);">✕</button>
+            <button type="button" class="btn-close-modal" data-action="close-modal" title="Cerrar">✕</button>
           </div>
           <form data-action="submit-custom-ejercicio" style="display: flex; flex-direction: column; gap: 12px;">
             <div class="form-group">
@@ -2251,7 +2282,7 @@
                 <span>Segmento: ${h(ej.grupoMuscular)}</span> • <span>Equipo: ${h(ej.equipo)}</span> • <span>Músculo activo: ${h(ej.musculoActivo || ej.grupoMuscular)}</span>
               </div>
             </div>
-            <button type="button" data-action="close-modal" title="Cerrar (Esc)" style="font-size: 20px; font-weight: 900; color: var(--text-muted); cursor: pointer; background: transparent; border: none;">✕</button>
+            <button type="button" class="btn-close-modal" data-action="close-modal" title="Cerrar (Esc)">✕</button>
           </div>
 
           <!-- Lámina Anatómica de Posición Inicial y Posición Final -->
@@ -2303,7 +2334,7 @@
               <span class="badge badge-neon">Segmento Movilidad</span>
               <h2 class="card-title" style="margin-top: 4px; color: var(--text-main);">+ Añadir Movilidad a la Rutina de Hoy</h2>
             </div>
-            <button type="button" data-action="close-modal" style="font-size: 18px; font-weight: 900; color: var(--text-muted);">✕</button>
+            <button type="button" class="btn-close-modal" data-action="close-modal" title="Cerrar">✕</button>
           </div>
           <form data-action="submit-movilidad" style="display: flex; flex-direction: column; gap: 12px;">
             <div class="form-group">
@@ -2361,7 +2392,7 @@
                 Agregá todos los ejercicios que componen tu bloque AMRAP de hoy y definí el tiempo de trabajo por ejercicio y el descanso entre ellos.
               </p>
             </div>
-            <button type="button" data-action="close-modal" style="font-size: 18px; font-weight: 900; color: var(--text-muted);">✕</button>
+            <button type="button" class="btn-close-modal" data-action="close-modal" title="Cerrar">✕</button>
           </div>
 
           <div class="form-group">
@@ -2434,36 +2465,111 @@
       return;
     }
 
-    // MODAL 8: Buzón de Sugerencias (Sugerencias)
+    // MODAL 8: Editar o Reemplazar un Ejercicio de la Sesión de Hoy
+    if (activeModal.type === 'edit-sesion-ej') {
+      const todosEjercicios = (state.ejercicios || []).filter(e => !e.deleted);
+      overlay.innerHTML = `
+        <div class="modal-card">
+          <div class="modal-header-sticky">
+            <div>
+              <span class="badge badge-blue">Modificar Ejercicio de Hoy</span>
+              <h2 class="card-title" style="margin-top: 4px; color: var(--text-main);">Cambiar o Editar Ejercicio</h2>
+            </div>
+            <button type="button" class="btn-close-modal" data-action="close-modal" title="Cerrar">✕</button>
+          </div>
+
+          <form data-action="submit-edit-sesion-ej" style="display: flex; flex-direction: column; gap: 12px;">
+            <input type="hidden" id="edit-sesion-tr-id" value="${h(activeModal.entrenamientoId || '')}">
+            <input type="hidden" id="edit-sesion-old-ej-id" value="${h(activeModal.ejercicioId || '')}">
+
+            <div class="form-group">
+              <label class="form-label">Elegir Ejercicio (podés cambiarlo por otro del catálogo)</label>
+              <select id="edit-sesion-new-ej-id" class="form-input">
+                ${todosEjercicios.map(e => `
+                  <option value="${h(e.id)}" ${e.id === activeModal.ejercicioId ? 'selected' : ''}>
+                    [${h(e.grupoMuscular.toUpperCase())}] ${h(e.nombre)}
+                  </option>
+                `).join('')}
+              </select>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+              <div class="form-group">
+                <label class="form-label">Series Objetivo</label>
+                <input type="number" id="edit-sesion-series" class="form-input" value="${h(activeModal.series || '3')}" min="1" max="15">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Repeticiones / Meta</label>
+                <input type="text" id="edit-sesion-reps" class="form-input" value="${h(activeModal.reps || '8-12')}" placeholder="Ej: 8-12">
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Nota o Indicación Personal</label>
+              <input type="text" id="edit-sesion-notas" class="form-input" value="${h(activeModal.notas || '')}" placeholder="Ej: Controlar bajada 2 segundos">
+            </div>
+
+            <div style="display: flex; justify-content: space-between; gap: 8px; margin-top: 4px; flex-wrap: wrap;">
+              <button type="button" class="btn-secondary" data-action="delete-sesion-ej" data-ejercicio-id="${h(activeModal.ejercicioId || '')}" data-entrenamiento-id="${h(activeModal.entrenamientoId || '')}" style="width: auto; color: var(--accent-rose); border-color: rgba(239,68,68,0.4);">
+                ✕ Quitar de Hoy
+              </button>
+              <div style="display: flex; gap: 8px;">
+                <button type="button" class="btn-secondary" data-action="close-modal" style="width: auto;">Cancelar</button>
+                <button type="submit" class="btn-primary" style="width: auto;">✓ Guardar Cambios</button>
+              </div>
+            </div>
+          </form>
+        </div>
+      `;
+      return;
+    }
+
+    // MODAL 9: Buzón de Sugerencias (Con Dictado por Voz, Adjunto de Capturas y Botón ✕ Visible)
     if (activeModal.type === 'sugerencias') {
       const sugerencias = (state.sugerencias || []).filter(s => !s.deleted);
       overlay.innerHTML = `
         <div class="modal-card">
-          <div class="card-header">
+          <div class="modal-header-sticky">
             <div>
               <span class="badge badge-neon">Mejora Continua · JF Development</span>
               <h2 class="card-title" style="margin-top: 4px; color: var(--text-main);">Buzón de Sugerencias</h2>
               <p style="font-size: 12px; color: var(--text-dim);">
-                Dejanos tu sugerencia de nuevos ejercicios, funciones o mejoras para Fitness MiniApp.
+                Escribí o dictá por voz tu sugerencia y adjuntá capturas de pantalla si lo necesitás.
               </p>
             </div>
-            <button type="button" data-action="close-modal" style="font-size: 18px; font-weight: 900; color: var(--text-muted);">✕</button>
+            <button type="button" class="btn-close-modal" data-action="close-modal" title="Cerrar ventana">✕</button>
           </div>
 
-          <form data-action="submit-sugerencia" style="display: flex; flex-direction: column; gap: 10px;">
+          <form data-action="submit-sugerencia" style="display: flex; flex-direction: column; gap: 12px;">
             <div class="form-group">
-              <label class="form-label">Categoría</label>
-              <select id="sug-categoria" class="form-input">
-                <option value="Nuevo Ejercicio para Catálogo">Nuevo Ejercicio para el Catálogo</option>
-                <option value="Mejora de Interfaz / Usabilidad">Mejora de Interfaz / Usabilidad</option>
-                <option value="Funciones de Entrenamiento / AMRAP">Funciones de Entrenamiento / AMRAP</option>
-                <option value="Otra Sugerencia">Otra Sugerencia</option>
-              </select>
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <label class="form-label" for="sug-mensaje">Tu Sugerencia</label>
+                <button type="button" class="btn-dictar ${isDictatingSugerencia ? 'listening' : ''}" data-action="dictar-sugerencia">
+                  ${isDictatingSugerencia ? '🔴 Escuchando... Tocar para detener' : '🎤 Dictar por voz'}
+                </button>
+              </div>
+              <textarea id="sug-mensaje" class="form-input" rows="4" placeholder="Escribí o tocá 'Dictar por voz' (o el micrófono de tu teclado) para dictar tu sugerencia..." required>${h(draftSugerenciaTexto)}</textarea>
             </div>
+
+            <!-- Adjuntar capturas de pantalla -->
             <div class="form-group">
-              <label class="form-label">Tu Sugerencia</label>
-              <textarea id="sug-mensaje" class="form-input" rows="3" placeholder="Escribí acá la sugerencia que quieras cargar..." required></textarea>
+              <label class="btn-secondary" style="cursor: pointer; width: 100%; justify-content: center;">
+                📷 Adjuntar Captura(s) de Pantalla (${draftSugerenciaCapturas.length})
+                <input type="file" accept="image/*" multiple data-action="upload-sugerencia-capturas" style="display: none;">
+              </label>
+
+              ${draftSugerenciaCapturas.length > 0 ? `
+                <div class="sug-capturas-grid">
+                  ${draftSugerenciaCapturas.map((cap, cIdx) => `
+                    <div class="sug-captura-thumb">
+                      <img src="${cap}" alt="Captura ${cIdx + 1}">
+                      <button type="button" class="sug-captura-remove" data-action="remove-draft-sug-captura" data-index="${cIdx}" title="Quitar captura">✕</button>
+                    </div>
+                  `).join('')}
+                </div>
+              ` : ''}
             </div>
+
             <div style="display: flex; justify-content: flex-end; gap: 8px;">
               <button type="button" class="btn-secondary" data-action="close-modal" style="width: auto;">Cerrar</button>
               <button type="submit" class="btn-primary" style="width: auto;">✓ Guardar Sugerencia</button>
@@ -2471,16 +2577,30 @@
           </form>
 
           ${sugerencias.length > 0 ? `
-            <div style="padding-top: 10px;">
-              <span class="form-label">Sugerencias Cargadas (${sugerencias.length})</span>
-              <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 6px; max-height: 180px; overflow-y: auto;">
+            <div style="padding-top: 10px; border-top: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 8px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <span class="form-label">Sugerencias Guardadas (${sugerencias.length})</span>
+                <button type="button" class="btn-secondary" data-action="share-sugerencias" style="width: auto; min-height: 32px; padding: 4px 10px; font-size: 11.5px !important;">
+                  📲 Enviar / Copiar mis Sugerencias
+                </button>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 8px; max-height: 220px; overflow-y: auto;">
                 ${sugerencias.map(s => `
-                  <div style="background: var(--bg-elevated); padding: 8px 12px; border-radius: var(--radius-sm); font-size: 12px;">
-                    <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-dim);">
-                      <strong>${h(s.categoria)}</strong>
-                      <span>${h(s.fecha)} ${h(s.hora)}</span>
+                  <div style="background: var(--bg-elevated); padding: 10px 12px; border-radius: var(--radius-sm); font-size: 12.5px; border: 1px solid var(--border-subtle);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--text-dim);">
+                      <strong>${h(s.autor || 'Usuario')} · ${h(s.fecha)} ${h(s.hora)}</strong>
+                      <button type="button" data-action="delete-sugerencia" data-sug-id="${h(s.id)}" style="color: var(--text-dim); font-weight: 800; padding: 2px 6px;" title="Borrar sugerencia">✕</button>
                     </div>
-                    <p style="margin-top: 3px; color: var(--text-main);">${h(s.mensaje || s.texto || '')}</p>
+                    <p style="margin-top: 4px; color: var(--text-main); white-space: pre-wrap;">${h(s.mensaje || s.texto || '')}</p>
+                    ${Array.isArray(s.capturas) && s.capturas.length > 0 ? `
+                      <div class="sug-capturas-grid" style="margin-top: 8px;">
+                        ${s.capturas.map((imgUrl, idx) => `
+                          <div class="sug-captura-thumb">
+                            <img src="${imgUrl}" alt="Adjunto ${idx + 1}">
+                          </div>
+                        `).join('')}
+                      </div>
+                    ` : ''}
                   </div>
                 `).join('')}
               </div>
@@ -2625,6 +2745,11 @@
     },
 
     'close-modal': () => {
+      if (activeSpeechRecognition) {
+        try { activeSpeechRecognition.stop(); } catch (_) {}
+        activeSpeechRecognition = null;
+      }
+      isDictatingSugerencia = false;
       if (activeModal && activeModal.type === 'view-ejercicio' && previousModal) {
         activeModal = previousModal;
         previousModal = null;
@@ -3198,21 +3323,204 @@
       render();
     },
 
-    // --- SUGERENCIAS ---
+    // --- EDITAR / QUITAR EJERCICIO DE LA SESIÓN DE HOY ---
+    'open-edit-sesion-ej': el => {
+      const ejId = el.getAttribute('data-ejercicio-id');
+      const trId = el.getAttribute('data-entrenamiento-id');
+      const series = Number(el.getAttribute('data-series')) || 3;
+      const reps = el.getAttribute('data-reps') || '8-10';
+      const notas = el.getAttribute('data-notas') || '';
+      activeModal = {
+        type: 'edit-sesion-ej',
+        ejercicioId: ejId,
+        entrenamientoId: trId,
+        series,
+        reps,
+        notas
+      };
+      renderModals();
+    },
+
+    'submit-edit-sesion-ej': () => {
+      const trId = document.getElementById('edit-sesion-tr-id')?.value;
+      const oldEjId = document.getElementById('edit-sesion-old-ej-id')?.value;
+      const newEjId = document.getElementById('edit-sesion-new-ej-id')?.value || oldEjId;
+      const seriesObjetivo = Number(document.getElementById('edit-sesion-series')?.value) || 3;
+      const repsObjetivo = document.getElementById('edit-sesion-reps')?.value?.trim() || '8-10';
+      const notas = document.getElementById('edit-sesion-notas')?.value?.trim() || '';
+
+      Store.commit(s =>
+        Engine.editarEjercicioDeSesion(s, trId, oldEjId, {
+          newEjercicioId: newEjId,
+          seriesObjetivo,
+          repsObjetivo,
+          notas
+        })
+      );
+      activeModal = null;
+      showToast('✓ Ejercicio actualizado en tu rutina de hoy.');
+      render();
+    },
+
+    'delete-sesion-ej': el => {
+      const ejId = el.getAttribute('data-ejercicio-id');
+      const trId = el.getAttribute('data-entrenamiento-id');
+      if (!ejId) return;
+
+      Store.commit(s => Engine.quitarEjercicioDeSesion(s, trId, ejId));
+      if (activeModal && activeModal.type === 'edit-sesion-ej') {
+        activeModal = null;
+      }
+      showToast('Ejercicio quitado de tu rutina de hoy.', {
+        action: 'Deshacer',
+        fn: () => {
+          Store.commit(s => Engine.agregarEjercicioASesion(s, trId, { ejercicioId: ejId, segmento: 'entrenamiento' }));
+          render();
+        }
+      });
+      render();
+    },
+
+    // --- SUGERENCIAS (CON VOZ, CAPTURAS Y COMPARTIR) ---
     'open-sugerencias-modal': () => {
       activeModal = { type: 'sugerencias' };
       renderModals();
     },
 
-    'submit-sugerencia': () => {
-      const categoria = document.getElementById('sug-categoria')?.value || 'Sugerencia';
-      const mensaje = document.getElementById('sug-mensaje')?.value?.trim() || '';
-      if (!mensaje) return;
+    'dictar-sugerencia': () => {
+      const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRec) {
+        const textarea = document.getElementById('sug-mensaje');
+        if (textarea) textarea.focus();
+        showToast('Tu navegador no soporta dictado directo: tocá el micrófono 🎤 del teclado de tu teléfono.');
+        return;
+      }
 
-      Store.enviarFeedback({ mensaje, tipo: categoria });
-      Store.commit(s => Engine.agregarSugerencia(s, { categoria, mensaje, autor: Store.user?.displayName || 'Usuario' }));
-      showToast('✓ ¡Gracias! Tu sugerencia quedó registrada.');
+      if (isDictatingSugerencia && activeSpeechRecognition) {
+        try { activeSpeechRecognition.stop(); } catch (_) {}
+        isDictatingSugerencia = false;
+        activeSpeechRecognition = null;
+        renderModals();
+        return;
+      }
+
+      const rec = new SpeechRec();
+      rec.lang = 'es-AR';
+      rec.continuous = false;
+      rec.interimResults = false;
+      activeSpeechRecognition = rec;
+      isDictatingSugerencia = true;
+
+      const curTextarea = document.getElementById('sug-mensaje');
+      if (curTextarea) draftSugerenciaTexto = curTextarea.value;
       renderModals();
+
+      rec.onresult = ev => {
+        let transcript = '';
+        for (let i = 0; i < ev.results.length; i++) {
+          transcript += ev.results[i][0].transcript + ' ';
+        }
+        const cleaned = transcript.trim();
+        if (cleaned) {
+          draftSugerenciaTexto = (draftSugerenciaTexto ? draftSugerenciaTexto.trim() + ' ' : '') + cleaned;
+        }
+      };
+
+      rec.onerror = () => {
+        isDictatingSugerencia = false;
+        activeSpeechRecognition = null;
+        showToast('No se pudo escuchar el audio. También podés usar el micrófono de tu teclado.');
+        renderModals();
+      };
+
+      rec.onend = () => {
+        isDictatingSugerencia = false;
+        activeSpeechRecognition = null;
+        renderModals();
+        const ta = document.getElementById('sug-mensaje');
+        if (ta) ta.focus();
+      };
+
+      try {
+        rec.start();
+      } catch (_) {
+        isDictatingSugerencia = false;
+        activeSpeechRecognition = null;
+        renderModals();
+      }
+    },
+
+    'remove-draft-sug-captura': el => {
+      const curTextarea = document.getElementById('sug-mensaje');
+      if (curTextarea) draftSugerenciaTexto = curTextarea.value;
+      const idx = Number(el.getAttribute('data-index'));
+      draftSugerenciaCapturas = draftSugerenciaCapturas.filter((_, i) => i !== idx);
+      renderModals();
+    },
+
+    'submit-sugerencia': () => {
+      const mensaje = document.getElementById('sug-mensaje')?.value?.trim() || draftSugerenciaTexto.trim();
+      if (!mensaje && draftSugerenciaCapturas.length === 0) {
+        showToast('Escribí o dictá tu sugerencia antes de guardar.');
+        return;
+      }
+
+      const capturasCopy = [...draftSugerenciaCapturas];
+      Store.enviarFeedback({ mensaje: mensaje || '(Captura adjunta)', tipo: 'Sugerencia' });
+      Store.commit(s =>
+        Engine.agregarSugerencia(s, {
+          mensaje: mensaje || '(Captura adjunta)',
+          autor: Store.user?.displayName || 'Usuario',
+          rol: Store.user?.role || 'alumno',
+          capturas: capturasCopy
+        })
+      );
+      draftSugerenciaTexto = '';
+      draftSugerenciaCapturas = [];
+      showToast('✓ ¡Sugerencia guardada! Podés tocar "Enviar / Copiar" para compartirla.');
+      renderModals();
+    },
+
+    'delete-sugerencia': el => {
+      const sugId = el.getAttribute('data-sug-id');
+      if (!sugId) return;
+      const curTextarea = document.getElementById('sug-mensaje');
+      if (curTextarea) draftSugerenciaTexto = curTextarea.value;
+      Store.commit(s => Engine.borrarSugerencia(s, sugId));
+      showToast('Sugerencia eliminada.');
+      renderModals();
+    },
+
+    'share-sugerencias': async () => {
+      const st = Store.getState();
+      const sugs = (st.sugerencias || []).filter(s => !s.deleted);
+      if (sugs.length === 0) {
+        showToast('No hay sugerencias guardadas para enviar.');
+        return;
+      }
+      const textoExport = sugs
+        .map((s, idx) => `${idx + 1}. [${s.fecha || Engine.todayISO()}] (${s.autor || 'Usuario'}): ${s.mensaje || s.texto || ''}${Array.isArray(s.capturas) && s.capturas.length ? ` [${s.capturas.length} captura(s)]` : ''}`)
+        .join('\n');
+
+      if (navigator.share) {
+        try {
+          await navigator.share({
+            title: 'Sugerencias Fitness MiniApp',
+            text: textoExport
+          });
+          showToast('✓ Sugerencias compartidas.');
+          return;
+        } catch (_) {}
+      }
+
+      if (navigator.clipboard) {
+        try {
+          await navigator.clipboard.writeText(textoExport);
+          showToast('✓ Sugerencias copiadas al portapapeles. ¡Ya podés pegarlas!');
+          return;
+        } catch (_) {}
+      }
+      showToast('Sugerencias listas.');
     },
 
     'toggle-gif-preview': el => {
@@ -3536,6 +3844,10 @@
   });
 
   document.addEventListener('input', e => {
+    if (e.target && e.target.id === 'sug-mensaje') {
+      draftSugerenciaTexto = e.target.value;
+      return;
+    }
     const target = e.target.closest('input[data-action="search-catalog"]');
     if (!target) return;
     catalogoBusqueda = target.value;
@@ -3569,6 +3881,49 @@
     const fileInput = e.target.closest('input[type="file"][data-action]');
     if (!fileInput) return;
     const actionName = fileInput.getAttribute('data-action');
+
+    if (actionName === 'upload-sugerencia-capturas') {
+      const files = Array.from(fileInput.files || []);
+      if (files.length === 0) return;
+      const curTextarea = document.getElementById('sug-mensaje');
+      if (curTextarea) draftSugerenciaTexto = curTextarea.value;
+
+      let processed = 0;
+      files.slice(0, 4).forEach(file => {
+        const reader = new FileReader();
+        reader.onload = ev => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const maxDim = 720;
+            let w = img.width;
+            let h = img.height;
+            if (w > maxDim || h > maxDim) {
+              if (w > h) {
+                h = Math.round((h * maxDim) / w);
+                w = maxDim;
+              } else {
+                w = Math.round((w * maxDim) / h);
+                h = maxDim;
+              }
+            }
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, w, h);
+            draftSugerenciaCapturas.push(canvas.toDataURL('image/jpeg', 0.78));
+            processed++;
+            if (processed === Math.min(files.length, 4)) {
+              showToast(`✓ ${processed} captura(s) adjuntada(s).`);
+              renderModals();
+            }
+          };
+          img.src = ev.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
+      return;
+    }
 
     if (actionName === 'upload-watermarked-photo') {
       const file = fileInput.files && fileInput.files[0];

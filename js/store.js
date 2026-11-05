@@ -167,8 +167,10 @@
     } catch (e) {
       console.warn('No hay sesión activa previa.', e);
     }
-    // Entrar directamente como Alumno (Juan) sin pantallas intermedias
-    return Store.login('juan', '1234', true);
+    // Si no hay sesión iniciada en este dispositivo/navegador, pedir usuario, contraseña y rol (Alumno o Profesor)
+    Store.user = null;
+    Store.state = null;
+    return null;
   };
 
   /**

@@ -936,7 +936,7 @@
     'ej-rueda-abdominal': './icons/ejercicios/ej-rueda-abdominal.jpg',
     'ej-crunch-polea': './icons/ejercicios/ej-crunch-polea.jpg',
     'ej-act-foam-roller': './icons/ejercicios/ej-act-foam-roller.jpg',
-    'ej-act-gato-camello': './icons/ejercicios/ej-act-gato-camello.png',
+    'ej-act-gato-camello': './icons/ejercicios/ej-act-gato-camello.jpg',
     'ej-act-rotacion-toracica': './icons/ejercicios/ej-act-rotacion-toracica.jpg',
     'ej-act-deadbug': './icons/ejercicios/ej-act-deadbug.jpg',
     'ej-act-birddog': './icons/ejercicios/ej-act-birddog.jpg',
@@ -989,6 +989,17 @@
       };
     }
 
+    const groupIllustrationMap = {
+      pecho: './icons/ejercicios/ej-press-banca.jpg',
+      espalda: './icons/ejercicios/ej-jalon-pecho.jpg',
+      piernas: './icons/ejercicios/ej-sentadilla.jpg',
+      hombros: './icons/ejercicios/ej-press-hombro-manc.jpg',
+      brazos: './icons/ejercicios/ej-curl-biceps.jpg',
+      core: './icons/ejercicios/ej-crunch-polea.jpg',
+      activacion: './icons/ejercicios/ej-act-gato-camello.jpg',
+      movilidad: './icons/ejercicios/ej-mov-puente-gluteo-uni.jpg',
+      amrap: './icons/ejercicios/ej-amrap-burpees.jpg'
+    };
     const groupSlugMap = {
       pecho: 'bench-press',
       espalda: 'lat-pulldown',
@@ -1001,8 +1012,9 @@
       amrap: 'burpees'
     };
     const slug = ej.gifSlug || groupSlugMap[ej.grupoMuscular] || 'bench-press';
+    const fallbackIll = illustrationUrl || groupIllustrationMap[ej.grupoMuscular] || './icons/ejercicios/ej-press-banca.jpg';
     return {
-      illustrationUrl,
+      illustrationUrl: fallbackIll,
       startImgUrl: `./icons/gifs/${slug}-start.gif`,
       endImgUrl: `./icons/gifs/${slug}-end.gif`,
       gifUrl: `./icons/gifs/${slug}.gif`
@@ -1978,11 +1990,22 @@
   Engine.agregarEjercicioASesion = function (state, entrenamientoId, item) {
     const ahora = Date.now();
     const lista = Array.isArray(state.ejerciciosSesionHoy) ? [...state.ejerciciosSesionHoy] : [];
+    const excluidosHoy = { ...(state.ejerciciosExcluidosHoy || {}) };
+    if (entrenamientoId && excluidosHoy[entrenamientoId]) {
+      const copyMap = { ...excluidosHoy[entrenamientoId] };
+      delete copyMap[item.ejercicioId];
+      excluidosHoy[entrenamientoId] = copyMap;
+    }
+
     const yaExiste = lista.find(
       x => x.entrenamientoId === entrenamientoId && x.ejercicioId === item.ejercicioId && !x.deleted
     );
     if (yaExiste) {
-      return state;
+      return {
+        ...state,
+        ejerciciosExcluidosHoy: excluidosHoy,
+        updatedAt: ahora
+      };
     }
 
     lista.push({
@@ -2008,16 +2031,133 @@
       ...state,
       ejerciciosSesionHoy: lista,
       activacionesExcluidas: excluidas,
+      ejerciciosExcluidosHoy: excluidosHoy,
       updatedAt: ahora
     };
   };
 
-  Engine.quitarEjercicioDeSesion = function (state, itemId) {
+  /**
+   * Quita un ejercicio de la sesión de entrenamiento de hoy (ya sea agregado manualmente,
+   * proveniente de una rutina del día o con series cargadas).
+   */
+  Engine.quitarEjercicioDeSesion = function (state, itemOrEntrenamientoId, maybeEjercicioId) {
     const ahora = Date.now();
-    const lista = (state.ejerciciosSesionHoy || []).map(x =>
-      x.id === itemId ? { ...x, deleted: true, updatedAt: ahora } : x
+    let entrenamientoId = maybeEjercicioId ? itemOrEntrenamientoId : state.entrenamientoActivoId;
+    let ejercicioId = maybeEjercicioId || null;
+    const itemId = maybeEjercicioId ? null : itemOrEntrenamientoId;
+
+    const lista = (state.ejerciciosSesionHoy || []).map(x => {
+      if (itemId && x.id === itemId) {
+        entrenamientoId = x.entrenamientoId || entrenamientoId;
+        ejercicioId = x.ejercicioId || ejercicioId;
+        return { ...x, deleted: true, updatedAt: ahora };
+      }
+      if (ejercicioId && x.entrenamientoId === entrenamientoId && x.ejercicioId === ejercicioId) {
+        return { ...x, deleted: true, updatedAt: ahora };
+      }
+      return x;
+    });
+
+    const series = (state.series || []).map(s => {
+      if (ejercicioId && s.entrenamientoId === entrenamientoId && s.ejercicioId === ejercicioId && !s.deleted) {
+        return { ...s, deleted: true, updatedAt: ahora };
+      }
+      return s;
+    });
+
+    const excluidosHoy = { ...(state.ejerciciosExcluidosHoy || {}) };
+    if (entrenamientoId && ejercicioId) {
+      excluidosHoy[entrenamientoId] = {
+        ...(excluidosHoy[entrenamientoId] || {}),
+        [ejercicioId]: true
+      };
+    }
+
+    return {
+      ...state,
+      ejerciciosSesionHoy: lista,
+      series,
+      ejerciciosExcluidosHoy: excluidosHoy,
+      updatedAt: ahora
+    };
+  };
+
+  /**
+   * Permite editar o reemplazar un ejercicio dentro de la sesión de hoy
+   * (cambiarlo por otro ejercicio del catálogo, o ajustar seriesObjetivo, repsObjetivo y notas).
+   */
+  Engine.editarEjercicioDeSesion = function (state, entrenamientoId, oldEjercicioId, payload) {
+    const ahora = Date.now();
+    const newEjId = payload.newEjercicioId || oldEjercicioId;
+    const seriesObjetivo = Number(payload.seriesObjetivo) || 3;
+    const repsObjetivo = String(payload.repsObjetivo || '8-12').trim();
+    const notas = payload.notas !== undefined ? String(payload.notas).trim() : '';
+
+    let lista = Array.isArray(state.ejerciciosSesionHoy) ? [...state.ejerciciosSesionHoy] : [];
+    let found = false;
+
+    lista = lista.map(x => {
+      if (x.entrenamientoId === entrenamientoId && x.ejercicioId === oldEjercicioId && !x.deleted) {
+        found = true;
+        return {
+          ...x,
+          ejercicioId: newEjId,
+          seriesObjetivo,
+          repsObjetivo,
+          notas: notas || x.notas || '',
+          updatedAt: ahora
+        };
+      }
+      return x;
+    });
+
+    if (!found) {
+      lista.push({
+        id: Engine.generateId('es'),
+        entrenamientoId,
+        ejercicioId: newEjId,
+        segmento: 'entrenamiento',
+        seriesObjetivo,
+        repsObjetivo,
+        pesoObjetivo: 0,
+        notas,
+        completado: false,
+        deleted: false,
+        updatedAt: ahora
+      });
+    }
+
+    // Si cambió de ejercicio, reasignar las series de esta sesión al nuevo ejercicio y excluir el anterior si venía de rutina
+    const series = (state.series || []).map(s => {
+      if (oldEjercicioId !== newEjId && s.entrenamientoId === entrenamientoId && s.ejercicioId === oldEjercicioId && !s.deleted) {
+        return { ...s, ejercicioId: newEjId, updatedAt: ahora };
+      }
+      return s;
+    });
+
+    const excluidosHoy = { ...(state.ejerciciosExcluidosHoy || {}) };
+    if (entrenamientoId) {
+      const mapTr = { ...(excluidosHoy[entrenamientoId] || {}) };
+      if (oldEjercicioId !== newEjId) {
+        mapTr[oldEjercicioId] = true;
+      }
+      delete mapTr[newEjId];
+      excluidosHoy[entrenamientoId] = mapTr;
+    }
+
+    // Si el usuario también editó las notas del ejercicio en su catálogo local
+    const ejercicios = (state.ejercicios || []).map(e =>
+      e.id === newEjId && notas ? { ...e, notas, updatedAt: ahora } : e
     );
-    return { ...state, ejerciciosSesionHoy: lista, updatedAt: ahora };
+
+    return {
+      ...state,
+      ejercicios,
+      ejerciciosSesionHoy: lista,
+      series,
+      ejerciciosExcluidosHoy: excluidosHoy,
+      updatedAt: ahora
+    };
   };
 
   Engine.toggleEjercicioSesion = function (state, itemId) {
@@ -2181,20 +2321,32 @@
   };
 
   /**
-   * Registra una sugerencia enviada desde el botón de Sugerencias.
+   * Registra una sugerencia enviada desde el botón de Sugerencias (con soporte de capturas adjuntas y dictado por voz).
    */
   Engine.agregarSugerencia = function (state, data) {
     const ahora = Date.now();
     const sugerencias = Array.isArray(state.sugerencias) ? [...state.sugerencias] : [];
+    const msg = (data.mensaje || data.texto || '').trim();
     sugerencias.unshift({
       id: Engine.generateId('sug'),
       fecha: Engine.todayISO(),
       hora: Engine.timeNow(),
-      categoria: data.categoria || 'Mejora General',
-      texto: data.texto || '',
+      autor: data.autor || 'Usuario',
+      rol: data.rol || 'alumno',
+      mensaje: msg,
+      texto: msg,
+      capturas: Array.isArray(data.capturas) ? data.capturas : [],
       deleted: false,
       updatedAt: ahora
     });
+    return { ...state, sugerencias, updatedAt: ahora };
+  };
+
+  Engine.borrarSugerencia = function (state, sugId) {
+    const ahora = Date.now();
+    const sugerencias = (state.sugerencias || []).map(s =>
+      s.id === sugId ? { ...s, deleted: true, updatedAt: ahora } : s
+    );
     return { ...state, sugerencias, updatedAt: ahora };
   };
 
