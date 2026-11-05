@@ -19,7 +19,7 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '2.5.0';
+  const APP_VERSION = '2.5.1';
 
   function getAutoLayoutMode() {
     const user = Store.user;
@@ -2578,10 +2578,13 @@
 
           ${sugerencias.length > 0 ? `
             <div style="padding-top: 10px; border-top: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 8px;">
+              <div style="background: rgba(59, 130, 246, 0.12); border: 1px solid rgba(59, 130, 246, 0.35); border-radius: var(--radius-sm); padding: 10px 12px; font-size: 12px; color: var(--text-main); line-height: 1.4;">
+                💾 <strong>Modo Offline:</strong> Estas sugerencias están guardadas en la memoria de este teléfono. Tocá el botón verde de abajo para copiarlas y pegarlas en el chat para que el asistente las aplique:
+              </div>
               <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
-                <span class="form-label">Sugerencias Guardadas (${sugerencias.length})</span>
-                <button type="button" class="btn-secondary" data-action="share-sugerencias" style="width: auto; min-height: 32px; padding: 4px 10px; font-size: 11.5px !important;">
-                  📲 Enviar / Copiar mis Sugerencias
+                <span class="form-label" style="margin: 0;">Sugerencias Guardadas (${sugerencias.length})</span>
+                <button type="button" class="btn-primary" data-action="share-sugerencias" style="width: auto; min-height: 34px; padding: 6px 14px; font-size: 12px !important; background: var(--accent-neon); color: #000; font-weight: 700;">
+                  📋 Copiar todas para el Chat / WhatsApp
                 </button>
               </div>
               <div style="display: flex; flex-direction: column; gap: 8px; max-height: 220px; overflow-y: auto;">
@@ -3475,9 +3478,12 @@
           capturas: capturasCopy
         })
       );
+      if (navigator.clipboard && navigator.clipboard.writeText && mensaje) {
+        try { navigator.clipboard.writeText(mensaje); } catch (_) {}
+      }
       draftSugerenciaTexto = '';
       draftSugerenciaCapturas = [];
-      showToast('✓ ¡Sugerencia guardada! Podés tocar "Enviar / Copiar" para compartirla.');
+      showToast('✓ Sugerencia guardada y copiada al portapapeles. ¡Pegala en el chat!');
       renderModals();
     },
 
