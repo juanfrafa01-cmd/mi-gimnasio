@@ -19,7 +19,7 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '2.5.1';
+  const APP_VERSION = '2.5.2';
 
   function getAutoLayoutMode() {
     const user = Store.user;
@@ -2531,10 +2531,10 @@
         <div class="modal-card">
           <div class="modal-header-sticky">
             <div>
-              <span class="badge badge-neon">Mejora Continua · JF Development</span>
+              <span class="badge badge-neon">☁️ Conectado en la Nube · JF Development</span>
               <h2 class="card-title" style="margin-top: 4px; color: var(--text-main);">Buzón de Sugerencias</h2>
               <p style="font-size: 12px; color: var(--text-dim);">
-                Escribí o dictá por voz tu sugerencia y adjuntá capturas de pantalla si lo necesitás.
+                Escribí o dictá tu sugerencia. Se sincroniza automáticamente en la nube con el desarrollador.
               </p>
             </div>
             <button type="button" class="btn-close-modal" data-action="close-modal" title="Cerrar ventana">✕</button>
@@ -3384,10 +3384,17 @@
       render();
     },
 
-    // --- SUGERENCIAS (CON VOZ, CAPTURAS Y COMPARTIR) ---
+    // --- SUGERENCIAS (CON VOZ, CAPTURAS Y NUBE SUPABASE) ---
     'open-sugerencias-modal': () => {
       activeModal = { type: 'sugerencias' };
       renderModals();
+      if (typeof Store.sincronizarSugerenciasNube === 'function') {
+        Store.sincronizarSugerenciasNube().then(() => {
+          if (activeModal && activeModal.type === 'sugerencias') {
+            renderModals();
+          }
+        }).catch(() => {});
+      }
     },
 
     'dictar-sugerencia': () => {
@@ -3483,7 +3490,13 @@
       }
       draftSugerenciaTexto = '';
       draftSugerenciaCapturas = [];
-      showToast('✓ Sugerencia guardada y copiada al portapapeles. ¡Pegala en el chat!');
+
+      const latestSug = (Store.getState().sugerencias || [])[0];
+      if (latestSug && typeof Store.enviarSugerenciaNube === 'function') {
+        Store.enviarSugerenciaNube(latestSug).catch(() => {});
+      }
+
+      showToast('✓ ¡Sugerencia guardada y sincronizada en la nube!');
       renderModals();
     },
 
@@ -3493,6 +3506,9 @@
       const curTextarea = document.getElementById('sug-mensaje');
       if (curTextarea) draftSugerenciaTexto = curTextarea.value;
       Store.commit(s => Engine.borrarSugerencia(s, sugId));
+      if (typeof Store.enviarSugerenciaNube === 'function') {
+        Store.enviarSugerenciaNube({ id: sugId, deleted: true }).catch(() => {});
+      }
       showToast('Sugerencia eliminada.');
       renderModals();
     },

@@ -25,6 +25,11 @@
   const FEEDBACK_INBOX_KEY = 'gimnasio_feedback_inbox';
   const THEME_PREF_KEY = 'gimnasio_theme_pref';
 
+  // --- CONFIGURACIÓN SUPABASE EN LA NUBE (SINCRONIZACIÓN DE SUGERENCIAS Y BUZÓN) ---
+  const SUPABASE_URL = 'https://sktscjrrtvjwsgbtkrse.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNrdHNjanJydHZqd3NnYnRrcnNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMzODc0MjUsImV4cCI6MjEwODk2MzQyNX0.Ko6K6eOY20-nJj0qAX8F6VS8stE1s3p-cghouSvmscg';
+  const SUGERENCIAS_SYNC_KEY = 'gym_vault_sugerencias_master_key_2026';
+
   const Store = {
     user: null, // { username, displayName, email, role: 'alumno'|'profesor', codigoAlumno, alumnosVinculados: [], isAdmin, hasWebAuthn }
     state: null,
@@ -170,6 +175,7 @@
     // Si no hay sesión iniciada en este dispositivo/navegador, pedir usuario, contraseña y rol (Alumno o Profesor)
     Store.user = null;
     Store.state = null;
+    Store.sincronizarSugerenciasNube().catch(() => {});
     return null;
   };
 
@@ -215,6 +221,9 @@
 
     Store.loadState();
     Store.notify();
+
+    // Sincronizar sugerencias con la nube en segundo plano
+    Store.sincronizarSugerenciasNube().catch(() => {});
 
     return { ok: true, user: Store.user };
   };
@@ -592,6 +601,10 @@
       };
       inbox.unshift(item);
       localStorage.setItem(FEEDBACK_INBOX_KEY, JSON.stringify(inbox));
+
+      // Sincronizar automáticamente en la nube de Supabase en segundo plano
+      Store.enviarSugerenciaNube(item).catch(() => {});
+
       return { ok: true, item };
     } catch (e) {
       return { ok: false, error: e.message };
@@ -605,6 +618,119 @@
       return raw ? JSON.parse(raw) : [];
     } catch {
       return [];
+    }
+  };
+
+  /**
+   * Envía una sugerencia individual o estado de borrado a Supabase en la nube.
+   */
+  Store.enviarSugerenciaNube = async function (sugItem) {
+    if (!sugItem) return;
+    try {
+      const payload = {
+        sync_key: SUGERENCIAS_SYNC_KEY,
+        coleccion: 'sugerencias',
+        id: String(sugItem.id || ('sug-' + Date.now())),
+        data: {
+          id: String(sugItem.id || ('sug-' + Date.now())),
+          mensaje: sugItem.mensaje || sugItem.texto || '',
+          autor: sugItem.autor || (Store.user ? Store.user.displayName : 'Usuario'),
+          rol: sugItem.rol || (Store.user ? Store.user.role : 'alumno'),
+          fecha: sugItem.fecha || Engine.todayISO(),
+          hora: sugItem.hora || Engine.timeNow(),
+          capturas: Array.isArray(sugItem.capturas) ? sugItem.capturas : []
+        },
+        updated_at: Date.now(),
+        deleted: Boolean(sugItem.deleted)
+      };
+
+      if (typeof fetch === 'function') {
+        await fetch(`${SUPABASE_URL}/rest/v1/fin_records`, {
+          method: 'POST',
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+            'Content-Type': 'application/json',
+            'x-sync-key': SUGERENCIAS_SYNC_KEY,
+            'Prefer': 'resolution=merge-duplicates,return=minimal'
+          },
+          body: JSON.stringify(payload)
+        });
+      }
+    } catch (e) {
+      console.warn('Sync sugerencia offline:', e);
+    }
+  };
+
+  /**
+   * Sincronización bidireccional de sugerencias con Supabase:
+   * 1. Sube todas las sugerencias locales que aún no subieron a la nube.
+   * 2. Descarga sugerencias de la nube para fusionarlas con el estado local.
+   */
+  Store.sincronizarSugerenciasNube = async function () {
+    if (typeof fetch !== 'function') return;
+    try {
+      // 1. PUSH: Subir sugerencias locales a la nube
+      const st = Store.getState();
+      const localSugs = Array.isArray(st?.sugerencias) ? st.sugerencias : [];
+      for (const s of localSugs) {
+        if (!s.syncedCloud) {
+          await Store.enviarSugerenciaNube(s);
+          s.syncedCloud = true;
+        }
+      }
+
+      // También revisar FEEDBACK_INBOX_KEY por sugerencias históricas
+      try {
+        const rawInbox = localStorage.getItem(FEEDBACK_INBOX_KEY);
+        const inbox = rawInbox ? JSON.parse(rawInbox) : [];
+        for (const item of inbox) {
+          if (!item.syncedCloud) {
+            await Store.enviarSugerenciaNube({
+              id: item.id,
+              mensaje: item.mensaje,
+              autor: item.usuario,
+              rol: 'alumno',
+              fecha: item.fecha,
+              hora: item.hora,
+              capturas: []
+            });
+            item.syncedCloud = true;
+          }
+        }
+        localStorage.setItem(FEEDBACK_INBOX_KEY, JSON.stringify(inbox));
+      } catch (_) {}
+
+      // 2. PULL: Descargar sugerencias de la nube
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/fin_records?coleccion=eq.sugerencias&deleted=eq.false&order=server_ts.desc&limit=100`, {
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+          'x-sync-key': SUGERENCIAS_SYNC_KEY
+        }
+      });
+
+      if (res.ok) {
+        const rows = await res.json();
+        if (Array.isArray(rows) && rows.length > 0) {
+          const cloudSugs = rows.map(r => ({ ...r.data, syncedCloud: true, deleted: r.deleted }));
+          Store.commit(s => {
+            const current = Array.isArray(s.sugerencias) ? [...s.sugerencias] : [];
+            const byId = new Map(current.map(item => [item.id, item]));
+            for (const cs of cloudSugs) {
+              if (!byId.has(cs.id)) {
+                byId.set(cs.id, cs);
+              }
+            }
+            return {
+              ...s,
+              sugerencias: Array.from(byId.values()).sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''))
+            };
+          });
+        }
+      }
+    } catch (e) {
+      console.warn('Sync sugerencias con Supabase:', e);
     }
   };
 
