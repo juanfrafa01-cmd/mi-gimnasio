@@ -19,7 +19,7 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '2.5.3';
+  const APP_VERSION = '2.5.4';
 
   function getAutoLayoutMode() {
     const user = Store.user;
@@ -836,9 +836,12 @@
               const seriesMovCargadas = seriesEntreno.filter(s => s.ejercicioId === ejMovId).length;
               return `
                 <div class="mobility-card" style="flex-wrap: wrap; gap: 8px;">
-                  <div style="display: flex; flex-direction: column; justify-content: center; gap: 3px;">
-                    <button type="button" class="btn-icon-action" data-action="reorder-movilidad" data-mov-id="${h(m.id)}" data-dir="up" title="Mover arriba" ${mIdx === 0 ? 'disabled style="opacity: 0.25; cursor: default;"' : 'style="cursor: pointer;"'}>▲</button>
-                    <button type="button" class="btn-icon-action" data-action="reorder-movilidad" data-mov-id="${h(m.id)}" data-dir="down" title="Mover abajo" ${mIdx === movilidadHoy.length - 1 ? 'disabled style="opacity: 0.25; cursor: default;"' : 'style="cursor: pointer;"'}>▼</button>
+                  <div style="display: flex; align-items: center; gap: 4px;">
+                    <div style="cursor: grab; color: var(--text-dim); font-size: 16px; padding: 2px 4px; user-select: none;" title="Arrastrar o usar las flechas para ordenar">⋮⋮</div>
+                    <div style="display: flex; flex-direction: column; justify-content: center; gap: 2px;">
+                      <button type="button" class="btn-icon-action" data-action="reorder-movilidad" data-mov-id="${h(m.id)}" data-dir="up" title="Mover arriba" ${mIdx === 0 ? 'disabled style="opacity: 0.25; cursor: default;"' : 'style="cursor: pointer;"'}>▲</button>
+                      <button type="button" class="btn-icon-action" data-action="reorder-movilidad" data-mov-id="${h(m.id)}" data-dir="down" title="Mover abajo" ${mIdx === movilidadHoy.length - 1 ? 'disabled style="opacity: 0.25; cursor: default;"' : 'style="cursor: pointer;"'}>▼</button>
+                    </div>
                   </div>
                   <div style="flex: 1; min-width: 170px;">
                     <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
@@ -1555,9 +1558,6 @@
             <button type="button" class="btn-secondary" data-action="open-sugerencias-modal" style="width: auto;">
               ${renderIcon('bulb')} Enviar Sugerencia
             </button>
-            <button type="button" class="btn-secondary" data-action="reset-account-zero" style="width: auto;">
-              Vaciar mis rutinas/series y dejar cuenta en cero
-            </button>
           </div>
         </div>
 
@@ -2111,22 +2111,40 @@
   // ==========================================
   // 9. MODALES: CONSTRUCTOR DE RUTINAS, AMRAP, SUGERENCIAS Y CATÁLOGO TOTAL (+)
   // ==========================================
+  let scrollPosBeforeModal = 0;
   function renderModals() {
     let overlay = document.getElementById('modal-overlay');
     if (!activeModal) {
       if (overlay) overlay.remove();
-      document.body.classList.remove('modal-open');
-      document.body.style.overflow = '';
+      if (document.body.style.position === 'fixed') {
+        const top = document.body.style.top;
+        document.body.style.position = '';
+        document.body.style.top = '';
+        document.body.style.width = '';
+        document.body.style.overflow = '';
+        document.body.classList.remove('modal-open');
+        const scrollY = parseInt(top || '0', 10) * -1;
+        window.scrollTo(0, scrollY || scrollPosBeforeModal);
+      }
       return;
     }
 
-    document.body.classList.add('modal-open');
-    document.body.style.overflow = 'hidden';
+    if (document.body.style.position !== 'fixed') {
+      scrollPosBeforeModal = window.pageYOffset || document.documentElement.scrollTop;
+      document.body.style.position = 'fixed';
+      document.body.style.top = `-${scrollPosBeforeModal}px`;
+      document.body.style.width = '100%';
+      document.body.style.overflow = 'hidden';
+      document.body.classList.add('modal-open');
+    }
 
     if (!overlay) {
       overlay = document.createElement('div');
       overlay.id = 'modal-overlay';
       overlay.className = 'modal-overlay';
+      overlay.addEventListener('touchmove', e => {
+        if (e.target === overlay) e.preventDefault();
+      }, { passive: false });
       document.body.appendChild(overlay);
     }
 
@@ -2664,7 +2682,13 @@
         <div class="modal-card">
           <div class="modal-header-sticky">
             <div>
-              <span class="badge badge-neon">☁️ Conectado en la Nube · JF Development</span>
+              <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <span class="badge badge-neon">☁️ Conectado en la Nube · JF Development</span>
+                <span class="online-status-indicator" style="display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; color: ${navigator.onLine ? '#22C55E' : '#F97316'};">
+                  <span style="width: 8px; height: 8px; border-radius: 50%; background: ${navigator.onLine ? '#22C55E' : '#F97316'}; display: inline-block;"></span>
+                  ${navigator.onLine ? 'Online' : 'Offline'}
+                </span>
+              </div>
               <h2 class="card-title" style="margin-top: 4px; color: var(--text-main);">Buzón de Sugerencias</h2>
               <p style="font-size: 12px; color: var(--text-dim);">
                 Escribí o dictá tu sugerencia. Se sincroniza automáticamente en la nube con el desarrollador.
@@ -2678,21 +2702,26 @@
               <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
                 <label class="form-label" for="sug-mensaje">Tu Sugerencia</label>
                 <button type="button" class="btn-dictar ${isDictatingSugerencia ? 'listening' : ''}" data-action="dictar-sugerencia">
-                  ${isDictatingSugerencia ? '🔴 Escuchando... Tocar para detener' : '🎤 Dictar por voz'}
+                  ${isDictatingSugerencia ? '🔴 Escuchando... Tocá para detener' : '🎤 Dictá una sugerencia'}
                 </button>
               </div>
-              <textarea id="sug-mensaje" class="form-input" rows="4" placeholder="Escribí o tocá 'Dictar por voz' (o el micrófono de tu teclado) para dictar tu sugerencia..." required>${h(draftSugerenciaTexto)}</textarea>
+              <textarea id="sug-mensaje" class="form-input" rows="4" placeholder="Escribí, pegá una captura o tocá 'Dictá una sugerencia' para hablar..." required>${h(draftSugerenciaTexto)}</textarea>
             </div>
 
-            <!-- Adjuntar capturas de pantalla -->
+            <!-- Adjuntar o Pegar capturas de pantalla -->
             <div class="form-group">
-              <label class="btn-secondary" style="cursor: pointer; width: 100%; justify-content: center;">
-                📷 Adjuntar Captura(s) de Pantalla (${draftSugerenciaCapturas.length})
-                <input type="file" accept="image/*" multiple data-action="upload-sugerencia-capturas" style="display: none;">
-              </label>
+              <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                <label class="btn-secondary" style="cursor: pointer; flex: 1; min-width: 140px; justify-content: center;">
+                  📷 Adjuntar Fotos (${draftSugerenciaCapturas.length})
+                  <input type="file" accept="image/*" multiple data-action="upload-sugerencia-capturas" style="display: none;">
+                </label>
+                <button type="button" class="btn-secondary" data-action="paste-clipboard-image" style="flex: 1; min-width: 140px; justify-content: center;">
+                  📋 Pegar Foto Copiada
+                </button>
+              </div>
 
               ${draftSugerenciaCapturas.length > 0 ? `
-                <div class="sug-capturas-grid">
+                <div class="sug-capturas-grid" style="margin-top: 8px;">
                   ${draftSugerenciaCapturas.map((cap, cIdx) => `
                     <div class="sug-captura-thumb">
                       <img src="${cap}" alt="Captura ${cIdx + 1}">
@@ -2711,13 +2740,10 @@
 
           ${sugerencias.length > 0 ? `
             <div style="padding-top: 10px; border-top: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 8px;">
-              <div style="background: rgba(59, 130, 246, 0.12); border: 1px solid rgba(59, 130, 246, 0.35); border-radius: var(--radius-sm); padding: 10px 12px; font-size: 12px; color: var(--text-main); line-height: 1.4;">
-                💾 <strong>Modo Offline:</strong> Estas sugerencias están guardadas en la memoria de este teléfono. Tocá el botón verde de abajo para copiarlas y pegarlas en el chat para que el asistente las aplique:
-              </div>
               <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
                 <span class="form-label" style="margin: 0;">Sugerencias Guardadas (${sugerencias.length})</span>
-                <button type="button" class="btn-primary" data-action="share-sugerencias" style="width: auto; min-height: 34px; padding: 6px 14px; font-size: 12px !important; background: var(--accent-neon); color: #000; font-weight: 700;">
-                  📋 Copiar todas para el Chat / WhatsApp
+                <button type="button" class="btn-primary" data-action="share-sugerencias" style="width: auto; min-height: 34px; padding: 6px 14px; font-size: 12px !important; font-weight: 700;">
+                  📋 Copiar todas para WhatsApp
                 </button>
               </div>
               <div style="display: flex; flex-direction: column; gap: 8px; max-height: 220px; overflow-y: auto;">
@@ -2824,6 +2850,7 @@
         captureSaludDraftsFromDOM();
         activeTab = tab;
         render();
+        window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
       }
     },
 
@@ -2936,6 +2963,7 @@
 
     'close-modal': () => {
       if (activeSpeechRecognition) {
+        try { activeSpeechRecognition.abort(); } catch (_) {}
         try { activeSpeechRecognition.stop(); } catch (_) {}
         activeSpeechRecognition = null;
       }
@@ -3673,7 +3701,47 @@
       renderModals();
     },
 
+    'paste-clipboard-image': async () => {
+      const curTextarea = document.getElementById('sug-mensaje');
+      if (curTextarea) draftSugerenciaTexto = curTextarea.value;
+
+      if (!navigator.clipboard || !navigator.clipboard.read) {
+        showToast('Para pegar capturas, mantené presionado el cuadro de texto y elegí Pegar.');
+        return;
+      }
+      try {
+        const items = await navigator.clipboard.read();
+        let pasted = false;
+        for (const item of items) {
+          for (const type of item.types) {
+            if (type.startsWith('image/')) {
+              const blob = await item.getType(type);
+              await procesarYGuardarCaptura(blob);
+              pasted = true;
+              break;
+            }
+          }
+          if (pasted) break;
+        }
+        if (pasted) {
+          showToast('✓ Captura pegada desde el portapapeles');
+          renderModals();
+        } else {
+          showToast('No se encontró ninguna imagen en el portapapeles.', { isError: true });
+        }
+      } catch (err) {
+        console.warn('Error leyendo portapapeles:', err);
+        showToast('Mantené presionado el cuadro de texto para pegar tu imagen.');
+      }
+    },
+
     'submit-sugerencia': () => {
+      if (activeSpeechRecognition) {
+        try { activeSpeechRecognition.abort(); } catch (_) {}
+        try { activeSpeechRecognition.stop(); } catch (_) {}
+        activeSpeechRecognition = null;
+        isDictatingSugerencia = false;
+      }
       const mensaje = document.getElementById('sug-mensaje')?.value?.trim() || draftSugerenciaTexto.trim();
       if (!mensaje && draftSugerenciaCapturas.length === 0) {
         showToast('Escribí o dictá tu sugerencia antes de guardar.');
@@ -4105,7 +4173,62 @@
       return;
     }
 
-    const fileInput = e.target.closest('input[type="file"][data-action]');
+    function procesarYGuardarCaptura(blobOrFile) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const maxDim = 720;
+          let w = img.width;
+          let h = img.height;
+          if (w > maxDim || h > maxDim) {
+            if (w > h) {
+              h = Math.round((h * maxDim) / w);
+              w = maxDim;
+            } else {
+              w = Math.round((w * maxDim) / h);
+              h = maxDim;
+            }
+          }
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, w, h);
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.78);
+          draftSugerenciaCapturas.push(dataUrl);
+          resolve(dataUrl);
+        };
+        img.onerror = reject;
+        img.src = ev.target.result;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blobOrFile);
+    });
+  }
+
+  document.addEventListener('paste', async e => {
+    if (!activeModal || activeModal.type !== 'sugerencia') return;
+    const items = (e.clipboardData || window.clipboardData)?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') !== -1) {
+        const file = items[i].getAsFile();
+        if (file) {
+          e.preventDefault();
+          const curTextarea = document.getElementById('sug-mensaje');
+          if (curTextarea) draftSugerenciaTexto = curTextarea.value;
+          await procesarYGuardarCaptura(file);
+          showToast('✓ Captura pegada desde el portapapeles');
+          renderModals();
+          break;
+        }
+      }
+    }
+  });
+
+  const fileInput = e.target.closest('input[type="file"][data-action]');
     if (!fileInput) return;
     const actionName = fileInput.getAttribute('data-action');
 

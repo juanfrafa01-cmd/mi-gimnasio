@@ -828,12 +828,31 @@
       root.style.removeProperty('--bg-elevated');
     }
 
-    // 2. Color de acento / principal
+    // 2. Color de acento / principal y todas las insignias / botones
     if (p.accentColor) {
+      function hexToRgba(hex, alpha) {
+        if (!hex || !hex.startsWith('#')) return `rgba(59, 130, 246, ${alpha})`;
+        const h = hex.replace('#', '');
+        const num = parseInt(h.length === 3 ? h.split('').map(c => c + c).join('') : h, 16);
+        const r = (num >> 16) & 255;
+        const g = (num >> 8) & 255;
+        const b = num & 255;
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+      }
+
+      const softBg = hexToRgba(p.accentColor, 0.16);
       root.style.setProperty('--cta-blue', p.accentColor);
+      root.style.setProperty('--cta-blue-hover', p.accentColor);
       root.style.setProperty('--cta-blue-light', p.accentColor);
+      root.style.setProperty('--cta-blue-soft', softBg);
       root.style.setProperty('--accent-blue', p.accentColor);
+      root.style.setProperty('--accent-neon', p.accentColor);
       root.style.setProperty('--border-focus', p.accentColor);
+      root.style.setProperty('--badge-bg', softBg);
+      root.style.setProperty('--badge-text', p.accentColor);
+      root.style.setProperty('--steel-blue', p.accentColor);
+      root.style.setProperty('--steel-blue-light', p.accentColor);
+      root.style.setProperty('--neon-lime', p.accentColor);
       root.style.setProperty('--logo-box-stroke', p.accentColor);
     }
 
