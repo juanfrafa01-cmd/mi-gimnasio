@@ -107,6 +107,7 @@
    */
   Store.init = function () {
     Store.applyTheme();
+    Store.applyAestheticPreference();
     if (typeof window !== 'undefined' && window.matchMedia) {
       try {
         const mq = window.matchMedia('(prefers-color-scheme: light)');
@@ -771,6 +772,85 @@
     Store.applyTheme(valid);
     Store.notify();
     return valid;
+  };
+
+  // ==========================================
+  // 7. PERSONALIZACIÓN ESTÉTICA (FONDOS, COLORES, MINI LOGO)
+  // ==========================================
+  const AESTHETIC_PREF_KEY = 'gimnasio_aesthetic_pref';
+
+  Store.getAestheticPreference = function () {
+    try {
+      const raw = localStorage.getItem(AESTHETIC_PREF_KEY);
+      return raw ? JSON.parse(raw) : {
+        bgStyle: 'zinc',
+        accentColor: '#3B82F6',
+        accentName: 'Azul Eléctrico',
+        logoBg: '#18181B',
+        logoDumbbell: '#3B82F6'
+      };
+    } catch {
+      return {
+        bgStyle: 'zinc',
+        accentColor: '#3B82F6',
+        accentName: 'Azul Eléctrico',
+        logoBg: '#18181B',
+        logoDumbbell: '#3B82F6'
+      };
+    }
+  };
+
+  Store.applyAestheticPreference = function (prefs) {
+    if (typeof document === 'undefined' || !document.documentElement) return;
+    const p = prefs || Store.getAestheticPreference();
+    const root = document.documentElement;
+
+    // 1. Estilo de fondo
+    if (p.bgStyle === 'oled') {
+      root.style.setProperty('--bg-primary', '#000000');
+      root.style.setProperty('--bg-surface', '#09090b');
+      root.style.setProperty('--bg-card', '#0e0e11');
+      root.style.setProperty('--bg-elevated', '#141418');
+    } else if (p.bgStyle === 'navy') {
+      root.style.setProperty('--bg-primary', '#060B13');
+      root.style.setProperty('--bg-surface', '#0B1320');
+      root.style.setProperty('--bg-card', '#101C30');
+      root.style.setProperty('--bg-elevated', '#172640');
+    } else if (p.bgStyle === 'steel') {
+      root.style.setProperty('--bg-primary', '#121214');
+      root.style.setProperty('--bg-surface', '#18181B');
+      root.style.setProperty('--bg-card', '#202024');
+      root.style.setProperty('--bg-elevated', '#27272A');
+    } else { // 'zinc' default
+      root.style.removeProperty('--bg-primary');
+      root.style.removeProperty('--bg-surface');
+      root.style.removeProperty('--bg-card');
+      root.style.removeProperty('--bg-elevated');
+    }
+
+    // 2. Color de acento / principal
+    if (p.accentColor) {
+      root.style.setProperty('--cta-blue', p.accentColor);
+      root.style.setProperty('--cta-blue-light', p.accentColor);
+      root.style.setProperty('--accent-blue', p.accentColor);
+      root.style.setProperty('--border-focus', p.accentColor);
+      root.style.setProperty('--logo-box-stroke', p.accentColor);
+    }
+
+    // 3. Mini logo
+    if (p.logoBg) root.style.setProperty('--logo-box-bg', p.logoBg);
+    if (p.logoDumbbell) root.style.setProperty('--logo-dumbbell', p.logoDumbbell);
+  };
+
+  Store.setAestheticPreference = function (patch) {
+    const current = Store.getAestheticPreference();
+    const updated = { ...current, ...patch };
+    try {
+      localStorage.setItem(AESTHETIC_PREF_KEY, JSON.stringify(updated));
+    } catch {}
+    Store.applyAestheticPreference(updated);
+    Store.notify();
+    return updated;
   };
 
   return Store;

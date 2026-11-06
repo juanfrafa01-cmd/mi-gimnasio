@@ -19,7 +19,7 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '2.5.2';
+  const APP_VERSION = '2.5.3';
 
   function getAutoLayoutMode() {
     const user = Store.user;
@@ -206,12 +206,12 @@
     return `
       <div class="app-brand-wrapper">
         <svg class="app-logo-svg" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <rect x="6" y="6" width="88" height="88" rx="20" fill="#18181B" stroke="#2563EB" stroke-width="4"/>
-          <rect x="18" y="36" width="10" height="28" rx="4" fill="#3B82F6"/>
-          <rect x="30" y="28" width="8" height="44" rx="3" fill="#2563EB"/>
-          <rect x="38" y="46" width="24" height="8" rx="2" fill="#A1A1AA"/>
-          <rect x="62" y="28" width="8" height="44" rx="3" fill="#2563EB"/>
-          <rect x="72" y="36" width="10" height="28" rx="4" fill="#3B82F6"/>
+          <rect x="6" y="6" width="88" height="88" rx="20" fill="var(--logo-box-bg, #18181B)" stroke="var(--logo-box-stroke, #2563EB)" stroke-width="4"/>
+          <rect x="18" y="36" width="10" height="28" rx="4" fill="var(--logo-dumbbell, #3B82F6)"/>
+          <rect x="30" y="28" width="8" height="44" rx="3" fill="var(--logo-dumbbell, #2563EB)"/>
+          <rect x="38" y="46" width="24" height="8" rx="2" fill="var(--steel-silver, #A1A1AA)"/>
+          <rect x="62" y="28" width="8" height="44" rx="3" fill="var(--logo-dumbbell, #2563EB)"/>
+          <rect x="72" y="36" width="10" height="28" rx="4" fill="var(--logo-dumbbell, #3B82F6)"/>
         </svg>
         <div class="app-brand-text">
           <div class="app-brand-title">Fitness MiniApp</div>
@@ -831,13 +831,18 @@
           </div>
         ` : `
           <div style="display: flex; flex-direction: column; gap: 8px;">
-            ${movilidadHoy.map(m => {
+            ${movilidadHoy.map((m, mIdx) => {
               const ejMovId = m.ejercicioId || 'ej-mov-puente-gluteo-uni';
               const seriesMovCargadas = seriesEntreno.filter(s => s.ejercicioId === ejMovId).length;
               return `
-                <div class="mobility-card" style="flex-wrap: wrap;">
-                  <div style="flex: 1; min-width: 190px;">
+                <div class="mobility-card" style="flex-wrap: wrap; gap: 8px;">
+                  <div style="display: flex; flex-direction: column; justify-content: center; gap: 3px;">
+                    <button type="button" class="btn-icon-action" data-action="reorder-movilidad" data-mov-id="${h(m.id)}" data-dir="up" title="Mover arriba" ${mIdx === 0 ? 'disabled style="opacity: 0.25; cursor: default;"' : 'style="cursor: pointer;"'}>▲</button>
+                    <button type="button" class="btn-icon-action" data-action="reorder-movilidad" data-mov-id="${h(m.id)}" data-dir="down" title="Mover abajo" ${mIdx === movilidadHoy.length - 1 ? 'disabled style="opacity: 0.25; cursor: default;"' : 'style="cursor: pointer;"'}>▼</button>
+                  </div>
+                  <div style="flex: 1; min-width: 170px;">
                     <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                      <span class="badge" style="background: var(--bg-surface); font-weight: 800; font-family: var(--font-mono); font-size: 11px;">#${mIdx + 1}</span>
                       <strong style="font-size: 14px; font-weight: 700; color: var(--text-main);">${h(m.nombre)}</strong>
                       <span class="badge badge-neon">${m.series} series × ${h(m.reps)} reps ${m.pesoKg ? `• ${m.pesoKg} kg` : ''}</span>
                       ${seriesMovCargadas > 0 ? `<span class="badge badge-emerald">✓ ${seriesMovCargadas} series registradas</span>` : ''}
@@ -1384,15 +1389,14 @@
                 </div>
               </div>
 
-              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                <div class="form-group">
-                  <label class="form-label">Horario Habitual de Entreno</label>
-                  <input type="time" id="pf-horario" class="form-input" value="${h(draftPerfil.horarioHabitual || '19:00')}">
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Lesiones o Antecedentes</label>
-                  <input type="text" id="pf-lesiones" class="form-input" value="${h(draftPerfil.lesiones || '')}" placeholder="Ej: Ninguna / Lumbar">
-                </div>
+              <div class="form-group">
+                <label class="form-label">Horario Habitual de Entreno</label>
+                <input type="time" id="pf-horario" class="form-input" value="${h(draftPerfil.horarioHabitual || '19:00')}" style="max-width: 220px;">
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Lesiones o Antecedentes (Columna, Articulaciones, etc.)</label>
+                <input type="text" id="pf-lesiones" class="form-input" value="${h(draftPerfil.lesiones || '')}" placeholder="Ej: Ninguna / Escoliosis lumbar leve / Menisco">
               </div>
 
               <div class="form-group">
@@ -1530,6 +1534,7 @@
 
   // 6.5 Pestaña AJUSTES Y BACKUP
   function renderAlumnoAjustesSection(state, user) {
+    const aesPref = Store.getAestheticPreference ? Store.getAestheticPreference() : {};
     return `
       <div class="pc-grid-2">
         <div class="card">
@@ -1556,12 +1561,135 @@
           </div>
         </div>
 
+        <!-- Estado de Actualización y Versión PWA -->
+        <div class="card" style="border-left: 4px solid var(--accent-emerald);">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <div>
+              <span class="badge badge-emerald">Versión ${APP_VERSION} · PWA Oficial</span>
+              <h3 class="card-title" style="margin-top: 4px; color: var(--text-main);">Estado de la Aplicación</h3>
+              <p style="font-size: 12px; color: var(--text-dim); margin-top: 2px;">
+                La app te avisa automáticamente cada vez que se actualiza desde la nube.
+              </p>
+            </div>
+            <button type="button" class="btn-secondary" data-action="check-app-update" style="width: auto; font-size: 11px; padding: 6px 12px;">
+              🔄 Comprobar Actualizaciones
+            </button>
+          </div>
+        </div>
+
         <div class="card">
           <h3 class="card-title" style="color: var(--text-main);">Tema de la Interfaz</h3>
           <p style="font-size: 12px; color: var(--text-dim);">
             Elegí cómo querés ver la aplicación: modo oscuro (zinc/negro), modo claro clínico de alto contraste o automático según tu sistema.
           </p>
           ${renderThemeSelector()}
+        </div>
+
+        <!-- Personalización Estética, Colores y Mini Logo -->
+        <div class="card">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <div>
+              <h3 class="card-title" style="color: var(--text-main);">🎨 Personalización Estética y Colores</h3>
+              <p style="font-size: 12px; color: var(--text-dim);">
+                Personalizá fondo, color de acento principal y los colores del mini logo.
+              </p>
+            </div>
+            <button type="button" class="btn-secondary" data-action="reset-aesthetic-pref" style="width: auto; font-size: 11px; padding: 4px 10px;">
+              Restablecer por defecto
+            </button>
+          </div>
+
+          <!-- Previsualización en Vivo del Mini Logo -->
+          <div style="display: flex; align-items: center; gap: 14px; background: var(--bg-elevated); padding: 12px 14px; border-radius: var(--radius-md); margin-top: 10px; border: 1px solid var(--border-subtle);">
+            ${renderAppBrand('Previsualización en vivo')}
+          </div>
+
+          <!-- 1. Estilo de Fondo -->
+          <div style="margin-top: 14px;">
+            <label class="form-label" style="font-size: 11.5px;">Estilo de Fondo de Pantalla</label>
+            <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px;">
+              <button type="button" class="theme-chip ${aesPref.bgStyle === 'zinc' ? 'active' : ''}" data-action="set-aesthetic-bg" data-bg="zinc">
+                ⚫ Grafito Zinc (Clásico)
+              </button>
+              <button type="button" class="theme-chip ${aesPref.bgStyle === 'oled' ? 'active' : ''}" data-action="set-aesthetic-bg" data-bg="oled">
+                ⬛ Negro Puro (OLED)
+              </button>
+              <button type="button" class="theme-chip ${aesPref.bgStyle === 'navy' ? 'active' : ''}" data-action="set-aesthetic-bg" data-bg="navy">
+                🌌 Azul Noche (Navy)
+              </button>
+              <button type="button" class="theme-chip ${aesPref.bgStyle === 'steel' ? 'active' : ''}" data-action="set-aesthetic-bg" data-bg="steel">
+                🔘 Gris Acero
+              </button>
+            </div>
+          </div>
+
+          <!-- 2. Color Principal / Acento -->
+          <div style="margin-top: 14px;">
+            <label class="form-label" style="font-size: 11.5px;">Color Principal de Botones y Acentos</label>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px;">
+              <button type="button" class="theme-chip ${aesPref.accentColor === '#3B82F6' ? 'active' : ''}" data-action="set-aesthetic-accent" data-color="#3B82F6" style="border-left: 4px solid #3B82F6;">
+                🔵 Azul Eléctrico
+              </button>
+              <button type="button" class="theme-chip ${aesPref.accentColor === '#22C55E' ? 'active' : ''}" data-action="set-aesthetic-accent" data-color="#22C55E" style="border-left: 4px solid #22C55E;">
+                🟢 Verde Neón
+              </button>
+              <button type="button" class="theme-chip ${aesPref.accentColor === '#F97316' ? 'active' : ''}" data-action="set-aesthetic-accent" data-color="#F97316" style="border-left: 4px solid #F97316;">
+                🟠 Naranja Fuego
+              </button>
+              <button type="button" class="theme-chip ${aesPref.accentColor === '#8B5CF6' ? 'active' : ''}" data-action="set-aesthetic-accent" data-color="#8B5CF6" style="border-left: 4px solid #8B5CF6;">
+                🟣 Violeta Tech
+              </button>
+              <button type="button" class="theme-chip ${aesPref.accentColor === '#EF4444' ? 'active' : ''}" data-action="set-aesthetic-accent" data-color="#EF4444" style="border-left: 4px solid #EF4444;">
+                🔴 Rojo Sport
+              </button>
+              <button type="button" class="theme-chip ${aesPref.accentColor === '#06B6D4' ? 'active' : ''}" data-action="set-aesthetic-accent" data-color="#06B6D4" style="border-left: 4px solid #06B6D4;">
+                💠 Cyan Cyber
+              </button>
+            </div>
+          </div>
+
+          <!-- 3. Colores del Mini Logo -->
+          <div style="margin-top: 14px;">
+            <label class="form-label" style="font-size: 11.5px;">Color de la Mancuerna del Mini Logo</label>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px;">
+              <button type="button" class="theme-chip ${aesPref.logoDumbbell === '#3B82F6' ? 'active' : ''}" data-action="set-aesthetic-logo-dumbbell" data-color="#3B82F6">
+                Azul
+              </button>
+              <button type="button" class="theme-chip ${aesPref.logoDumbbell === '#22C55E' ? 'active' : ''}" data-action="set-aesthetic-logo-dumbbell" data-color="#22C55E">
+                Verde
+              </button>
+              <button type="button" class="theme-chip ${aesPref.logoDumbbell === '#F97316' ? 'active' : ''}" data-action="set-aesthetic-logo-dumbbell" data-color="#F97316">
+                Naranja
+              </button>
+              <button type="button" class="theme-chip ${aesPref.logoDumbbell === '#EAB308' ? 'active' : ''}" data-action="set-aesthetic-logo-dumbbell" data-color="#EAB308">
+                Oro
+              </button>
+              <button type="button" class="theme-chip ${aesPref.logoDumbbell === '#FFFFFF' ? 'active' : ''}" data-action="set-aesthetic-logo-dumbbell" data-color="#FFFFFF">
+                Blanco
+              </button>
+              <button type="button" class="theme-chip ${aesPref.logoDumbbell === '#06B6D4' ? 'active' : ''}" data-action="set-aesthetic-logo-dumbbell" data-color="#06B6D4">
+                Cyan
+              </button>
+            </div>
+          </div>
+
+          <div style="margin-top: 14px;">
+            <label class="form-label" style="font-size: 11.5px;">Color de Fondo de la Cajita del Mini Logo</label>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px;">
+              <button type="button" class="theme-chip ${aesPref.logoBg === '#18181B' ? 'active' : ''}" data-action="set-aesthetic-logo-bg" data-color="#18181B">
+                Grafito (#18181B)
+              </button>
+              <button type="button" class="theme-chip ${aesPref.logoBg === '#000000' ? 'active' : ''}" data-action="set-aesthetic-logo-bg" data-color="#000000">
+                Negro Puro
+              </button>
+              <button type="button" class="theme-chip ${aesPref.logoBg === '#0B1320' ? 'active' : ''}" data-action="set-aesthetic-logo-bg" data-color="#0B1320">
+                Azul Noche
+              </button>
+              <button type="button" class="theme-chip ${aesPref.logoBg === '#27272A' ? 'active' : ''}" data-action="set-aesthetic-logo-bg" data-color="#27272A">
+                Gris Acero
+              </button>
+            </div>
+          </div>
         </div>
 
         <div class="card">
@@ -1987,8 +2115,13 @@
     let overlay = document.getElementById('modal-overlay');
     if (!activeModal) {
       if (overlay) overlay.remove();
+      document.body.classList.remove('modal-open');
+      document.body.style.overflow = '';
       return;
     }
+
+    document.body.classList.add('modal-open');
+    document.body.style.overflow = 'hidden';
 
     if (!overlay) {
       overlay = document.createElement('div');
@@ -2702,6 +2835,60 @@
       render();
     },
 
+    'set-aesthetic-bg': el => {
+      const bg = el.getAttribute('data-bg') || 'zinc';
+      Store.setAestheticPreference({ bgStyle: bg });
+      render();
+    },
+
+    'set-aesthetic-accent': el => {
+      const color = el.getAttribute('data-color') || '#3B82F6';
+      Store.setAestheticPreference({ accentColor: color });
+      render();
+    },
+
+    'set-aesthetic-logo-dumbbell': el => {
+      const color = el.getAttribute('data-color') || '#3B82F6';
+      Store.setAestheticPreference({ logoDumbbell: color });
+      render();
+    },
+
+    'set-aesthetic-logo-bg': el => {
+      const color = el.getAttribute('data-color') || '#18181B';
+      Store.setAestheticPreference({ logoBg: color });
+      render();
+    },
+
+    'reset-aesthetic-pref': () => {
+      Store.setAestheticPreference({
+        bgStyle: 'zinc',
+        accentColor: '#3B82F6',
+        accentName: 'Azul Eléctrico',
+        logoBg: '#18181B',
+        logoDumbbell: '#3B82F6'
+      });
+      showToast('✓ Colores restablecidos a valores originales');
+      render();
+    },
+
+    'check-app-update': () => {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistration().then(reg => {
+          if (reg) {
+            reg.update().then(() => {
+              showToast(`✓ Versión actual v${APP_VERSION}. Buscando si hay nuevas versiones en GitHub/Vercel...`);
+            });
+          } else {
+            showToast(`Versión v${APP_VERSION} al día.`);
+          }
+        }).catch(() => {
+          showToast(`Versión v${APP_VERSION} instalada.`);
+        });
+      } else {
+        showToast(`Versión v${APP_VERSION} al día.`);
+      }
+    },
+
     'quick-demo-login': el => {
       const username = el.getAttribute('data-username');
       const mode = el.getAttribute('data-mode');
@@ -3219,6 +3406,14 @@
       render();
     },
 
+    'reorder-movilidad': el => {
+      const movId = el.getAttribute('data-mov-id');
+      const dir = el.getAttribute('data-dir');
+      if (!movId || !dir) return;
+      Store.commit(s => Engine.reordenarMovilidad(s, movId, dir));
+      render();
+    },
+
     'delete-activacion': el => {
       const actId = el.getAttribute('data-act-id');
       if (!actId) return;
@@ -3407,7 +3602,10 @@
       }
 
       if (isDictatingSugerencia && activeSpeechRecognition) {
-        try { activeSpeechRecognition.stop(); } catch (_) {}
+        try {
+          activeSpeechRecognition.abort();
+          activeSpeechRecognition.stop();
+        } catch (_) {}
         isDictatingSugerencia = false;
         activeSpeechRecognition = null;
         renderModals();
@@ -3416,13 +3614,14 @@
 
       const rec = new SpeechRec();
       rec.lang = 'es-AR';
-      rec.continuous = false;
-      rec.interimResults = false;
+      rec.continuous = true;
+      rec.interimResults = true;
       activeSpeechRecognition = rec;
       isDictatingSugerencia = true;
 
       const curTextarea = document.getElementById('sug-mensaje');
-      if (curTextarea) draftSugerenciaTexto = curTextarea.value;
+      const baseText = curTextarea ? curTextarea.value.trim() : draftSugerenciaTexto.trim();
+      draftSugerenciaTexto = baseText;
       renderModals();
 
       rec.onresult = ev => {
@@ -3432,18 +3631,24 @@
         }
         const cleaned = transcript.trim();
         if (cleaned) {
-          draftSugerenciaTexto = (draftSugerenciaTexto ? draftSugerenciaTexto.trim() + ' ' : '') + cleaned;
+          draftSugerenciaTexto = (baseText ? baseText + ' ' : '') + cleaned;
+          const ta = document.getElementById('sug-mensaje');
+          if (ta) {
+            ta.value = draftSugerenciaTexto;
+            ta.scrollTop = ta.scrollHeight;
+          }
         }
       };
 
       rec.onerror = () => {
+        try { rec.abort(); } catch (_) {}
         isDictatingSugerencia = false;
         activeSpeechRecognition = null;
-        showToast('No se pudo escuchar el audio. También podés usar el micrófono de tu teclado.');
         renderModals();
       };
 
       rec.onend = () => {
+        try { rec.abort(); } catch (_) {}
         isDictatingSugerencia = false;
         activeSpeechRecognition = null;
         renderModals();
@@ -4015,5 +4220,25 @@
     Store.init();
     layoutMode = getAutoLayoutMode();
     render();
+
+    // Notificación automática al actualizarse la versión
+    const LAST_SEEN_VERSION_KEY = 'gimnasio_last_seen_version';
+    try {
+      const lastVer = localStorage.getItem(LAST_SEEN_VERSION_KEY);
+      if (lastVer !== APP_VERSION) {
+        localStorage.setItem(LAST_SEEN_VERSION_KEY, APP_VERSION);
+        if (lastVer) {
+          setTimeout(() => {
+            showToast(`🚀 ¡Fitness MiniApp actualizada a v${APP_VERSION}! Nuevas funciones aplicadas.`, { duration: 6000 });
+          }, 800);
+        }
+      }
+    } catch (_) {}
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        showToast(`✓ ¡Fitness MiniApp actualizada a v${APP_VERSION}!`, { duration: 5000 });
+      });
+    }
   });
 })();

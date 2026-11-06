@@ -2199,6 +2199,39 @@
     return { ...state, movilidad, movilidadSesion: movilidad, updatedAt: ahora };
   };
 
+  /**
+   * Reordena los ejercicios de movilidad (subir o bajar en la lista).
+   */
+  Engine.reordenarMovilidad = function (state, id, direccion) {
+    if (!state || !Array.isArray(state.movilidad)) return state;
+    const activos = state.movilidad.filter(m => !m.deleted);
+    const idx = activos.findIndex(m => m.id === id);
+    if (idx === -1) return state;
+
+    const targetIdx = direccion === 'up' ? idx - 1 : idx + 1;
+    if (targetIdx < 0 || targetIdx >= activos.length) return state;
+
+    const movActual = activos[idx];
+    const movTarget = activos[targetIdx];
+
+    const fullList = [...state.movilidad];
+    const posA = fullList.findIndex(m => m.id === movActual.id);
+    const posB = fullList.findIndex(m => m.id === movTarget.id);
+
+    if (posA !== -1 && posB !== -1) {
+      const temp = fullList[posA];
+      fullList[posA] = fullList[posB];
+      fullList[posB] = temp;
+    }
+
+    return {
+      ...state,
+      movilidad: fullList,
+      movilidadSesion: fullList,
+      updatedAt: Date.now()
+    };
+  };
+
   Engine.toggleActivacion = function (state, actId) {
     const ahora = Date.now();
     const mapa = { ...(state.activacionesHoy || {}) };
