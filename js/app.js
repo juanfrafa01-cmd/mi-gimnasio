@@ -19,7 +19,10 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '2.5.4';
+  const APP_VERSION = '2.5.5';
+
+  /** Número válido o valor por defecto (a diferencia de `|| def`, respeta el 0: RIR 0 = serie al fallo). */
+  const numOr = (v, def) => (Number.isFinite(v) ? v : def);
 
   function getAutoLayoutMode() {
     const user = Store.user;
@@ -404,7 +407,7 @@
           <!-- Columna 1: Iniciar Sesión o Crear Cuenta (Alumno / Docente) -->
           <div class="card">
             <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;">
-              ${getAppBrandHTML('Ingreso Personal · Alumno o Docente')}
+              ${renderAppBrand('Ingreso Personal · Alumno o Docente')}
               <span class="badge badge-blue">v${APP_VERSION}</span>
             </div>
 
@@ -474,7 +477,7 @@
                   📋 Demo Docente (Profe)
                 </button>
               </div>
-              ${getCopyrightSealHTML()}
+              ${renderJFCopyrightSeal()}
             </div>
           </div>
 
@@ -3000,7 +3003,9 @@
 
     'logout': () => {
       Store.logout();
-      draftSaludUser = null;
+      // Que los borradores de Salud no queden con los datos del usuario anterior
+      draftReadiness.userKey = null;
+      draftPerfil.userKey = null;
       render();
     },
 
@@ -3841,8 +3846,8 @@
 
       const peso = parseFloat(document.getElementById(`input-peso-${ejId}`)?.value) || 0;
       const reps = parseInt(document.getElementById(`input-reps-${ejId}`)?.value, 10) || 0;
-      const rir = parseInt(document.getElementById(`select-rir-${ejId}`)?.value, 10) || 2;
-      const rpe = parseInt(document.getElementById(`select-rpe-${ejId}`)?.value, 10) || 8;
+      const rir = numOr(parseInt(document.getElementById(`select-rir-${ejId}`)?.value, 10), 2);
+      const rpe = numOr(parseInt(document.getElementById(`select-rpe-${ejId}`)?.value, 10), 8);
       const tipo = document.getElementById(`select-tipo-${ejId}`)?.value || 'efectiva';
 
       const prCheck = Engine.checkIfNewPR(Store.getState(), ejId, peso, reps);
@@ -3883,8 +3888,8 @@
       const cantSeries = Math.max(1, parseInt(document.getElementById(`input-cant-series-${ejId}`)?.value, 10) || 3);
       const peso = parseFloat(document.getElementById(`input-peso-${ejId}`)?.value) || 0;
       const reps = parseInt(document.getElementById(`input-reps-${ejId}`)?.value, 10) || 0;
-      const rir = parseInt(document.getElementById(`select-rir-${ejId}`)?.value, 10) || 2;
-      const rpe = parseInt(document.getElementById(`select-rpe-${ejId}`)?.value, 10) || 8;
+      const rir = numOr(parseInt(document.getElementById(`select-rir-${ejId}`)?.value, 10), 2);
+      const rpe = numOr(parseInt(document.getElementById(`select-rpe-${ejId}`)?.value, 10), 8);
       const tipo = document.getElementById(`select-tipo-${ejId}`)?.value || 'efectiva';
 
       const beforeIds = new Set((Store.getState().series || []).map(s => s.id));
@@ -4154,26 +4159,8 @@
     }
   });
 
-  document.addEventListener('change', e => {
-    const movSelect = e.target.closest('select[data-action="select-movilidad-preset"]');
-    if (movSelect) {
-      const opt = movSelect.options[movSelect.selectedIndex];
-      if (opt) {
-        const nomEl = document.getElementById('mov-nombre');
-        const serEl = document.getElementById('mov-series');
-        const repEl = document.getElementById('mov-reps');
-        const pesEl = document.getElementById('mov-peso');
-        const notEl = document.getElementById('mov-notas');
-        if (nomEl) nomEl.value = opt.getAttribute('data-nombre') || '';
-        if (serEl) serEl.value = opt.getAttribute('data-series') || '2';
-        if (repEl) repEl.value = opt.getAttribute('data-reps') || '15';
-        if (pesEl) pesEl.value = opt.getAttribute('data-peso') || '0';
-        if (notEl) notEl.value = opt.getAttribute('data-notas') || '';
-      }
-      return;
-    }
-
-    function procesarYGuardarCaptura(blobOrFile) {
+  /** Comprime una imagen (archivo o portapapeles) y la suma a las capturas del borrador de sugerencia. */
+  function procesarYGuardarCaptura(blobOrFile) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = ev => {
@@ -4209,7 +4196,7 @@
   }
 
   document.addEventListener('paste', async e => {
-    if (!activeModal || activeModal.type !== 'sugerencia') return;
+    if (!activeModal || activeModal.type !== 'sugerencias') return;
     const items = (e.clipboardData || window.clipboardData)?.items;
     if (!items) return;
     for (let i = 0; i < items.length; i++) {
@@ -4228,7 +4215,27 @@
     }
   });
 
-  const fileInput = e.target.closest('input[type="file"][data-action]');
+  document.addEventListener('change', e => {
+    const movSelect = e.target.closest('select[data-action="select-movilidad-preset"]');
+    if (movSelect) {
+      const opt = movSelect.options[movSelect.selectedIndex];
+      if (opt) {
+        const nomEl = document.getElementById('mov-nombre');
+        const serEl = document.getElementById('mov-series');
+        const repEl = document.getElementById('mov-reps');
+        const pesEl = document.getElementById('mov-peso');
+        const notEl = document.getElementById('mov-notas');
+        if (nomEl) nomEl.value = opt.getAttribute('data-nombre') || '';
+        if (serEl) serEl.value = opt.getAttribute('data-series') || '2';
+        if (repEl) repEl.value = opt.getAttribute('data-reps') || '15';
+        if (pesEl) pesEl.value = opt.getAttribute('data-peso') || '0';
+        if (notEl) notEl.value = opt.getAttribute('data-notas') || '';
+      }
+      return;
+    }
+
+
+    const fileInput = e.target.closest('input[type="file"][data-action]');
     if (!fileInput) return;
     const actionName = fileInput.getAttribute('data-action');
 
