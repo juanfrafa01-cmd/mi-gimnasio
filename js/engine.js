@@ -2181,6 +2181,7 @@
       reps: item.reps || '15',
       pesoKg: item.pesoKg != null ? Number(item.pesoKg) : 0,
       notas: item.notas || '',
+      fecha: item.fecha || (index >= 0 && movilidad[index].fecha) || Engine.todayISO(),
       completado: true,
       deleted: false,
       updatedAt: ahora
@@ -2189,6 +2190,23 @@
     else movilidad.push(nuevo);
 
     return { ...state, movilidad, movilidadSesion: movilidad, updatedAt: ahora };
+  };
+
+  /** Movilidad que corresponde a una fecha (los ítems viejos sin fecha se consideran del día). */
+  Engine.movilidadDe = function (state, fechaISO = Engine.todayISO()) {
+    return (state.movilidad || []).filter(m => !m.deleted && (!m.fecha || m.fecha === fechaISO));
+  };
+
+  /** Copia a hoy la movilidad del último día en que se cargó algo (para repetirla con un toque). */
+  Engine.repetirUltimaMovilidad = function (state, fechaISO = Engine.todayISO()) {
+    const previas = (state.movilidad || []).filter(m => !m.deleted && m.fecha && m.fecha < fechaISO);
+    if (!previas.length) return state;
+    const ultimaFecha = previas.map(m => m.fecha).sort().pop();
+    let s = state;
+    previas.filter(m => m.fecha === ultimaFecha).forEach(m => {
+      s = Engine.guardarMovilidad(s, { ...m, id: null, fecha: fechaISO });
+    });
+    return s;
   };
 
   Engine.borrarMovilidad = function (state, id) {
@@ -2232,11 +2250,253 @@
     };
   };
 
-  Engine.toggleActivacion = function (state, actId) {
+  // ==========================================
+  // 7b. SESIÓN INTELIGENTE (v2.6): rutina del día, "la vez pasada", progresión, resumen y discos
+  // ==========================================
+
+  const DIAS_ES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+
+  /** Nombre del día de la semana en español para una fecha ISO (o hoy). */
+  Engine.nombreDia = function (fechaISO) {
+    const f = fechaISO ? new Date(fechaISO + 'T12:00:00') : new Date();
+    return DIAS_ES[f.getDay()];
+  };
+
+  /**
+   * Rutina que toca hoy según los días elegidos en cada rutina. Si hay varias, la primera creada.
+   * Devuelve { rutina, esDiaDeGym } (esDiaDeGym también mira perfil.diasSemana).
+   */
+  Engine.rutinaParaHoy = function (state, fechaISO = Engine.todayISO()) {
+    const dia = Engine.nombreDia(fechaISO);
+    const norm = (d) => String(d || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().slice(0, 3);
+    const activas = (state.rutinas || []).filter(r => !r.deleted);
+    const rutina = activas.find(r => (r.dias || []).some(d => norm(d) === norm(dia))) || null;
+    const perfilDias = (state.perfil && state.perfil.diasSemana) || [];
+    const esDiaDeGym = Boolean(rutina) || perfilDias.some(d => norm(d) === norm(dia));
+    return { rutina, esDiaDeGym, dia };
+  };
+
+  /** Último entrenamiento terminado (no el activo), con su resumen corto. */
+  Engine.ultimoEntrenamiento = function (state) {
+    const lista = (state.entrenamientos || [])
+      .filter(t => !t.deleted && t.completado && t.id !== state.entrenamientoActivoId)
+      .sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '') || (b.updatedAt || 0) - (a.updatedAt || 0));
+    const t = lista[0];
+    if (!t) return null;
+    const series = (state.series || []).filter(s => s.entrenamientoId === t.id && !s.deleted);
+    const rutina = t.rutinaId ? (state.rutinas || []).find(r => r.id === t.rutinaId) : null;
+    const hoy = new Date(Engine.todayISO() + 'T12:00:00'), f = new Date(t.fecha + 'T12:00:00');
+    const dias = Math.round((hoy - f) / 86400000);
+    return {
+      entrenamiento: t,
+      nombre: rutina ? rutina.nombre : 'Entrenamiento libre',
+      series: series.length,
+      volumen: Engine.computeVolumenEntrenamiento(state.series, t.id),
+      haceDias: dias,
+      haceTexto: dias === 0 ? 'hoy' : dias === 1 ? 'ayer' : `hace ${dias} días`
+    };
+  };
+
+  /**
+   * Series del último entrenamiento (distinto al activo) en que se hizo este ejercicio: "la vez pasada".
+   * Devuelve null si nunca se hizo, o { fecha, series: [...], texto: '60×8 · 60×8 · 60×7 · RIR 2', mejor: {pesoKg, reps} }.
+   */
+  Engine.getUltimaSesionEjercicio = function (state, ejercicioId, excluirEntrenamientoId = null) {
+    const excluir = excluirEntrenamientoId || state.entrenamientoActivoId || null;
+    const candidatas = (state.series || []).filter(s =>
+      s.ejercicioId === ejercicioId && !s.deleted && s.completada && s.entrenamientoId !== excluir && s.tipo !== 'calentamiento'
+    );
+    if (!candidatas.length) return null;
+    const porEnt = new Map();
+    candidatas.forEach(s => { if (!porEnt.has(s.entrenamientoId)) porEnt.set(s.entrenamientoId, []); porEnt.get(s.entrenamientoId).push(s); });
+    const fechaDe = (entId, serie) => {
+      const t = (state.entrenamientos || []).find(x => x.id === entId);
+      return (t && t.fecha) || serie.fecha || '';
+    };
+    let mejorEnt = null, mejorFecha = '';
+    porEnt.forEach((lista, entId) => {
+      const f = fechaDe(entId, lista[0]);
+      if (!mejorEnt || f > mejorFecha || (f === mejorFecha && (lista[0].updatedAt || 0) > (mejorEnt[0].updatedAt || 0))) { mejorEnt = lista; mejorFecha = f; }
+    });
+    const series = mejorEnt.slice().sort((a, b) => (a.numeroSerie || 0) - (b.numeroSerie || 0) || (a.updatedAt || 0) - (b.updatedAt || 0));
+    const rirs = series.map(s => Number.isFinite(Number(s.rir)) ? Number(s.rir) : 2);
+    const rirMin = Math.min(...rirs);
+    const mejor = series.reduce((a, s) => (Engine.compute1RM(s.pesoKg, s.reps) > Engine.compute1RM(a.pesoKg, a.reps) ? s : a), series[0]);
+    return {
+      fecha: mejorFecha,
+      series,
+      rirMin,
+      mejor: { pesoKg: mejor.pesoKg, reps: mejor.reps },
+      texto: series.map(s => `${s.pesoKg}×${s.reps}`).join(' · ') + ` · RIR ${rirMin}`
+    };
+  };
+
+  /**
+   * Progresión sugerida para hoy a partir de la vez pasada (doble progresión simple):
+   * - Si completó las series objetivo con todas las reps ≥ tope del rango y RIR ≥ 2 → sube el peso.
+   * - Si alguna serie quedó muy corta (RIR 0 y reps < piso) → baja un escalón.
+   * - Si no → mismo peso, intentar una rep más.
+   * repsObjetivo acepta '8-12', '8' o '10'.
+   */
+  Engine.sugerirProgresion = function (state, ejercicioId, opts = {}) {
+    const prev = Engine.getUltimaSesionEjercicio(state, ejercicioId, opts.excluirEntrenamientoId);
+    const ej = (state.ejercicios || []).find(e => e.id === ejercicioId) || (Engine.CATALOGO_EJERCICIOS || []).find(e => e.id === ejercicioId) || {};
+    const equipo = String(opts.equipo || ej.equipo || '').toLowerCase();
+    const paso = Number(opts.paso) || (equipo.includes('mancuerna') ? 2 : equipo.includes('polea') || equipo.includes('maquina') || equipo.includes('máquina') ? 5 : 2.5);
+    const rango = String(opts.repsObjetivo || ej.repsSugeridas || '8-12').match(/(\d+)\s*(?:-\s*(\d+))?/);
+    const piso = rango ? Number(rango[1]) : 8;
+    const tope = rango ? Number(rango[2] || rango[1]) : 12;
+    const seriesObj = Number(opts.seriesObjetivo) || ej.seriesSugeridas || 3;
+
+    if (!prev) return { pesoKg: null, reps: tope === piso ? piso : Math.round((piso + tope) / 2), accion: 'nuevo', motivo: 'Primera vez: elegí un peso cómodo y anotá.' };
+
+    const efectivas = prev.series.filter(s => s.tipo !== 'calentamiento');
+    const pesoBase = Math.max(...efectivas.map(s => Number(s.pesoKg) || 0));
+    const alTope = efectivas.filter(s => Number(s.pesoKg) === pesoBase);
+    const completo = alTope.length >= seriesObj && alTope.every(s => Number(s.reps) >= tope);
+    const conMargen = alTope.every(s => (Number.isFinite(Number(s.rir)) ? Number(s.rir) : 2) >= 2);
+    const muyCorta = alTope.some(s => Number(s.reps) < piso && (Number.isFinite(Number(s.rir)) ? Number(s.rir) : 2) === 0);
+    const redondear = (v) => Math.round(v / 0.25) * 0.25;
+
+    if (completo && conMargen) {
+      return { pesoKg: redondear(pesoBase + paso), reps: piso, accion: 'subir', motivo: `La vez pasada completaste ${alTope.length}×${tope} con RIR ${prev.rirMin}: probá +${paso} kg.` };
+    }
+    if (muyCorta) {
+      return { pesoKg: redondear(Math.max(0, pesoBase - paso)), reps: piso, accion: 'bajar', motivo: 'La vez pasada quedaste corto al fallo: bajá un escalón y completá el rango.' };
+    }
+    const repsPrev = Math.max(...alTope.map(s => Number(s.reps) || 0));
+    return { pesoKg: pesoBase, reps: Math.min(tope, repsPrev + 1), accion: 'mantener', motivo: `Mismo peso que la vez pasada (${pesoBase} kg): buscá ${Math.min(tope, repsPrev + 1)} reps.` };
+  };
+
+  /**
+   * Resumen de una sesión para la pantalla final: duración, series, volumen, por ejercicio y récords logrados.
+   */
+  Engine.resumenEntrenamiento = function (state, entrenamientoId) {
+    const t = (state.entrenamientos || []).find(x => x.id === entrenamientoId);
+    if (!t) return null;
+    const series = (state.series || []).filter(s => s.entrenamientoId === entrenamientoId && !s.deleted);
+    const porEj = new Map();
+    series.forEach(s => { if (!porEj.has(s.ejercicioId)) porEj.set(s.ejercicioId, []); porEj.get(s.ejercicioId).push(s); });
+
+    // PR: mejor 1RM de esta sesión contra todo lo anterior (sin calentamientos)
+    const anteriores = { ...state, series: (state.series || []).filter(s => s.entrenamientoId !== entrenamientoId) };
+    const prsPrevios = Engine.computePRs(anteriores);
+    const catalogo = (state.ejercicios || []).concat(Engine.CATALOGO_EJERCICIOS || []);
+    const ejercicios = [];
+    const prs = [];
+    porEj.forEach((lista, ejId) => {
+      const ej = catalogo.find(e => e.id === ejId) || { id: ejId, nombre: 'Ejercicio' };
+      const efectivas = lista.filter(s => s.tipo !== 'calentamiento' && Number(s.pesoKg) > 0 && Number(s.reps) > 0);
+      const mejor = efectivas.reduce((a, s) => (!a || Engine.compute1RM(s.pesoKg, s.reps) > Engine.compute1RM(a.pesoKg, a.reps) ? s : a), null);
+      const vol = lista.reduce((acc, s) => acc + Engine.computeVolumenSerie(s), 0);
+      const item = { ejercicioId: ejId, nombre: ej.nombre, series: lista.length, volumen: Math.round(vol), mejor: mejor ? { pesoKg: mejor.pesoKg, reps: mejor.reps, rm: Engine.compute1RM(mejor.pesoKg, mejor.reps) } : null, pr: false };
+      if (mejor) {
+        const prevRM = prsPrevios[ejId] ? prsPrevios[ejId].max1RM.rm : 0;
+        const prevPeso = prsPrevios[ejId] ? prsPrevios[ejId].maxPeso.pesoKg : 0;
+        const pesoMax = Math.max(...efectivas.map(x => Number(x.pesoKg) || 0));
+        if (item.mejor.rm > prevRM) { item.pr = true; prs.push({ ejercicioId: ejId, nombre: ej.nombre, tipo: '1rm', pesoKg: mejor.pesoKg, reps: mejor.reps, rm: item.mejor.rm, previo: prevRM }); }
+        else if (pesoMax > prevPeso && prevPeso > 0) { item.pr = true; prs.push({ ejercicioId: ejId, nombre: ej.nombre, tipo: 'peso', pesoKg: pesoMax, reps: efectivas.filter(x => Number(x.pesoKg) === pesoMax).reduce((m, x) => Math.max(m, Number(x.reps) || 0), 0), rm: item.mejor.rm, previo: prevPeso }); }
+      }
+      ejercicios.push(item);
+    });
+
+    let duracionMin = null;
+    if (t.inicio && t.fin) {
+      const [h1, m1] = String(t.inicio).split(':').map(Number), [h2, m2] = String(t.fin).split(':').map(Number);
+      if ([h1, m1, h2, m2].every(Number.isFinite)) { let d = (h2 * 60 + m2) - (h1 * 60 + m1); if (d < 0) d += 1440; duracionMin = d; }
+    }
+    return {
+      entrenamiento: t,
+      fecha: t.fecha,
+      duracionMin,
+      series: series.length,
+      volumen: Engine.computeVolumenEntrenamiento(state.series, entrenamientoId),
+      ejercicios,
+      prs,
+      texto: `${t.fecha} · ${series.length} series · ${Math.round(Engine.computeVolumenEntrenamiento(state.series, entrenamientoId)).toLocaleString('es-AR')} kg` + (prs.length ? ` · ${prs.length} récord${prs.length > 1 ? 's' : ''} 🏆` : '')
+    };
+  };
+
+  /**
+   * Discos por lado para armar una barra: "60 kg = barra 20 + 20 por lado (15 + 5)".
+   */
+  Engine.calcularDiscos = function (pesoTotal, barraKg = 20, discos = [25, 20, 15, 10, 5, 2.5, 1.25]) {
+    const total = Number(pesoTotal) || 0;
+    const barra = Number(barraKg) || 0;
+    if (total <= barra) return { porLado: [], restoKg: 0, texto: total > 0 ? `Barra sola (${barra} kg)` : '' };
+    let porLado = Math.round(((total - barra) / 2) * 100) / 100;
+    const usados = [];
+    discos.slice().sort((a, b) => b - a).forEach(d => { while (porLado >= d - 1e-9) { usados.push(d); porLado = Math.round((porLado - d) * 100) / 100; } });
+    return {
+      porLado: usados,
+      restoKg: porLado,
+      texto: `Barra ${barra} + por lado: ${usados.length ? usados.join(' + ') : '—'}${porLado > 0 ? ` (faltan ${porLado} kg por lado)` : ''}`
+    };
+  };
+
+  /** Mueve un ítem de movilidad a una posición concreta (arrastrar y soltar). */
+  Engine.moverMovilidad = function (state, id, nuevoIndex) {
+    if (!state || !Array.isArray(state.movilidad)) return state;
+    const activos = state.movilidad.filter(m => !m.deleted);
+    const idx = activos.findIndex(m => m.id === id);
+    if (idx === -1) return state;
+    const destino = Math.max(0, Math.min(activos.length - 1, Number(nuevoIndex)));
+    if (destino === idx) return state;
+    const [item] = activos.splice(idx, 1);
+    activos.splice(destino, 0, item);
+    const borrados = state.movilidad.filter(m => m.deleted);
+    return { ...state, movilidad: activos.concat(borrados), movilidadSesion: activos.concat(borrados), updatedAt: Date.now() };
+  };
+
+  /** Orden manual de los ejercicios de la sesión activa (lista de ejercicioId). */
+  Engine.ordenarEjerciciosSesion = function (state, entrenamientoId, ordenIds) {
+    const mapa = { ...(state.ordenSesion || {}) };
+    mapa[entrenamientoId] = (ordenIds || []).filter(Boolean);
+    return { ...state, ordenSesion: mapa, updatedAt: Date.now() };
+  };
+
+  /** Aplica el orden manual guardado a una lista de ítems con .ejercicio.id (los nuevos van al final). */
+  Engine.aplicarOrdenSesion = function (state, entrenamientoId, lista) {
+    const orden = (state.ordenSesion && state.ordenSesion[entrenamientoId]) || [];
+    if (!orden.length) return lista;
+    const pos = new Map(orden.map((id, i) => [id, i]));
+    return lista.slice().sort((a, b) => {
+      const pa = pos.has(a.ejercicio.id) ? pos.get(a.ejercicio.id) : 1e6, pb = pos.has(b.ejercicio.id) ? pos.get(b.ejercicio.id) : 1e6;
+      return pa - pb;
+    });
+  };
+
+  /** Configuración de descanso automático guardada en kv. */
+  Engine.getDescanso = function (state) {
+    const kv = Array.isArray(state && state.kv) ? state.kv : [];
+    const seg = kv.find(k => k.id === 'descansoSeg');
+    const auto = kv.find(k => k.id === 'descansoAuto');
+    return { segundos: seg ? Number(seg.valor) || 90 : 90, automatico: auto ? auto.valor !== false && auto.valor !== 'false' : true };
+  };
+  Engine.setKV = function (state, id, valor) {
+    const kv = (Array.isArray(state.kv) ? state.kv : []).filter(k => k.id !== id).concat([{ id, valor }]);
+    return { ...state, kv, updatedAt: Date.now() };
+  };
+
+  Engine.toggleActivacion = function (state, actId, fechaISO = Engine.todayISO()) {
     const ahora = Date.now();
-    const mapa = { ...(state.activacionesHoy || {}) };
+    // Las tildes de activación son del día: si cambió la fecha, arrancan vacías y lo anterior queda en el historial
+    const mapa = state.activacionesFecha === fechaISO ? { ...(state.activacionesHoy || {}) } : {};
     mapa[actId] = !mapa[actId];
-    return { ...state, activacionesHoy: mapa, updatedAt: ahora };
+    const log = (state.activacionesLog || []).filter(x => !(x.fecha === fechaISO && x.actId === actId));
+    if (mapa[actId]) log.push({ fecha: fechaISO, actId, updatedAt: ahora });
+    return { ...state, activacionesHoy: mapa, activacionesFecha: fechaISO, activacionesLog: log.slice(-500), updatedAt: ahora };
+  };
+
+  /** Tildes de activación vigentes para una fecha (vacío si son de otro día). */
+  Engine.activacionesDe = function (state, fechaISO = Engine.todayISO()) {
+    if (!state) return {};
+    if (state.activacionesFecha && state.activacionesFecha !== fechaISO) {
+      const m = {};
+      (state.activacionesLog || []).forEach(x => { if (x.fecha === fechaISO) m[x.actId] = true; });
+      return m;
+    }
+    return state.activacionesHoy || {};
   };
 
   /**

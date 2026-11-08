@@ -19,7 +19,7 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '2.5.5';
+  const APP_VERSION = '2.6.0';
 
   /** Número válido o valor por defecto (a diferencia de `|| def`, respeta el 0: RIR 0 = serie al fallo). */
   const numOr = (v, def) => (Number.isFinite(v) ? v : def);
@@ -501,54 +501,74 @@
 
     // Si NO hay un entrenamiento en curso
     if (!entActivo) {
+      const hoyInfo = Engine.rutinaParaHoy(state);
+      const ultimo = Engine.ultimoEntrenamiento(state);
+      const primeraVez = (state.entrenamientos || []).filter(t => !t.deleted).length === 0 && rutinasActivas.length === 0;
+      const tieneFicha = Boolean(state.perfil && state.perfil.diasSemana && state.perfil.diasSemana.length > 0);
+      const rutinaHoy = hoyInfo.rutina;
+
       return `
-        <!-- Banner de Identidad y Código Único -->
-        <div class="card" style="border-left: 4px solid var(--steel-blue);">
-          <div class="card-header">
-            <div>
-              <span class="badge badge-neon">Fitness MiniApp · Panel de Entrenamiento</span>
-              <h2 style="font-size: 19px; font-weight: 800; margin-top: 4px;">¡Hola, ${h(user.displayName)}!</h2>
-              <p style="font-size: 12px; color: var(--text-muted);">
-                Organizá tu entrenamiento de hoy en: <strong>1. Activación</strong>, <strong>2. Movilidad</strong> y <strong>3. Entrenamiento Principal / AMRAP</strong>.
+        <!-- Cabecera: saludo, código y estado del día -->
+        <div class="card hoy-head">
+          <div class="card-header" style="align-items: flex-start;">
+            <div style="min-width: 0;">
+              <span class="badge badge-neon">${h(hoyInfo.dia)} · ${hoyInfo.esDiaDeGym ? 'Día de gimnasio' : 'Día libre'}</span>
+              <h2 style="font-size: 20px; font-weight: 800; margin-top: 4px;">¡Hola, ${h(user.displayName)}!</h2>
+              <p style="font-size: 12.5px; color: var(--text-muted); margin-top: 2px;">
+                ${ultimo
+                  ? `Último entreno <strong>${h(ultimo.haceTexto)}</strong>: ${h(ultimo.nombre)} · ${ultimo.series} series · ${Math.round(ultimo.volumen).toLocaleString('es-AR')} kg`
+                  : 'Todavía no registraste ningún entrenamiento.'}
               </p>
             </div>
             <button type="button" class="code-pill" data-action="copy-alumno-code" data-code="${h(state.codigoAlumno)}" title="Clic para copiar tu código">
               <span>🔑 ${h(state.codigoAlumno)}</span>
-              <span style="font-size: 10px;">📋 Copiar</span>
+              <span style="font-size: 10px;">Copiar</span>
             </button>
           </div>
+        </div>
 
-          ${state.perfil && state.perfil.diasSemana && state.perfil.diasSemana.length > 0 ? `
-            <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding-top: 6px; border-top: 1px dashed var(--border-subtle); font-size: 12px; color: var(--text-muted);">
-              <span>📅 <strong>Días de gym:</strong> ${state.perfil.diasSemana.map(d => h(d)).join(', ')}</span>
-              <span>•</span>
-              <span>⏰ <strong>Horario habitual:</strong> ${h(state.perfil.horarioHabitual || '19:00')} hs</span>
-            </div>
+        <!-- Acción principal del día -->
+        <div class="card hoy-cta">
+          ${rutinaHoy ? `
+            <span class="badge badge-blue">Te toca hoy</span>
+            <h3 style="font-size: 18px; font-weight: 800; margin-top: 6px;">${h(rutinaHoy.nombre)}</h3>
+            <p style="font-size: 12.5px; color: var(--text-muted); margin-top: 2px;">
+              ${(rutinaHoy.ejercicios || []).length} ejercicios · ${h(rutinaHoy.horario || '19:00')} hs
+              ${(rutinaHoy.ejercicios || []).length ? ` · ${(rutinaHoy.ejercicios || []).slice(0, 3).map(re => h(re.nombre || '')).filter(Boolean).join(', ')}${(rutinaHoy.ejercicios || []).length > 3 ? '…' : ''}` : ''}
+            </p>
+            <button type="button" class="btn-primary btn-xl" data-action="start-workout" data-rutina-id="${h(rutinaHoy.id)}">
+              ▶ Empezar ${h(rutinaHoy.nombre)}
+            </button>
+            <button type="button" class="btn-secondary" data-action="start-today-session">Entrenamiento libre (sin rutina)</button>
           ` : `
-            <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--bg-elevated); padding: 10px 12px; border-radius: var(--radius-md); font-size: 12px;">
-              <span>📝 Configurá tus días de gimnasio, horario y datos físicos.</span>
-              <button type="button" class="badge badge-neon" data-action="switch-tab" data-tab="salud" style="cursor: pointer;">
-                Completar Ficha →
-              </button>
-            </div>
+            <span class="badge badge-neon">⚡ Hoy</span>
+            <h3 style="font-size: 18px; font-weight: 800; margin-top: 6px;">${rutinasActivas.length ? 'Elegí qué entrenar' : 'Empezá tu sesión'}</h3>
+            <p style="font-size: 12.5px; color: var(--text-muted); margin-top: 2px;">
+              ${rutinasActivas.length
+                ? 'Ninguna rutina tiene asignado el día de hoy. Tocá una abajo o arrancá un entrenamiento libre.'
+                : 'Arrancá un entrenamiento libre y sumá ejercicios del catálogo a medida que los hacés.'}
+            </p>
+            <button type="button" class="btn-primary btn-xl" data-action="start-today-session">▶ Entrenamiento libre</button>
           `}
         </div>
 
-        <!-- Botón Central para Cargar Rutina Realizada Hoy -->
-        <div class="card" style="background: var(--bg-elevated); border: 1px solid var(--border-focus);">
-          <div style="display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap;">
-            <div>
-              <span class="badge badge-neon">⚡ Registro Diario</span>
-              <h3 style="font-size: 18px; font-weight: 800; margin-top: 4px;">Carga tu Rutina de Hoy</h3>
-              <p style="font-size: 12px; color: var(--text-muted); max-width: 520px; margin-top: 3px;">
-                Seleccioná del catálogo completo tus ejercicios de <strong>Activación</strong>, <strong>Movilidad</strong> y <strong>Entrenamiento</strong> (con carga serie por serie o <strong>Cargar Serie Completa</strong>, y armado de circuito <strong>AMRAP</strong> con tiempo).
-              </p>
-            </div>
-            <button type="button" class="btn-primary" data-action="start-today-session" style="width: auto; min-height: 44px; padding: 0 20px; font-size: 13px !important;">
-              ▶ Cargar Rutina Realizada Hoy
-            </button>
+        ${primeraVez ? `
+          <div class="card" style="border-left: 4px solid var(--steel-blue);">
+            <span class="badge badge-neon">Primeros pasos</span>
+            <ol class="hoy-steps">
+              <li><strong>Entrenamiento libre</strong>: arrancás y vas sumando ejercicios del catálogo (49 con lámina).</li>
+              <li>En cada ejercicio cargás <strong>peso, reps y RIR</strong> y tocás <strong>Guardar serie</strong>. El descanso arranca solo.</li>
+              <li>Cuando tengas un plan fijo, armá una <strong>Rutina</strong> con sus días: te aparece acá para empezarla en un toque.</li>
+            </ol>
           </div>
-        </div>
+        ` : ''}
+
+        ${!tieneFicha ? `
+          <div class="card" style="display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 12px 14px;">
+            <span style="font-size: 12.5px; color: var(--text-muted);">📝 Cargá tus días de gimnasio, horario y datos físicos para que la app sepa qué día te toca.</span>
+            <button type="button" class="badge badge-neon" data-action="switch-tab" data-tab="salud" style="cursor: pointer;">Completar ficha →</button>
+          </div>
+        ` : ''}
 
         <!-- Indicaciones del Docente / Profesor si las hay -->
         ${observacionesRecientes.length > 0 ? `
@@ -569,48 +589,41 @@
           </div>
         ` : ''}
 
-        <!-- Mis Rutinas Fijas -->
+        <!-- Mis Rutinas -->
         <div class="card">
           <div class="card-header">
             <div>
-              <h2 class="card-title">📋 Mis Rutinas Guardadas</h2>
+              <h2 class="card-title">📋 Mis rutinas</h2>
               <p style="font-size: 12px; color: var(--text-muted);">
-                ${rutinasActivas.length === 0
-                  ? 'Podés armar plantillas de rutinas con el botón "+ Nueva Rutina", o pulsar "▶ Cargar Rutina Realizada Hoy" arriba.'
-                  : `Tenés ${rutinasActivas.length} rutina(s) guardada(s).`}
+                ${rutinasActivas.length === 0 ? 'Todavía no tenés rutinas guardadas.' : `${rutinasActivas.length} rutina${rutinasActivas.length > 1 ? 's' : ''} con sus días asignados.`}
               </p>
             </div>
             <button type="button" class="btn-secondary" data-action="open-rutina-builder" style="width: auto; min-height: 36px; padding: 0 12px; font-size: 12px !important;">
-              + Nueva Rutina desde Catálogo
+              + Nueva rutina
             </button>
           </div>
 
           ${rutinasActivas.length === 0 ? `
-            <div style="padding: 22px 14px; text-align: center; border: 1px dashed var(--border-subtle); border-radius: var(--radius-md); font-size: 13px; color: var(--text-muted);">
-              No tenés rutinas fijas guardadas. Tocá <strong>"+ Nueva Rutina desde Catálogo"</strong> o comenzá pulsando <strong>"▶ Cargar Rutina Realizada Hoy"</strong>.
+            <div style="padding: 18px 14px; text-align: center; border: 1px dashed var(--border-subtle); border-radius: var(--radius-md); font-size: 13px; color: var(--text-muted);">
+              Armá una rutina con sus ejercicios y días: después la empezás con un toque desde acá.
             </div>
           ` : `
             <div style="display: flex; flex-direction: column; gap: 10px;">
               ${rutinasActivas.map(r => `
-                <div style="background: var(--bg-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 14px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
-                  <div>
+                <div class="rutina-row ${rutinaHoy && rutinaHoy.id === r.id ? 'hoy' : ''}">
+                  <div style="min-width: 0; flex: 1;">
                     <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                      <h3 style="font-size: 16px; font-weight: 800;">${h(r.nombre)}</h3>
-                      <span class="badge badge-neon">⏰ ${h(r.horario || '19:00')} hs</span>
-                      ${r.creadaPor === 'Profesor' ? `<span class="badge badge-blue">Dictaminada por Profe</span>` : ''}
+                      <h3 style="font-size: 15px; font-weight: 800;">${h(r.nombre)}</h3>
+                      ${rutinaHoy && rutinaHoy.id === r.id ? '<span class="badge badge-blue">Hoy</span>' : ''}
+                      ${r.creadaPor === 'Profesor' ? `<span class="badge badge-blue">Del profe</span>` : ''}
                     </div>
-                    <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px;">
-                      ${(r.dias || []).map(d => `<span class="badge" style="background: var(--bg-card); color: var(--text-muted);">${h(d)}</span>`).join('')}
-                      <span class="badge" style="background: var(--bg-card); color: var(--steel-blue-light);">${(r.ejercicios || []).length} ejercicios</span>
+                    <div style="font-size: 12px; color: var(--text-dim); margin-top: 3px;">
+                      ${(r.dias || []).map(d => h(d.slice(0, 3))).join(' · ')} · ${h(r.horario || '19:00')} hs · ${(r.ejercicios || []).length} ejercicios
                     </div>
                   </div>
-                  <div style="display: flex; gap: 8px;">
-                    <button type="button" class="btn-secondary" data-action="edit-rutina" data-rutina-id="${h(r.id)}" style="width: auto; min-height: 38px;">
-                      ✏️ Editar
-                    </button>
-                    <button type="button" class="btn-primary" data-action="start-workout" data-rutina-id="${h(r.id)}" style="width: auto; min-height: 38px;">
-                      ▶ Entrenar Esta
-                    </button>
+                  <div style="display: flex; gap: 6px;">
+                    <button type="button" class="btn-icon-action" data-action="edit-rutina" data-rutina-id="${h(r.id)}" title="Editar rutina">✏️</button>
+                    <button type="button" class="btn-primary" data-action="start-workout" data-rutina-id="${h(r.id)}" style="width: auto; min-height: 38px; padding: 0 14px;">▶ Entrenar</button>
                   </div>
                 </div>
               `).join('')}
@@ -630,7 +643,7 @@
     const volumenTotal = Engine.computeVolumenEntrenamiento(state.series, entActivo.id);
 
     // 1. Segmento Activación (Base + agregados hoy del catálogo, excluyendo los eliminados)
-    const activacionesHoy = state.activacionesHoy || {};
+    const activacionesHoy = Engine.activacionesDe(state, entActivo.fecha || Engine.todayISO());
     const activacionesExcluidas = state.activacionesExcluidas || {};
     const baseActivacion = (Engine.EJERCICIOS_ACTIVACION_BASE || []).filter(
       a => !activacionesExcluidas[a.id]
@@ -652,7 +665,8 @@
     const listaActivacionHoy = Array.from(mapActivacion.values());
 
     // 2. Segmento Movilidad
-    const movilidadHoy = (state.movilidad || []).filter(m => !m.deleted);
+    const movilidadHoy = Engine.movilidadDe(state, entActivo.fecha || Engine.todayISO());
+    const hayMovilidadPrevia = (state.movilidad || []).some(m => !m.deleted && m.fecha && m.fecha < (entActivo.fecha || Engine.todayISO()));
 
     // 3. Segmento Entrenamiento & AMRAP
     const bloquesAmrapHoy = (state.bloquesAmrap || []).filter(b => !b.deleted);
@@ -722,6 +736,9 @@
       }
     });
 
+    ejerciciosList = Engine.aplicarOrdenSesion(state, entActivo.id, ejerciciosList);
+    const descanso = Engine.getDescanso(state);
+
     return `
         <!-- Encabezado de Sesión Activa -->
       <div class="card">
@@ -732,8 +749,8 @@
               ${h(rutinaAsociada ? rutinaAsociada.nombre : 'Carga tu Rutina de Hoy')}
             </h2>
           </div>
-          <button type="button" class="btn-primary" data-action="finish-workout" data-entrenamiento-id="${h(entActivo.id)}" style="width: auto;">
-            ✓ Finalizar y Guardar Sesión
+          <button type="button" class="btn-secondary" data-action="finish-workout" data-entrenamiento-id="${h(entActivo.id)}" style="width: auto; min-height: 38px;">
+            ✓ Finalizar
           </button>
         </div>
 
@@ -765,11 +782,7 @@
       <div class="card">
         <div class="card-header">
           <div>
-            <span class="badge badge-neon">Segmento Activación</span>
-            <h3 class="card-title" style="font-size: 16px; margin-top: 4px; color: var(--text-main);">Activación Neuromuscular y Core</h3>
-            <p style="font-size: 12px; color: var(--text-dim);">
-              Marcá con un toque los ejercicios realizados o añadí más desde el catálogo de activación:
-            </p>
+            <h3 class="card-title" style="font-size: 15px; color: var(--text-main);">Activación <span style="color: var(--text-dim); font-weight: 600; font-size: 12px;">· ${Object.values(activacionesHoy).filter(Boolean).length}/${listaActivacionHoy.length} hechos</span></h3>
           </div>
           <button type="button" class="btn-secondary" data-action="open-catalog-picker" data-mode="workout-activacion" data-filter-group="activacion" style="width: auto; min-height: 36px; padding: 0 12px; font-size: 12px !important;">
             + Catálogo Activación
@@ -812,40 +825,31 @@
       <div class="card">
         <div class="card-header">
           <div>
-            <span class="badge badge-blue">Segmento Movilidad</span>
-            <h3 class="card-title" style="font-size: 16px; margin-top: 4px; color: var(--text-main);">Movilidad Articular del Día</h3>
-            <p style="font-size: 12px; color: var(--text-dim);">
-              Elegí ejercicios del catálogo de movilidad o cargá el prescripto por tu profesor (ej: <strong>Puente de glúteo uni, 2×15 con 15 kg</strong>):
-            </p>
+            <h3 class="card-title" style="font-size: 15px; color: var(--text-main);">Movilidad <span style="color: var(--text-dim); font-weight: 600; font-size: 12px;">· ${movilidadHoy.length} ejercicio${movilidadHoy.length === 1 ? '' : 's'}</span></h3>
           </div>
           <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+            ${hayMovilidadPrevia && movilidadHoy.length === 0 ? `<button type="button" class="btn-secondary" data-action="repeat-last-movilidad" style="width: auto; min-height: 36px; padding: 0 12px; font-size: 12px !important;">↻ Repetir la última</button>` : ''}
             <button type="button" class="btn-secondary" data-action="open-catalog-picker" data-mode="workout-movilidad" data-filter-group="movilidad" style="width: auto; min-height: 36px; padding: 0 12px; font-size: 12px !important;">
               + Catálogo Movilidad
             </button>
-            <button type="button" class="btn-primary" data-action="open-add-movilidad" style="width: auto; min-height: 36px; padding: 0 12px; font-size: 12px !important;">
-              + Cargar Movilidad Manual
+            <button type="button" class="btn-secondary" data-action="open-add-movilidad" style="width: auto; min-height: 36px; padding: 0 12px; font-size: 12px !important;">
+              + Manual
             </button>
           </div>
         </div>
 
         ${movilidadHoy.length === 0 ? `
           <div style="padding: 16px; text-align: center; background: var(--bg-elevated); border-radius: var(--radius-md); font-size: 12px; color: var(--text-dim);">
-            No tenés movilidad cargada hoy. Tocá <strong>"+ Catálogo Movilidad"</strong> o <strong>"+ Cargar Movilidad Manual"</strong> para añadir los que realizás hoy.
+Sin movilidad hoy. ${hayMovilidadPrevia ? 'Tocá <strong>↻ Repetir la última</strong> o ' : 'Sumá desde '}<strong>+ Catálogo Movilidad</strong>.
           </div>
         ` : `
-          <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; flex-direction: column; gap: 8px;" data-drag-list="movilidad">
             ${movilidadHoy.map((m, mIdx) => {
               const ejMovId = m.ejercicioId || 'ej-mov-puente-gluteo-uni';
               const seriesMovCargadas = seriesEntreno.filter(s => s.ejercicioId === ejMovId).length;
               return `
-                <div class="mobility-card" style="flex-wrap: wrap; gap: 8px;">
-                  <div style="display: flex; align-items: center; gap: 4px;">
-                    <div style="cursor: grab; color: var(--text-dim); font-size: 16px; padding: 2px 4px; user-select: none;" title="Arrastrar o usar las flechas para ordenar">⋮⋮</div>
-                    <div style="display: flex; flex-direction: column; justify-content: center; gap: 2px;">
-                      <button type="button" class="btn-icon-action" data-action="reorder-movilidad" data-mov-id="${h(m.id)}" data-dir="up" title="Mover arriba" ${mIdx === 0 ? 'disabled style="opacity: 0.25; cursor: default;"' : 'style="cursor: pointer;"'}>▲</button>
-                      <button type="button" class="btn-icon-action" data-action="reorder-movilidad" data-mov-id="${h(m.id)}" data-dir="down" title="Mover abajo" ${mIdx === movilidadHoy.length - 1 ? 'disabled style="opacity: 0.25; cursor: default;"' : 'style="cursor: pointer;"'}>▼</button>
-                    </div>
-                  </div>
+                <div class="mobility-card" data-drag-id="${h(m.id)}">
+                  <button type="button" class="drag-handle" data-drag-handle aria-label="Arrastrar para ordenar" title="Mantené apretado y arrastrá para ordenar">⋮⋮</button>
                   <div style="flex: 1; min-width: 170px;">
                     <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
                       <span class="badge" style="background: var(--bg-surface); font-weight: 800; font-family: var(--font-mono); font-size: 11px;">#${mIdx + 1}</span>
@@ -857,7 +861,7 @@
                   </div>
                   <div style="display: flex; align-items: center; gap: 6px;">
                     <button type="button" class="btn-secondary" data-action="save-movilidad-serie-completa" data-mov-id="${h(m.id)}" data-entrenamiento-id="${h(entActivo.id)}" style="width: auto; min-height: 34px; padding: 0 10px; font-size: 11px !important;" title="Registrar todas las series de esta movilidad con los mismos datos">
-                      ✓✓ Cargar Serie Completa (${m.series}×${h(m.reps)})
+                      ✓ Hecho (${m.series}×${h(m.reps)})
                     </button>
                     <button type="button" class="btn-eye-icon" data-action="view-ejercicio" data-ejercicio-id="${h(ejMovId)}" title="Ver posición inicial y final">
                       ${renderIcon('eye')}
@@ -877,15 +881,8 @@
       <!-- DIVISIÓN 2: ENTRENAMIENTO PRINCIPAL & RUTINA AMRAP       -->
       <!-- ======================================================== -->
       <div class="training-section-header">
-        <span class="training-section-title">${renderIcon('activity')} 2. Entrenamiento Principal & Rutina AMRAP</span>
-        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-          <button type="button" class="btn-secondary" data-action="open-amrap-builder" style="width: auto; min-height: 36px; padding: 0 12px; font-size: 12px !important;">
-            ${renderIcon('clock')} + Armar Rutina AMRAP
-          </button>
-          <button type="button" class="btn-primary" data-action="open-catalog-picker" data-mode="workout" data-filter-group="todos" style="width: auto; min-height: 36px; padding: 0 12px; font-size: 12px !important;">
-            + Añadir Ejercicio del Catálogo
-          </button>
-        </div>
+        <span class="training-section-title">${renderIcon('activity')} 2. Entrenamiento</span>
+        <span class="badge badge-neon" title="Descanso automático entre series">${descanso.automatico ? `⏱ ${descanso.segundos}s auto` : '⏱ manual'}</span>
       </div>
 
       <!-- Rutinas AMRAP dentro del Día (con múltiples ejercicios y tiempos de trabajo/descanso) -->
@@ -966,152 +963,122 @@
             </button>
           </div>
         </div>
-      ` : ejerciciosList.map((item, idx) => {
+      ` : `<div data-drag-list="sesion" style="display: flex; flex-direction: column; gap: 12px;">` + ejerciciosList.map((item, idx) => {
         const ej = item.ejercicio;
         const seriesDelEj = seriesEntreno.filter(s => s.ejercicioId === ej.id);
-        const ultimaSerie = Engine.getUltimaSerieEjercicio(state, ej.id);
-        const defaultPeso = ultimaSerie ? ultimaSerie.pesoKg : 30;
-        const defaultReps = ultimaSerie ? ultimaSerie.reps : 8;
+        const prev = Engine.getUltimaSesionEjercicio(state, ej.id, entActivo.id);
+        const sug = Engine.sugerirProgresion(state, ej.id, { excluirEntrenamientoId: entActivo.id, repsObjetivo: item.targetReps, seriesObjetivo: item.targetSets, equipo: ej.equipo });
+        const ultimaHoy = seriesDelEj[seriesDelEj.length - 1];
+        // Valores iniciales: lo que ya cargaste hoy > sugerencia > la vez pasada > 30×8
+        const defaultPeso = ultimaHoy ? ultimaHoy.pesoKg : (sug.pesoKg != null ? sug.pesoKg : (prev ? prev.mejor.pesoKg : 30));
+        const defaultReps = ultimaHoy ? ultimaHoy.reps : (sug.reps || (prev ? prev.mejor.reps : 8));
+        const defaultRir = ultimaHoy && Number.isFinite(Number(ultimaHoy.rir)) ? Number(ultimaHoy.rir) : 2;
         const defaultSeriesCant = item.targetSets || ej.seriesSugeridas || 3;
+        const esBarra = /barra/i.test(ej.equipo || '');
+        const discos = esBarra ? Engine.calcularDiscos(defaultPeso) : null;
+        const hechas = seriesDelEj.length;
+        const completo = hechas >= defaultSeriesCant;
 
         return `
-          <div class="card">
-            <div class="card-header">
-              <div style="flex: 1; min-width: 190px;">
-                <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                  <span class="badge badge-neon">#${idx + 1} · ${h(ej.grupoMuscular)}</span>
-                  <span class="badge badge-amber">${h(ej.equipo)}</span>
-                  <span class="badge badge-blue">Objetivo: ${item.targetSets} series × ${h(item.targetReps)} reps</span>
+          <div class="card ej-card ${completo ? 'completo' : ''}" data-drag-id="${h(ej.id)}">
+            <div class="ej-head">
+              <button type="button" class="drag-handle" data-drag-handle aria-label="Arrastrar para ordenar" title="Mantené apretado y arrastrá para ordenar">⋮⋮</button>
+              <div style="flex: 1; min-width: 0;">
+                <div class="ej-meta">#${idx + 1} · ${h(ej.grupoMuscular)} · ${h(ej.equipo)} · objetivo ${item.targetSets}×${h(item.targetReps)}</div>
+                <h3 class="ej-title">${h(ej.nombre)}</h3>
+                <div class="ej-prev">
+                  ${prev
+                    ? `<span>La vez pasada (${h(prev.fecha.slice(5).split('-').reverse().join('/'))}): <strong>${h(prev.texto)}</strong></span>`
+                    : '<span>Primera vez con este ejercicio.</span>'}
                 </div>
-                <h3 style="font-size: 17px; font-weight: 800; margin-top: 6px; color: var(--text-main);">${h(ej.nombre)}</h3>
-                <p style="font-size: 12px; color: var(--text-dim); margin-top: 2px;">
-                  Última marca: <strong style="color: var(--text-muted);">${ultimaSerie ? `${ultimaSerie.pesoKg} kg × ${ultimaSerie.reps} reps (1RM: ${Engine.compute1RM(ultimaSerie.pesoKg, ultimaSerie.reps)} kg)` : 'Sin marca previa'}</strong>
-                </p>
-                ${item.notaProfesor ? `<p style="font-size: 12px; color: var(--text-dim); margin-top: 4px;">Indicación: ${h(item.notaProfesor)}</p>` : ''}
+                ${sug.accion !== 'nuevo' && !ultimaHoy ? `
+                  <button type="button" class="sug-chip ${sug.accion}" data-action="apply-sugerencia" data-ejercicio-id="${h(ej.id)}" data-peso="${sug.pesoKg}" data-reps="${sug.reps}" title="${h(sug.motivo)}">
+                    ${sug.accion === 'subir' ? '▲' : sug.accion === 'bajar' ? '▼' : '→'} Sugerido: <strong>${sug.pesoKg} kg × ${sug.reps}</strong> <span class="sug-why">¿por qué?</span>
+                  </button>` : ''}
+                ${item.notaProfesor ? `<p class="ej-nota">🩺 ${h(item.notaProfesor)}</p>` : ''}
               </div>
-
-              <div style="display: flex; gap: 6px; align-items: center;">
-                <button type="button" class="btn-eye-icon" data-action="view-ejercicio" data-ejercicio-id="${h(ej.id)}" title="Ver posición inicial y final">
-                  ${renderIcon('eye')}
-                </button>
-                <button type="button" class="btn-icon-action" data-action="open-edit-sesion-ej" data-ejercicio-id="${h(ej.id)}" data-entrenamiento-id="${h(entActivo.id)}" data-series="${item.targetSets}" data-reps="${h(item.targetReps)}" data-notas="${h(item.notaProfesor || ej.notas || '')}" title="Cambiar o editar este ejercicio">
-                  ✏️
-                </button>
-                <button type="button" class="btn-icon-action danger" data-action="delete-sesion-ej" data-ejercicio-id="${h(ej.id)}" data-entrenamiento-id="${h(entActivo.id)}" title="Quitar este ejercicio de la rutina de hoy">
-                  ✕
-                </button>
+              <div class="ej-tools">
+                <button type="button" class="btn-eye-icon" data-action="view-ejercicio" data-ejercicio-id="${h(ej.id)}" title="Ver técnica y lámina">${renderIcon('eye')}</button>
+                <button type="button" class="btn-icon-action" data-action="open-edit-sesion-ej" data-ejercicio-id="${h(ej.id)}" data-entrenamiento-id="${h(entActivo.id)}" data-series="${item.targetSets}" data-reps="${h(item.targetReps)}" data-notas="${h(item.notaProfesor || ej.notas || '')}" title="Cambiar o editar">✏️</button>
+                <button type="button" class="btn-icon-action danger" data-action="delete-sesion-ej" data-ejercicio-id="${h(ej.id)}" data-entrenamiento-id="${h(entActivo.id)}" title="Quitar de hoy">✕</button>
               </div>
             </div>
 
             ${seriesDelEj.length > 0 ? `
-              <table class="series-table">
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>Tipo</th>
-                    <th>Peso</th>
-                    <th>Reps</th>
-                    <th>RIR / RPE</th>
-                    <th>1RM Est.</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${seriesDelEj.map((s, sIdx) => `
-                    <tr>
-                      <td><span class="serie-num">${sIdx + 1}</span></td>
-                      <td><span class="badge badge-neon">${h(s.tipo.slice(0, 4))}</span></td>
-                      <td style="font-family: var(--font-mono); font-weight: 800; color: var(--text-main);">${s.pesoKg} kg</td>
-                      <td style="font-family: var(--font-mono); font-weight: 800; color: var(--text-main);">${s.reps}</td>
-                      <td style="font-family: var(--font-mono); color: var(--text-muted);">RIR ${s.rir ?? 2} · RPE ${s.rpe ?? 8}</td>
-                      <td style="font-family: var(--font-mono); color: var(--cta-blue-light); font-weight: 800;">${Engine.compute1RM(s.pesoKg, s.reps)} kg</td>
-                      <td>
-                        <button type="button" data-action="delete-serie" data-serie-id="${h(s.id)}" style="color: var(--text-dim); font-weight: 800; padding: 2px 6px;">✕</button>
-                      </td>
-                    </tr>
-                  `).join('')}
-                </tbody>
-              </table>
+              <div class="series-done">
+                ${seriesDelEj.map((sr, sIdx) => `
+                  <div class="serie-pill ${sr.tipo !== 'efectiva' ? 'alt' : ''}" title="${h(sr.tipo)} · RPE ${sr.rpe ?? 8}">
+                    <span class="serie-num">${sIdx + 1}</span>
+                    <strong>${sr.pesoKg}</strong><span class="u">kg</span> × <strong>${sr.reps}</strong>
+                    <span class="rir">RIR ${sr.rir ?? 2}</span>
+                    ${sr.tipo !== 'efectiva' ? `<span class="tipo">${h(sr.tipo.slice(0, 5))}</span>` : ''}
+                    <button type="button" data-action="delete-serie" data-serie-id="${h(sr.id)}" title="Borrar serie">✕</button>
+                  </div>
+                `).join('')}
+                <span class="series-progress">${hechas}/${defaultSeriesCant} series${completo ? ' ✓' : ''}</span>
+              </div>
             ` : ''}
 
-            <!-- Controles de Carga Rápida: Grilla 3x2 en móvil para máxima legibilidad -->
-            <div style="padding-top: 10px;">
-              <div class="serie-inputs-grid">
-                <div>
-                  <label class="form-label" style="font-size: 10px;">Series</label>
-                  <input type="number" min="1" max="15" id="input-cant-series-${h(ej.id)}" class="serie-input" value="${defaultSeriesCant}" inputmode="numeric" title="Cantidad de series para Cargar Serie Completa">
+            <div class="serie-form">
+              <div class="serie-field">
+                <label class="form-label" for="input-peso-${h(ej.id)}">Peso (kg)</label>
+                <div class="stepper-row">
+                  <button type="button" class="btn-step" data-action="quick-add-weight" data-target-input="input-peso-${h(ej.id)}" data-amount="-2.5">−2,5</button>
+                  <input type="number" step="0.5" id="input-peso-${h(ej.id)}" class="serie-input big" value="${defaultPeso}" inputmode="decimal" data-discos-for="${esBarra ? h(ej.id) : ''}">
+                  <button type="button" class="btn-step" data-action="quick-add-weight" data-target-input="input-peso-${h(ej.id)}" data-amount="2.5">+2,5</button>
                 </div>
-                <div>
-                  <label class="form-label" style="font-size: 10px;">Peso (kg)</label>
-                  <input type="number" step="0.5" id="input-peso-${h(ej.id)}" class="serie-input" value="${defaultPeso}" inputmode="decimal">
-                </div>
-                <div>
-                  <label class="form-label" style="font-size: 10px;">Reps</label>
-                  <input type="number" id="input-reps-${h(ej.id)}" class="serie-input" value="${defaultReps}" inputmode="numeric">
-                </div>
-                <div>
-                  <label class="form-label" style="font-size: 10px;">RIR (0-4)</label>
-                  <select id="select-rir-${h(ej.id)}" class="serie-input">
-                    <option value="0">0 (Fallo)</option>
-                    <option value="1">1 rep</option>
-                    <option value="2" selected>2 reps</option>
-                    <option value="3">3 reps</option>
-                    <option value="4">4+ reps</option>
-                  </select>
-                </div>
-                <div>
-                  <label class="form-label" style="font-size: 10px;">RPE (6-10)</label>
-                  <select id="select-rpe-${h(ej.id)}" class="serie-input">
-                    <option value="6">RPE 6</option>
-                    <option value="7">RPE 7</option>
-                    <option value="8" selected>RPE 8</option>
-                    <option value="9">RPE 9</option>
-                    <option value="10">RPE 10</option>
-                  </select>
-                </div>
-                <div>
-                  <label class="form-label" style="font-size: 10px;">Tipo</label>
-                  <select id="select-tipo-${h(ej.id)}" class="serie-input">
-                    <option value="efectiva" selected>Efectiva</option>
-                    <option value="calentamiento">Calent.</option>
-                    <option value="dropset">Dropset</option>
-                    <option value="fallo">Al Fallo</option>
-                  </select>
+                ${esBarra ? `<div class="discos" id="discos-${h(ej.id)}">${h(discos.texto)}</div>` : ''}
+              </div>
+              <div class="serie-field">
+                <label class="form-label" for="input-reps-${h(ej.id)}">Reps</label>
+                <div class="stepper-row">
+                  <button type="button" class="btn-step" data-action="quick-add-reps" data-target-input="input-reps-${h(ej.id)}" data-amount="-1">−</button>
+                  <input type="number" id="input-reps-${h(ej.id)}" class="serie-input big" value="${defaultReps}" inputmode="numeric">
+                  <button type="button" class="btn-step" data-action="quick-add-reps" data-target-input="input-reps-${h(ej.id)}" data-amount="1">+</button>
                 </div>
               </div>
-
-              <div class="quick-steppers">
-                <button type="button" class="btn-stepper" data-action="quick-add-weight" data-target-input="input-peso-${h(ej.id)}" data-amount="-2.5">-2.5 kg</button>
-                <button type="button" class="btn-stepper" data-action="quick-add-weight" data-target-input="input-peso-${h(ej.id)}" data-amount="1.25">+1.25 kg</button>
-                <button type="button" class="btn-stepper" data-action="quick-add-weight" data-target-input="input-peso-${h(ej.id)}" data-amount="2.5">+2.5 kg</button>
-                <button type="button" class="btn-stepper" data-action="quick-add-weight" data-target-input="input-peso-${h(ej.id)}" data-amount="5">+5 kg</button>
+              <div class="serie-field">
+                <label class="form-label">RIR <span class="form-hint">reps que te quedaron en el tanque</span></label>
+                <div class="rir-seg" data-rir-group="${h(ej.id)}">
+                  ${[0, 1, 2, 3, 4].map(v => `<button type="button" class="${v === defaultRir ? 'on' : ''}" data-action="set-rir" data-ejercicio-id="${h(ej.id)}" data-value="${v}">${v === 0 ? '0<small>fallo</small>' : v === 4 ? '4+' : v}</button>`).join('')}
+                </div>
+                <input type="hidden" id="select-rir-${h(ej.id)}" value="${defaultRir}">
+                <input type="hidden" id="select-rpe-${h(ej.id)}" value="${10 - defaultRir}">
+              </div>
+              <div class="serie-field tipo-row">
+                <label class="form-label" for="select-tipo-${h(ej.id)}">Tipo</label>
+                <select id="select-tipo-${h(ej.id)}" class="serie-input">
+                  <option value="efectiva" selected>Efectiva</option>
+                  <option value="calentamiento">Calentamiento</option>
+                  <option value="dropset">Dropset</option>
+                  <option value="fallo">Al fallo</option>
+                </select>
               </div>
 
-              <div class="series-actions-row">
-                <button type="button" class="btn-complete-serie" data-action="save-serie" data-ejercicio-id="${h(ej.id)}" data-entrenamiento-id="${h(entActivo.id)}">
-                  + Cargar 1 Serie (#${seriesDelEj.length + 1})
-                </button>
-                <button type="button" class="btn-serie-completa" data-action="save-serie-completa" data-ejercicio-id="${h(ej.id)}" data-entrenamiento-id="${h(entActivo.id)}" title="Registra todas las series indicadas en 'Series' con el mismo peso y repeticiones">
-                  ✓✓ Cargar Serie Completa
+              <button type="button" class="btn-primary btn-xl" data-action="save-serie" data-ejercicio-id="${h(ej.id)}" data-entrenamiento-id="${h(entActivo.id)}">
+                ✓ Guardar serie ${hechas + 1}
+              </button>
+              <div class="serie-secondary">
+                <input type="hidden" id="input-cant-series-${h(ej.id)}" value="${Math.max(1, defaultSeriesCant - hechas)}">
+                <button type="button" class="btn-link" data-action="save-serie-completa" data-ejercicio-id="${h(ej.id)}" data-entrenamiento-id="${h(entActivo.id)}" title="Guarda de una vez las series que faltan con estos mismos datos">
+                  Repetir para las ${Math.max(1, defaultSeriesCant - hechas)} serie${Math.max(1, defaultSeriesCant - hechas) === 1 ? '' : 's'} que faltan
                 </button>
               </div>
             </div>
           </div>
         `;
-      }).join('')}
+      }).join('') + `</div>`}
 
       <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 14px;">
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-          <button type="button" class="btn-secondary" data-action="open-catalog-picker" data-mode="workout" data-filter-group="todos">
-            + Añadir Ejercicio del Catálogo
-          </button>
-          <button type="button" class="btn-secondary" data-action="open-amrap-builder">
-            ${renderIcon('clock')} + Armar Rutina AMRAP
-          </button>
-        </div>
+        <button type="button" class="btn-secondary" data-action="open-catalog-picker" data-mode="workout" data-filter-group="todos" style="min-height: 46px;">
+          + Añadir ejercicio del catálogo
+        </button>
+        <button type="button" class="btn-link" data-action="open-amrap-builder" style="align-self: center;">
+          ${renderIcon('clock')} Armar un circuito AMRAP
+        </button>
 
-        <button type="button" class="btn-primary" data-action="finish-workout" data-entrenamiento-id="${h(entActivo.id)}" style="min-height: 48px; font-size: 15px !important;">
-          ✓ Finalizar y Guardar Sesión de Hoy
+        <button type="button" class="btn-primary btn-xl" data-action="finish-workout" data-entrenamiento-id="${h(entActivo.id)}">
+          ✓ Finalizar sesión de hoy
         </button>
       </div>
     `;
@@ -1579,6 +1546,20 @@
             </button>
           </div>
         </div>
+
+        ${(() => { const d = Engine.getDescanso(state); return `
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h3 class="card-title" style="color: var(--text-main);">⏱ Descanso entre series</h3>
+              <p style="font-size: 12px; color: var(--text-dim);">Al guardar una serie arranca solo el cronómetro, con vibración y sonido al terminar. La pantalla no se apaga durante la sesión.</p>
+            </div>
+            <button type="button" class="badge ${d.automatico ? 'badge-emerald' : ''}" data-action="toggle-descanso-auto" style="cursor: pointer;">${d.automatico ? 'Automático ✓' : 'Manual'}</button>
+          </div>
+          <div class="desc-opts">
+            ${[60, 90, 120, 150, 180, 240].map(v => `<button type="button" class="${d.segundos === v ? 'on' : ''}" data-action="set-descanso" data-seconds="${v}">${v < 120 ? v + ' s' : (v / 60).toString().replace('.5', '½') + ' min'}</button>`).join('')}
+          </div>
+        </div>`; })()}
 
         <div class="card">
           <h3 class="card-title" style="color: var(--text-main);">Tema de la Interfaz</h3>
@@ -2678,6 +2659,49 @@
       return;
     }
 
+    // MODAL 8b: Resumen al terminar la sesión
+    if (activeModal.type === 'resumen-sesion') {
+      const r = Engine.resumenEntrenamiento(state, activeModal.entrenamientoId);
+      if (!r) { activeModal = null; overlay.remove(); return; }
+      const dur = r.duracionMin != null ? `${r.duracionMin} min` : '—';
+      const textoShare = `💪 Entrenamiento ${r.fecha}\n${dur} · ${r.series} series · ${Math.round(r.volumen).toLocaleString('es-AR')} kg movidos` +
+        (r.prs.length ? `\n🏆 Récords: ${r.prs.map(p => `${p.nombre} ${p.pesoKg} kg × ${p.reps}`).join(', ')}` : '') +
+        `\n${r.ejercicios.map(e => `• ${e.nombre}: ${e.series} series${e.mejor ? ` · mejor ${e.mejor.pesoKg} kg × ${e.mejor.reps}` : ''}`).join('\n')}\n— Fitness MiniApp`;
+      overlay.innerHTML = `
+        <div class="modal-card resumen-card">
+          <div class="modal-header-sticky">
+            <div>
+              <span class="badge badge-emerald">Sesión guardada</span>
+              <h2 class="card-title" style="margin-top: 4px;">${r.prs.length ? '🏆 ¡Gran sesión!' : '✓ ¡Buen trabajo!'}</h2>
+            </div>
+            <button type="button" class="btn-close-modal" data-action="close-modal" title="Cerrar">✕</button>
+          </div>
+          <div class="resumen-kpis">
+            <div><span>Duración</span><strong>${h(dur)}</strong></div>
+            <div><span>Series</span><strong>${r.series}</strong></div>
+            <div><span>Volumen</span><strong>${Math.round(r.volumen).toLocaleString('es-AR')} <small>kg</small></strong></div>
+          </div>
+          ${r.prs.length ? `<div class="resumen-prs">${r.prs.map(p => `<div>🏆 <strong>${h(p.nombre)}</strong>: ${p.tipo === 'peso' ? `nuevo peso máximo ${p.pesoKg} kg × ${p.reps}${p.previo ? ` (antes ${p.previo} kg)` : ''}` : `${p.pesoKg} kg × ${p.reps} → 1RM estimado ${p.rm} kg${p.previo ? ` (antes ${p.previo})` : ' (primer registro)'}`}</div>`).join('')}</div>` : ''}
+          <div class="resumen-list">
+            ${r.ejercicios.length ? r.ejercicios.map(e => `
+              <div class="resumen-row">
+                <span>${h(e.nombre)}${e.pr ? ' 🏆' : ''}</span>
+                <span class="mono">${e.series} × ${e.mejor ? `${e.mejor.pesoKg} kg · ${e.mejor.reps} reps` : '—'}</span>
+              </div>`).join('') : '<p style="font-size: 13px; color: var(--text-dim);">No se registraron series en esta sesión.</p>'}
+          </div>
+          <div class="form-group" style="margin-top: 8px;">
+            <label class="form-label" for="resumen-nota">¿Cómo te sentiste? (opcional)</label>
+            <textarea id="resumen-nota" class="form-input" rows="2" placeholder="Ej: hombro derecho molestó en el press, bajar peso la próxima">${h(r.entrenamiento.notas || '')}</textarea>
+          </div>
+          <div style="display: flex; gap: 8px; margin-top: 10px;">
+            <button type="button" class="btn-secondary" data-action="share-resumen" data-texto="${h(textoShare)}">Compartir</button>
+            <button type="button" class="btn-primary" data-action="save-session-note" data-entrenamiento-id="${h(r.entrenamiento.id)}">Listo</button>
+          </div>
+        </div>
+      `;
+      return;
+    }
+
     // MODAL 9: Buzón de Sugerencias (Con Dictado por Voz, Adjunto de Capturas y Botón ✕ Visible)
     if (activeModal.type === 'sugerencias') {
       const sugerencias = (state.sugerencias || []).filter(s => !s.deleted);
@@ -2816,6 +2840,114 @@
 
     renderFloatingTimer();
     renderModals();
+    initDragSort();
+    syncWakeLock(Boolean(state && state.entrenamientoActivoId));
+  }
+
+  // ==========================================
+  // 10b. PANTALLA ENCENDIDA DURANTE LA SESIÓN (Wake Lock)
+  // ==========================================
+  let wakeLock = null;
+  async function syncWakeLock(activo) {
+    try {
+      if (!('wakeLock' in navigator)) return;
+      if (activo && !wakeLock && document.visibilityState === 'visible') {
+        wakeLock = await navigator.wakeLock.request('screen');
+        wakeLock.addEventListener('release', () => { wakeLock = null; });
+      } else if (!activo && wakeLock) {
+        await wakeLock.release();
+        wakeLock = null;
+      }
+    } catch (_) { wakeLock = null; /* el navegador puede negarlo (batería baja, pestaña oculta) */ }
+  }
+  document.addEventListener('visibilitychange', () => {
+    const st = Store.getState && Store.getState();
+    if (document.visibilityState === 'visible' && st && st.entrenamientoActivoId) syncWakeLock(true);
+  });
+
+  // ==========================================
+  // 10c. ARRASTRAR PARA ORDENAR (⋮⋮) — movilidad y ejercicios de la sesión
+  // ==========================================
+  let dragState = null;
+  function initDragSort() {
+    document.querySelectorAll('[data-drag-handle]').forEach(handle => {
+      if (handle.dataset.dragReady) return;
+      handle.dataset.dragReady = '1';
+      handle.addEventListener('pointerdown', onDragStart);
+    });
+  }
+  function onDragStart(e) {
+    const handle = e.currentTarget;
+    const item = handle.closest('[data-drag-id]');
+    const list = handle.closest('[data-drag-list]');
+    if (!item || !list) return;
+    e.preventDefault();
+    try { handle.setPointerCapture(e.pointerId); } catch (_) {}
+    const items = Array.from(list.querySelectorAll(':scope > [data-drag-id]'));
+    dragState = { handle, item, list, items, startY: e.clientY, fromIndex: items.indexOf(item), toIndex: items.indexOf(item), moved: false, lastY: e.clientY };
+    item.classList.add('dragging');
+    document.body.classList.add('drag-active');
+    if (navigator.vibrate) { try { navigator.vibrate(20); } catch (_) {} }
+    handle.addEventListener('pointermove', onDragMove);
+    handle.addEventListener('pointerup', onDragEnd);
+    handle.addEventListener('pointercancel', onDragEnd);
+  }
+  function onDragMove(e) {
+    if (!dragState) return;
+    e.preventDefault();
+    const dy = e.clientY - dragState.startY;
+    dragState.lastY = e.clientY;
+    if (Math.abs(dy) > 4) dragState.moved = true;
+    dragState.item.style.transform = `translateY(${dy}px)`;
+    // ¿Sobre qué ítem está el centro del que arrastro?
+    const rect = dragState.item.getBoundingClientRect();
+    const centro = rect.top + rect.height / 2;
+    let to = dragState.fromIndex;
+    dragState.items.forEach((other, i) => {
+      if (other === dragState.item) return;
+      const r = other.getBoundingClientRect();
+      const mid = r.top + r.height / 2;
+      if (i < dragState.fromIndex && centro < mid) to = Math.min(to, i);
+      if (i > dragState.fromIndex && centro > mid) to = Math.max(to, i);
+    });
+    if (to !== dragState.toIndex) {
+      dragState.toIndex = to;
+      if (navigator.vibrate) { try { navigator.vibrate(8); } catch (_) {} }
+    }
+    dragState.items.forEach((other, i) => {
+      if (other === dragState.item) return;
+      let shift = 0;
+      if (dragState.fromIndex < to && i > dragState.fromIndex && i <= to) shift = -rect.height - 8;
+      if (dragState.fromIndex > to && i >= to && i < dragState.fromIndex) shift = rect.height + 8;
+      other.style.transform = shift ? `translateY(${shift}px)` : '';
+    });
+    // Auto-scroll suave cerca de los bordes
+    const margen = 70;
+    if (e.clientY < margen) window.scrollBy(0, -12);
+    else if (e.clientY > window.innerHeight - margen) window.scrollBy(0, 12);
+  }
+  function onDragEnd() {
+    if (!dragState) return;
+    const { handle, item, list, items, fromIndex, toIndex, moved } = dragState;
+    handle.removeEventListener('pointermove', onDragMove);
+    handle.removeEventListener('pointerup', onDragEnd);
+    handle.removeEventListener('pointercancel', onDragEnd);
+    items.forEach(x => { x.style.transform = ''; x.classList.remove('dragging'); });
+    document.body.classList.remove('drag-active');
+    dragState = null;
+    if (!moved || toIndex === fromIndex) return;
+    const tipo = list.getAttribute('data-drag-list');
+    const id = item.getAttribute('data-drag-id');
+    if (tipo === 'movilidad') {
+      Store.commit(s => Engine.moverMovilidad(s, id, toIndex));
+    } else if (tipo === 'sesion') {
+      const orden = items.map(x => x.getAttribute('data-drag-id'));
+      orden.splice(fromIndex, 1);
+      orden.splice(toIndex, 0, id);
+      const entId = Store.getState().entrenamientoActivoId;
+      Store.commit(s => Engine.ordenarEjerciciosSesion(s, entId, orden));
+    }
+    render();
   }
 
   function renderFloatingTimer() {
@@ -2825,12 +2957,14 @@
       container.innerHTML = '';
       return;
     }
+    const pct = Timer.segundosTotales ? Math.max(0, Math.min(100, (Timer.segundosRestantes / Timer.segundosTotales) * 100)) : 0;
     container.innerHTML = `
-      <div class="floating-timer">
-        <span>${renderIcon('clock')} Descanso</span>
+      <div class="floating-timer" role="timer" aria-live="off">
+        <span class="timer-ring" style="--pct:${pct.toFixed(1)}%"></span>
         <span class="timer-digits">${Timer.format()}</span>
-        <button type="button" class="timer-btn" data-action="timer-add" data-seconds="30">+30s</button>
-        <button type="button" class="timer-btn" data-action="timer-stop" style="color: var(--danger);">✕</button>
+        <button type="button" class="timer-btn" data-action="timer-add" data-seconds="-15">−15</button>
+        <button type="button" class="timer-btn" data-action="timer-add" data-seconds="30">+30</button>
+        <button type="button" class="timer-btn" data-action="timer-stop" title="Listo, sigo">✓</button>
       </div>
     `;
   }
@@ -3343,8 +3477,69 @@
     'start-today-session': () => {
       Store.commit(s => Engine.iniciarEntrenamiento(s, null));
       activeTab = 'hoy';
-      showToast('Sesión de hoy iniciada: cargá tu Activación, Movilidad y Entrenamiento');
+      showToast('Sesión iniciada. Sumá ejercicios y guardá cada serie.');
       render();
+    },
+
+    'repeat-last-movilidad': () => {
+      Store.commit(s => Engine.repetirUltimaMovilidad(s));
+      showToast('↻ Movilidad de la última vez copiada a hoy');
+      render();
+    },
+
+    'set-rir': el => {
+      const ejId = el.getAttribute('data-ejercicio-id');
+      const v = parseInt(el.getAttribute('data-value'), 10);
+      const hidden = document.getElementById(`select-rir-${ejId}`);
+      const rpe = document.getElementById(`select-rpe-${ejId}`);
+      if (hidden) hidden.value = String(v);
+      if (rpe) rpe.value = String(10 - v); // RPE ≈ 10 − RIR
+      el.parentElement.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === el));
+    },
+
+    'quick-add-reps': el => {
+      const input = document.getElementById(el.getAttribute('data-target-input'));
+      if (!input) return;
+      const amount = parseInt(el.getAttribute('data-amount'), 10) || 0;
+      input.value = String(Math.max(1, (parseInt(input.value, 10) || 0) + amount));
+    },
+
+    'apply-sugerencia': el => {
+      const ejId = el.getAttribute('data-ejercicio-id');
+      const peso = el.getAttribute('data-peso'), reps = el.getAttribute('data-reps');
+      const ip = document.getElementById(`input-peso-${ejId}`), ir = document.getElementById(`input-reps-${ejId}`);
+      if (ip && peso !== 'null') { ip.value = peso; ip.dispatchEvent(new Event('input', { bubbles: true })); }
+      if (ir && reps) ir.value = reps;
+      showToast(el.getAttribute('title') || 'Sugerencia aplicada');
+    },
+
+    'set-descanso': el => {
+      const seg = parseInt(el.getAttribute('data-seconds'), 10);
+      Store.commit(s => Engine.setKV(s, 'descansoSeg', seg));
+      showToast(`Descanso entre series: ${seg} s`);
+      render();
+    },
+    'toggle-descanso-auto': () => {
+      const actual = Engine.getDescanso(Store.getState()).automatico;
+      Store.commit(s => Engine.setKV(s, 'descansoAuto', !actual));
+      render();
+    },
+
+    'save-session-note': el => {
+      const id = el.getAttribute('data-entrenamiento-id');
+      const nota = (document.getElementById('resumen-nota') || {}).value || '';
+      Store.commit(s => ({ ...s, entrenamientos: (s.entrenamientos || []).map(t => t.id === id ? { ...t, notas: nota.trim(), updatedAt: Date.now() } : t), updatedAt: Date.now() }));
+      activeModal = null;
+      showToast('Sesión guardada en tu historial.');
+      render();
+    },
+    'share-resumen': async el => {
+      const texto = el.getAttribute('data-texto') || '';
+      try {
+        if (navigator.share) { await navigator.share({ title: 'Mi entrenamiento', text: texto }); return; }
+        await navigator.clipboard.writeText(texto);
+        showToast('Resumen copiado. Pegalo donde quieras.');
+      } catch (_) { /* cancelado */ }
     },
 
     'start-workout': el => {
@@ -3357,9 +3552,12 @@
 
     'finish-workout': el => {
       const id = el.getAttribute('data-entrenamiento-id');
+      const seriesHoy = (Store.getState().series || []).filter(x => x.entrenamientoId === id && !x.deleted).length;
+      if (!seriesHoy && !window.confirm('No guardaste ninguna serie en esta sesión. ¿Cerrarla igual?')) return;
       Store.commit(s => Engine.finalizarEntrenamiento(s, id));
       Timer.stop();
-      showToast('¡Sesión completada! Tu histórico evolutivo se actualizó.');
+      syncWakeLock(false);
+      activeModal = { type: 'resumen-sesion', entrenamientoId: id };
       render();
     },
 
@@ -3836,6 +4034,7 @@
       if (input) {
         const curr = parseFloat(input.value) || 0;
         input.value = Math.max(0, Math.round((curr + amount) * 100) / 100).toString();
+        input.dispatchEvent(new Event('input', { bubbles: true }));
       }
     },
 
@@ -3872,10 +4071,13 @@
         try { navigator.vibrate([80, 40, 80]); } catch (_) {}
       }
 
-      if (prCheck.isNew1RMPR) {
-        showToast(`¡NUEVO RÉCORD 1RM! ${prCheck.new1RM} kg`, { duration: 5000 });
+      const descanso = Engine.getDescanso(Store.getState());
+      if (descanso.automatico && tipo !== 'calentamiento') Timer.start(descanso.segundos);
+
+      if (prCheck.isNew1RMPR && prCheck.previous1RM > 0) {
+        showToast(`🏆 ¡Récord! 1RM estimado ${prCheck.new1RM} kg (antes ${prCheck.previous1RM})`, { duration: 5000 });
       } else {
-        showToast(`✓ Serie registrada: ${peso} kg × ${reps} reps (RIR ${rir} · RPE ${rpe})`);
+        showToast(`✓ ${peso} kg × ${reps} · RIR ${rir}${descanso.automatico ? ` · descanso ${descanso.segundos}s` : ''}`);
       }
       render();
     },
@@ -3914,7 +4116,7 @@
         try { navigator.vibrate([100, 50, 100]); } catch (_) {}
       }
 
-      showToast(`✓✓ Serie completa cargada: ${cantSeries} series × ${reps} reps con ${peso} kg`, {
+      showToast(`✓ ${cantSeries} serie${cantSeries === 1 ? '' : 's'} guardada${cantSeries === 1 ? '' : 's'}: ${peso} kg × ${reps}`, {
         action: 'Deshacer',
         fn: () => {
           if (lastDeletedBatchIds && lastDeletedBatchIds.length > 0) {
@@ -4144,6 +4346,11 @@
   });
 
   document.addEventListener('input', e => {
+    if (e.target && e.target.dataset && e.target.dataset.discosFor) {
+      const box = document.getElementById(`discos-${e.target.dataset.discosFor}`);
+      if (box) box.textContent = Engine.calcularDiscos(parseFloat(e.target.value) || 0).texto;
+      return;
+    }
     if (e.target && e.target.id === 'sug-mensaje') {
       draftSugerenciaTexto = e.target.value;
       return;
