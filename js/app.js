@@ -19,7 +19,7 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '2.6.0';
+  const APP_VERSION = '2.7.0';
 
   /** Número válido o valor por defecto (a diferencia de `|| def`, respeta el 0: RIR 0 = serie al fallo). */
   const numOr = (v, def) => (Number.isFinite(v) ? v : def);
@@ -182,7 +182,7 @@
   let selectedAlumnoUsername = null;
 
   const DIAS_SEMANA = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
-  const GRUPOS_CATALOGO = ['todos', 'activacion', 'movilidad', 'pecho', 'espalda', 'piernas', 'hombros', 'brazos', 'core', 'amrap'];
+  const GRUPOS_CATALOGO = ['todos', 'pecho', 'espalda', 'piernas', 'hombros', 'brazos', 'core', 'amrap'];
 
   // ==========================================
   // SISTEMA DE ÍCONOS MONOCROMÁTICOS (ZINC-400 -> AZUL #2563EB)
@@ -749,9 +749,14 @@
               ${h(rutinaAsociada ? rutinaAsociada.nombre : 'Carga tu Rutina de Hoy')}
             </h2>
           </div>
-          <button type="button" class="btn-secondary" data-action="finish-workout" data-entrenamiento-id="${h(entActivo.id)}" style="width: auto; min-height: 38px;">
-            ✓ Finalizar
-          </button>
+          <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+            <button type="button" class="btn-secondary" data-action="save-today-as-routine" style="width: auto; min-height: 38px; font-size: 12px !important;" title="Guardar los ejercicios de hoy como una nueva rutina en Mis Rutinas">
+              💾 Guardar como Rutina
+            </button>
+            <button type="button" class="btn-secondary" data-action="finish-workout" data-entrenamiento-id="${h(entActivo.id)}" style="width: auto; min-height: 38px;">
+              ✓ Finalizar
+            </button>
+          </div>
         </div>
 
         <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; background: var(--bg-elevated); padding: 12px; border-radius: var(--radius-md); text-align: center;">
@@ -771,117 +776,10 @@
       </div>
 
       <!-- ======================================================== -->
-      <!-- DIVISIÓN 1: ACTIVACIÓN & MOVILIDAD                       -->
+      <!-- ENTRENAMIENTO DE HOY & RUTINA AMRAP                      -->
       <!-- ======================================================== -->
       <div class="training-section-header">
-        <span class="training-section-title">${renderIcon('bolt')} 1. Activación & Movilidad</span>
-        <span class="badge badge-neon">Segmentos Activación y Movilidad</span>
-      </div>
-
-      <!-- Bloque A: Segmento Activación -->
-      <div class="card">
-        <div class="card-header">
-          <div>
-            <h3 class="card-title" style="font-size: 15px; color: var(--text-main);">Activación <span style="color: var(--text-dim); font-weight: 600; font-size: 12px;">· ${Object.values(activacionesHoy).filter(Boolean).length}/${listaActivacionHoy.length} hechos</span></h3>
-          </div>
-          <button type="button" class="btn-secondary" data-action="open-catalog-picker" data-mode="workout-activacion" data-filter-group="activacion" style="width: auto; min-height: 36px; padding: 0 12px; font-size: 12px !important;">
-            + Catálogo Activación
-          </button>
-        </div>
-
-        ${listaActivacionHoy.length === 0 ? `
-          <div style="padding: 16px; text-align: center; background: var(--bg-elevated); border-radius: var(--radius-md); font-size: 12px; color: var(--text-dim);">
-            No tenés ejercicios en activación hoy. Tocá <strong>"+ Catálogo Activación"</strong> para añadir los que vas a realizar.
-          </div>
-        ` : `
-          <div class="act-checklist">
-            ${listaActivacionHoy.map(item => {
-              const checked = Boolean(activacionesHoy[item.id]);
-              return `
-                <div class="act-item ${checked ? 'checked' : ''}">
-                  <div class="act-item-left" data-action="toggle-activacion" data-act-id="${h(item.id)}">
-                    <span class="act-checkbox">${checked ? '✓' : ''}</span>
-                    <div>
-                      <div style="font-weight: 700; font-size: 13.5px; color: var(--text-main);">${h(item.nombre)}</div>
-                      <div style="font-size: 11.5px; color: var(--text-dim);">${h(item.prescripcion)} · ${h(item.foco)}</div>
-                    </div>
-                  </div>
-                  <div style="display: flex; align-items: center; gap: 4px;">
-                    <button type="button" class="btn-eye-icon" data-action="view-ejercicio" data-ejercicio-id="${h(item.id)}" title="Ver posición inicial y final">
-                      ${renderIcon('eye')}
-                    </button>
-                    <button type="button" data-action="delete-activacion" data-act-id="${h(item.id)}" title="Quitar de mi activación" style="color: var(--text-dim); font-weight: 800; padding: 4px 8px; cursor: pointer; background: transparent; border: none; font-size: 16px;">
-                      ✕
-                    </button>
-                  </div>
-                </div>
-              `;
-            }).join('')}
-          </div>
-        `}
-      </div>
-
-      <!-- Bloque B: Segmento Movilidad -->
-      <div class="card">
-        <div class="card-header">
-          <div>
-            <h3 class="card-title" style="font-size: 15px; color: var(--text-main);">Movilidad <span style="color: var(--text-dim); font-weight: 600; font-size: 12px;">· ${movilidadHoy.length} ejercicio${movilidadHoy.length === 1 ? '' : 's'}</span></h3>
-          </div>
-          <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-            ${hayMovilidadPrevia && movilidadHoy.length === 0 ? `<button type="button" class="btn-secondary" data-action="repeat-last-movilidad" style="width: auto; min-height: 36px; padding: 0 12px; font-size: 12px !important;">↻ Repetir la última</button>` : ''}
-            <button type="button" class="btn-secondary" data-action="open-catalog-picker" data-mode="workout-movilidad" data-filter-group="movilidad" style="width: auto; min-height: 36px; padding: 0 12px; font-size: 12px !important;">
-              + Catálogo Movilidad
-            </button>
-            <button type="button" class="btn-secondary" data-action="open-add-movilidad" style="width: auto; min-height: 36px; padding: 0 12px; font-size: 12px !important;">
-              + Manual
-            </button>
-          </div>
-        </div>
-
-        ${movilidadHoy.length === 0 ? `
-          <div style="padding: 16px; text-align: center; background: var(--bg-elevated); border-radius: var(--radius-md); font-size: 12px; color: var(--text-dim);">
-Sin movilidad hoy. ${hayMovilidadPrevia ? 'Tocá <strong>↻ Repetir la última</strong> o ' : 'Sumá desde '}<strong>+ Catálogo Movilidad</strong>.
-          </div>
-        ` : `
-          <div style="display: flex; flex-direction: column; gap: 8px;" data-drag-list="movilidad">
-            ${movilidadHoy.map((m, mIdx) => {
-              const ejMovId = m.ejercicioId || 'ej-mov-puente-gluteo-uni';
-              const seriesMovCargadas = seriesEntreno.filter(s => s.ejercicioId === ejMovId).length;
-              return `
-                <div class="mobility-card" data-drag-id="${h(m.id)}">
-                  <button type="button" class="drag-handle" data-drag-handle aria-label="Arrastrar para ordenar" title="Mantené apretado y arrastrá para ordenar">⋮⋮</button>
-                  <div style="flex: 1; min-width: 170px;">
-                    <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                      <span class="badge" style="background: var(--bg-surface); font-weight: 800; font-family: var(--font-mono); font-size: 11px;">#${mIdx + 1}</span>
-                      <strong style="font-size: 14px; font-weight: 700; color: var(--text-main);">${h(m.nombre)}</strong>
-                      <span class="badge badge-neon">${m.series} series × ${h(m.reps)} reps ${m.pesoKg ? `• ${m.pesoKg} kg` : ''}</span>
-                      ${seriesMovCargadas > 0 ? `<span class="badge badge-emerald">✓ ${seriesMovCargadas} series registradas</span>` : ''}
-                    </div>
-                    ${m.notas ? `<p style="font-size: 11.5px; color: var(--text-dim); margin-top: 3px;">${h(m.notas)}</p>` : ''}
-                  </div>
-                  <div style="display: flex; align-items: center; gap: 6px;">
-                    <button type="button" class="btn-secondary" data-action="save-movilidad-serie-completa" data-mov-id="${h(m.id)}" data-entrenamiento-id="${h(entActivo.id)}" style="width: auto; min-height: 34px; padding: 0 10px; font-size: 11px !important;" title="Registrar todas las series de esta movilidad con los mismos datos">
-                      ✓ Hecho (${m.series}×${h(m.reps)})
-                    </button>
-                    <button type="button" class="btn-eye-icon" data-action="view-ejercicio" data-ejercicio-id="${h(ejMovId)}" title="Ver posición inicial y final">
-                      ${renderIcon('eye')}
-                    </button>
-                    <button type="button" data-action="delete-movilidad" data-mov-id="${h(m.id)}" style="color: var(--text-dim); font-weight: 800; padding: 4px 8px; cursor: pointer;" title="Quitar">
-                      ✕
-                    </button>
-                  </div>
-                </div>
-              `;
-            }).join('')}
-          </div>
-        `}
-      </div>
-
-      <!-- ======================================================== -->
-      <!-- DIVISIÓN 2: ENTRENAMIENTO PRINCIPAL & RUTINA AMRAP       -->
-      <!-- ======================================================== -->
-      <div class="training-section-header">
-        <span class="training-section-title">${renderIcon('activity')} 2. Entrenamiento</span>
+        <span class="training-section-title">${renderIcon('activity')} Entrenamiento de Hoy</span>
         <span class="badge badge-neon" title="Descanso automático entre series">${descanso.automatico ? `⏱ ${descanso.segundos}s auto` : '⏱ manual'}</span>
       </div>
 
@@ -958,7 +856,7 @@ Sin movilidad hoy. ${hayMovilidadPrevia ? 'Tocá <strong>↻ Repetir la última<
             Elegí libremente los ejercicios que hiciste hoy desde el catálogo sin ninguno impuesto por defecto.
           </p>
           <div style="margin-top: 10px; display: flex; justify-content: center;">
-            <button type="button" class="btn-primary" data-action="open-catalog-for-workout" style="width: auto;">
+            <button type="button" class="btn-primary" data-action="open-catalog-picker" data-mode="workout" data-filter-group="todos" style="width: auto;">
               + Añadir Ejercicio del Catálogo a Hoy
             </button>
           </div>
@@ -1146,7 +1044,9 @@ Sin movilidad hoy. ${hayMovilidadPrevia ? 'Tocá <strong>↻ Repetir la última<
                 ` : `
                   <div style="display: flex; flex-direction: column; gap: 6px; padding-top: 8px;">
                     ${r.ejercicios.map((re, idx) => {
-                      const ej = (state.ejercicios || []).find(e => e.id === re.ejercicioId);
+                      const ej = (state.ejercicios || []).find(e => e.id === re.ejercicioId)
+                        || Engine.CATALOGO_EJERCICIOS.find(e => e.id === re.ejercicioId)
+                        || { nombre: re.nombre || re.ejercicioId, grupoMuscular: '', equipo: '' };
                       return `
                         <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px; background: var(--bg-card); padding: 8px 12px; border-radius: var(--radius-sm);">
                           <div>
@@ -1852,7 +1752,9 @@ Sin movilidad hoy. ${hayMovilidadPrevia ? 'Tocá <strong>↻ Repetir la última<
 
                           <div style="display: flex; flex-direction: column; gap: 4px; border-top: 1px solid var(--border-subtle); padding-top: 8px;">
                             ${(r.ejercicios || []).map((re, idx) => {
-                              const ej = (stAlumno.ejercicios || []).find(e => e.id === re.ejercicioId);
+                              const ej = (stAlumno.ejercicios || []).find(e => e.id === re.ejercicioId)
+                                || Engine.CATALOGO_EJERCICIOS.find(e => e.id === re.ejercicioId)
+                                || { nombre: re.nombre || re.ejercicioId };
                               return `
                                 <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; padding: 6px 8px; background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 6px;">
                                   <span><strong style="color: var(--text-main);">${idx + 1}. ${h(ej ? ej.nombre : re.ejercicioId)}</strong></span>
@@ -2232,7 +2134,9 @@ Sin movilidad hoy. ${hayMovilidadPrevia ? 'Tocá <strong>↻ Repetir la última<
             ` : `
               <div style="display: flex; flex-direction: column; gap: 6px; max-height: 240px; overflow-y: auto;">
                 ${draftRutina.ejercicios.map((re, idx) => {
-                  const ej = (state.ejercicios || []).find(e => e.id === re.ejercicioId);
+                  const ej = (state.ejercicios || []).find(e => e.id === re.ejercicioId)
+                    || Engine.CATALOGO_EJERCICIOS.find(e => e.id === re.ejercicioId)
+                    || { nombre: re.nombre || re.ejercicioId };
                   return `
                     <div style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-elevated); padding: 8px 12px; border-radius: var(--radius-sm); font-size: 13px;">
                       <div>
@@ -3260,6 +3164,26 @@ Sin movilidad hoy. ${hayMovilidadPrevia ? 'Tocá <strong>↻ Repetir la última<
       renderModals();
     },
 
+    'open-catalog-for-workout': () => {
+      catalogoFiltroGrupo = 'todos';
+      activeModal = { type: 'catalog-picker', mode: 'workout' };
+      renderModals();
+    },
+
+    'save-today-as-routine': () => {
+      const st = Store.getState();
+      const entActivo = Engine.getEntrenamientoActivo(st);
+      if (!entActivo) {
+        showToast('No tenés un entrenamiento activo.');
+        return;
+      }
+      const nombre = prompt('Nombre para tu nueva rutina:', `Rutina de ${Engine.todayISO()}`);
+      if (!nombre || !nombre.trim()) return;
+      Store.commit(s => Engine.guardarSesionComoRutina(s, nombre.trim()));
+      showToast(`✓ Rutina "${nombre.trim()}" guardada en Mis Rutinas.`);
+      render();
+    },
+
     'filter-catalog-modal': el => {
       catalogoFiltroGrupo = el.getAttribute('data-group') || 'todos';
       renderModals();
@@ -3285,6 +3209,7 @@ Sin movilidad hoy. ${hayMovilidadPrevia ? 'Tocá <strong>↻ Repetir la última<
       if (activeModal && activeModal.returnToBuilder) {
         draftRutina.ejercicios.push({
           ejercicioId: ejId,
+          nombre: ejObj.nombre,
           seriesObjetivo: seriesObj,
           repsObjetivo: repsObj
         });
@@ -3301,6 +3226,7 @@ Sin movilidad hoy. ${hayMovilidadPrevia ? 'Tocá <strong>↻ Repetir la última<
         const mutator = s =>
           Engine.agregarEjercicioARutina(s, rId, {
             ejercicioId: ejId,
+            nombre: ejObj.nombre,
             seriesObjetivo: seriesObj,
             repsObjetivo: repsObj
           });
@@ -3332,34 +3258,11 @@ Sin movilidad hoy. ${hayMovilidadPrevia ? 'Tocá <strong>↻ Repetir la última<
         return;
       }
 
-      // Caso 3: Agregar a la rutina de hoy (Activación, Movilidad o Entrenamiento)
-      const mode = activeModal ? activeModal.mode : 'workout';
-
+      // Caso 3: Agregar a la rutina de hoy
       Store.commit(s => {
         let next = s;
         if (!next.entrenamientoActivoId) {
           next = Engine.iniciarEntrenamiento(next, null);
-        }
-
-        if (mode === 'workout-movilidad' || ejObj.grupoMuscular === 'movilidad') {
-          return Engine.guardarMovilidad(next, {
-            ejercicioId: ejObj.id,
-            nombre: ejObj.nombre,
-            series: seriesObj || ejObj.seriesSugeridas || 2,
-            reps: repsObj || ejObj.repsSugeridas || '15',
-            pesoKg: pesoObj || ejObj.pesoSugerido || 0,
-            notas: ejObj.notas || ''
-          });
-        }
-
-        if (mode === 'workout-activacion' || ejObj.grupoMuscular === 'activacion') {
-          return Engine.agregarEjercicioASesion(next, next.entrenamientoActivoId, {
-            ejercicioId: ejObj.id,
-            segmento: 'activacion',
-            seriesObjetivo: seriesObj || ejObj.seriesSugeridas || 2,
-            repsObjetivo: repsObj || ejObj.repsSugeridas || '12',
-            notas: ejObj.notas || ''
-          });
         }
 
         return Engine.agregarEjercicioASesion(next, next.entrenamientoActivoId, {
@@ -3388,25 +3291,6 @@ Sin movilidad hoy. ${hayMovilidadPrevia ? 'Tocá <strong>↻ Repetir la última<
         let next = s;
         if (!next.entrenamientoActivoId) {
           next = Engine.iniciarEntrenamiento(next, null);
-        }
-        if (ejObj.grupoMuscular === 'movilidad') {
-          return Engine.guardarMovilidad(next, {
-            ejercicioId: ejObj.id,
-            nombre: ejObj.nombre,
-            series: ejObj.seriesSugeridas || 2,
-            reps: ejObj.repsSugeridas || '15',
-            pesoKg: ejObj.pesoSugerido || 0,
-            notas: ejObj.notas || ''
-          });
-        }
-        if (ejObj.grupoMuscular === 'activacion') {
-          return Engine.agregarEjercicioASesion(next, next.entrenamientoActivoId, {
-            ejercicioId: ejObj.id,
-            segmento: 'activacion',
-            seriesObjetivo: ejObj.seriesSugeridas || 2,
-            repsObjetivo: ejObj.repsSugeridas || '12',
-            notas: ejObj.notas || ''
-          });
         }
         if (ejObj.grupoMuscular === 'amrap' || ejObj.esAmrap) {
           return Engine.agregarBloqueAmrap(next, {

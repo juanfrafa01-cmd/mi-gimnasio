@@ -158,6 +158,78 @@
       notas: 'Mantener hombros bajos y pegados al respaldo en todo el recorrido.',
       orden: 5
     },
+    {
+      id: 'ej-aperturas-banco-plano',
+      nombre: 'Aperturas de Pecho en Banco Plano con Mancuernas',
+      grupoMuscular: 'pecho',
+      equipo: 'mancuerna',
+      seriesSugeridas: 3,
+      repsSugeridas: '10-12',
+      descansoSugerido: 90,
+      gifSlug: 'bench-press',
+      gifUrl: './icons/gifs/bench-press.gif',
+      startImgUrl: './icons/gifs/bench-press-start.gif',
+      endImgUrl: './icons/gifs/bench-press-end.gif',
+      illustrationUrl: './icons/ejercicios/ej-aperturas-banco-plano.jpg',
+      remoteGifUrl: 'https://fitnessprogramer.com/wp-content/uploads/2021/02/Dumbbell-Fly.gif',
+      notas: 'Codos ligeramente flexionados, abrir el pecho sintiendo el estiramiento pectoral sin bajar más allá de la línea de los hombros.',
+      musculoActivo: 'Pectoral Mayor (Fibras Medias e Inferiores)',
+      orden: 6
+    },
+    {
+      id: 'ej-aperturas-banco-inclinado',
+      nombre: 'Aperturas de Pecho en Banco Inclinado (30°)',
+      grupoMuscular: 'pecho',
+      equipo: 'mancuerna',
+      seriesSugeridas: 3,
+      repsSugeridas: '10-12',
+      descansoSugerido: 90,
+      gifSlug: 'incline-db-press',
+      gifUrl: './icons/gifs/incline-db-press.gif',
+      startImgUrl: './icons/gifs/incline-db-press-start.gif',
+      endImgUrl: './icons/gifs/incline-db-press-end.gif',
+      illustrationUrl: './icons/ejercicios/ej-aperturas-banco-inclinado.jpg',
+      remoteGifUrl: 'https://fitnessprogramer.com/wp-content/uploads/2021/02/Incline-Dumbbell-Fly.gif',
+      notas: 'Banco a 30°, arqueo torácico natural y foco en la porción clavicular superior del pecho.',
+      musculoActivo: 'Pectoral Mayor Clavicular (Haz Superior)',
+      orden: 7
+    },
+    {
+      id: 'ej-press-plano-manc',
+      nombre: 'Press Plano con Mancuernas',
+      grupoMuscular: 'pecho',
+      equipo: 'mancuerna',
+      seriesSugeridas: 4,
+      repsSugeridas: '8-10',
+      descansoSugerido: 90,
+      gifSlug: 'bench-press',
+      gifUrl: './icons/gifs/bench-press.gif',
+      startImgUrl: './icons/gifs/bench-press-start.gif',
+      endImgUrl: './icons/gifs/bench-press-end.gif',
+      illustrationUrl: './icons/ejercicios/ej-press-plano-manc.jpg',
+      remoteGifUrl: 'https://fitnessprogramer.com/wp-content/uploads/2021/02/Dumbbell-Press.gif',
+      notas: 'Mayor rango de recorrido que la barra. Conectar escápulas atrás y empujar en convergencia suave.',
+      musculoActivo: 'Pectoral Mayor, Deltoides Anterior y Tríceps',
+      orden: 8
+    },
+    {
+      id: 'ej-flexiones-suelo',
+      nombre: 'Flexiones de Brazos en Suelo (Push-Ups)',
+      grupoMuscular: 'pecho',
+      equipo: 'corporal',
+      seriesSugeridas: 3,
+      repsSugeridas: '12-20',
+      descansoSugerido: 60,
+      gifSlug: 'bench-press',
+      gifUrl: './icons/gifs/bench-press.gif',
+      startImgUrl: './icons/gifs/bench-press-start.gif',
+      endImgUrl: './icons/gifs/bench-press-end.gif',
+      illustrationUrl: './icons/ejercicios/ej-flexiones-suelo.jpg',
+      remoteGifUrl: 'https://fitnessprogramer.com/wp-content/uploads/2021/06/Push-Up.gif',
+      notas: 'Cuerpo en plancha rígida, codos a 45° del torso y pecho rozando el suelo en cada repetición.',
+      musculoActivo: 'Pectoral Mayor, Tríceps Braquial y Core',
+      orden: 9
+    },
 
     // ESPALDA
     {
@@ -239,6 +311,224 @@
       remoteGifUrl: 'https://fitnessprogramer.com/wp-content/uploads/2021/02/Dumbbell-Row.gif',
       notas: 'Llevar la mancuerna en arco hacia el bolsillo de la cadera.',
       orden: 10
+    },
+    // VARIANTES DE DOMINADAS (PULL-UPS)
+    {
+      id: 'ej-dominadas-pronas',
+      nombre: 'Dominadas Pronas (Pull-Ups Agarre Abierto)',
+      grupoMuscular: 'espalda',
+      equipo: 'corporal',
+      seriesSugeridas: 4,
+      repsSugeridas: '6-10',
+      descansoSugerido: 120,
+      gifSlug: 'pull-up',
+      gifUrl: './icons/gifs/pull-up.gif',
+      startImgUrl: './icons/gifs/pull-up-start.gif',
+      endImgUrl: './icons/gifs/pull-up-end.gif',
+      illustrationUrl: './icons/ejercicios/ej-dominadas-pronas.jpg',
+      remoteGifUrl: 'https://fitnessprogramer.com/wp-content/uploads/2021/02/Pull-up.gif',
+      notas: 'Palmas mirando al frente, agarre algo más ancho que los hombros. Subir llevando el pecho a la barra.',
+      musculoActivo: 'Dorsal Ancho (Porción Superior), Redondo Mayor y Trapecio Inferior',
+      orden: 11
+    },
+    {
+      id: 'ej-dominadas-supinas',
+      nombre: 'Dominadas Supinas (Chin-Ups Agarre Cerrado)',
+      grupoMuscular: 'espalda',
+      equipo: 'corporal',
+      seriesSugeridas: 4,
+      repsSugeridas: '6-10',
+      descansoSugerido: 120,
+      gifSlug: 'pull-up',
+      gifUrl: './icons/gifs/pull-up.gif',
+      startImgUrl: './icons/gifs/pull-up-start.gif',
+      endImgUrl: './icons/gifs/pull-up-end.gif',
+      illustrationUrl: './icons/ejercicios/ej-dominadas-supinas.jpg',
+      remoteGifUrl: 'https://fitnessprogramer.com/wp-content/uploads/2021/02/Chin-up.gif',
+      notas: 'Palmas hacia tu cara. Mayor palanca del bíceps y trabajo intenso del dorsal bajo.',
+      musculoActivo: 'Bíceps Braquial, Dorsal Ancho y Braquial Anterior',
+      orden: 12
+    },
+    {
+      id: 'ej-dominadas-neutras',
+      nombre: 'Dominadas Agarre Neutro (Palmas Enfrentadas)',
+      grupoMuscular: 'espalda',
+      equipo: 'corporal',
+      seriesSugeridas: 4,
+      repsSugeridas: '8-10',
+      descansoSugerido: 120,
+      gifSlug: 'pull-up',
+      gifUrl: './icons/gifs/pull-up.gif',
+      startImgUrl: './icons/gifs/pull-up-start.gif',
+      endImgUrl: './icons/gifs/pull-up-end.gif',
+      illustrationUrl: './icons/ejercicios/ej-dominadas-neutras.jpg',
+      remoteGifUrl: 'https://fitnessprogramer.com/wp-content/uploads/2021/02/Pull-up.gif',
+      notas: 'Posición anatómica más segura para hombros y codos. Permite máxima carga y estabilidad articular.',
+      musculoActivo: 'Dorsal Ancho, Braquiorradial y Romboides',
+      orden: 13
+    },
+    {
+      id: 'ej-dominadas-anillas',
+      nombre: 'Dominadas en Anillas (Grip Rotacional)',
+      grupoMuscular: 'espalda',
+      equipo: 'corporal',
+      seriesSugeridas: 3,
+      repsSugeridas: '6-10',
+      descansoSugerido: 120,
+      gifSlug: 'pull-up',
+      gifUrl: './icons/gifs/pull-up.gif',
+      startImgUrl: './icons/gifs/pull-up-start.gif',
+      endImgUrl: './icons/gifs/pull-up-end.gif',
+      illustrationUrl: './icons/ejercicios/ej-dominadas-anillas.jpg',
+      remoteGifUrl: 'https://fitnessprogramer.com/wp-content/uploads/2021/02/Pull-up.gif',
+      notas: 'Iniciar en prono y rotar naturalmente a supino arriba. Excelente para salud de muñeca y manguito rotador.',
+      musculoActivo: 'Dorsal Ancho, Estabilizadores Escapulares y Core',
+      orden: 14
+    },
+    {
+      id: 'ej-dominadas-asistidas',
+      nombre: 'Dominadas Asistidas (Banda Elástica o Máquina)',
+      grupoMuscular: 'espalda',
+      equipo: 'maquina',
+      seriesSugeridas: 3,
+      repsSugeridas: '8-12',
+      descansoSugerido: 90,
+      gifSlug: 'pull-up',
+      gifUrl: './icons/gifs/pull-up.gif',
+      startImgUrl: './icons/gifs/pull-up-start.gif',
+      endImgUrl: './icons/gifs/pull-up-end.gif',
+      illustrationUrl: './icons/ejercicios/ej-dominadas-asistidas.jpg',
+      remoteGifUrl: 'https://fitnessprogramer.com/wp-content/uploads/2021/02/Pull-up.gif',
+      notas: 'Ideal para progresar hacia las dominadas libres manteniendo el patrón técnico estricto.',
+      musculoActivo: 'Dorsal Ancho y Redondo Mayor',
+      orden: 15
+    },
+    {
+      id: 'ej-dominadas-lastradas',
+      nombre: 'Dominadas Lastradas con Cinturón de Carga',
+      grupoMuscular: 'espalda',
+      equipo: 'corporal',
+      seriesSugeridas: 4,
+      repsSugeridas: '4-6',
+      descansoSugerido: 150,
+      gifSlug: 'pull-up',
+      gifUrl: './icons/gifs/pull-up.gif',
+      startImgUrl: './icons/gifs/pull-up-start.gif',
+      endImgUrl: './icons/gifs/pull-up-end.gif',
+      illustrationUrl: './icons/ejercicios/ej-dominadas-lastradas.jpg',
+      remoteGifUrl: 'https://fitnessprogramer.com/wp-content/uploads/2021/02/Pull-up.gif',
+      notas: 'Colocar el disco entre las piernas con cinturón. Movimiento explosivo hacia arriba y bajada controlada.',
+      musculoActivo: 'Dorsal Ancho, Bíceps y Trapecio',
+      orden: 16
+    },
+    // VARIANTES DE REMO CON BARRA Y ESPALDA
+    {
+      id: 'ej-remo-barra-prono',
+      nombre: 'Remo con Barra a 45° Agarre Prono',
+      grupoMuscular: 'espalda',
+      equipo: 'barra',
+      seriesSugeridas: 4,
+      repsSugeridas: '8-10',
+      descansoSugerido: 120,
+      gifSlug: 'barbell-row',
+      gifUrl: './icons/gifs/barbell-row.gif',
+      startImgUrl: './icons/gifs/barbell-row-start.gif',
+      endImgUrl: './icons/gifs/barbell-row-end.gif',
+      illustrationUrl: './icons/ejercicios/ej-remo-barra-prono.jpg',
+      remoteGifUrl: 'https://fitnessprogramer.com/wp-content/uploads/2021/02/Barbell-Bent-Over-Row.gif',
+      notas: 'Palmas mirando hacia las piernas, codos abiertos a 60°. Enfatiza espalda media, deltoides posterior y romboides.',
+      musculoActivo: 'Espalda Alta, Romboides, Trapecio y Deltoides Posterior',
+      orden: 17
+    },
+    {
+      id: 'ej-remo-barra-supino',
+      nombre: 'Remo con Barra Agarre Supino (Estilo Dorian Yates)',
+      grupoMuscular: 'espalda',
+      equipo: 'barra',
+      seriesSugeridas: 4,
+      repsSugeridas: '8-10',
+      descansoSugerido: 120,
+      gifSlug: 'barbell-row',
+      gifUrl: './icons/gifs/barbell-row.gif',
+      startImgUrl: './icons/gifs/barbell-row-start.gif',
+      endImgUrl: './icons/gifs/barbell-row-end.gif',
+      illustrationUrl: './icons/ejercicios/ej-remo-barra-supino.jpg',
+      remoteGifUrl: 'https://fitnessprogramer.com/wp-content/uploads/2021/02/Barbell-Bent-Over-Row.gif',
+      notas: 'Palmas hacia arriba, torso a 60-70°. Codos pegados a los costados traccionando al ombligo para activar el dorsal bajo.',
+      musculoActivo: 'Dorsal Ancho (Inserción Iliolumbar) y Bíceps',
+      orden: 18
+    },
+    {
+      id: 'ej-remo-pendlay',
+      nombre: 'Remo Pendlay con Barra (Desde el Suelo)',
+      grupoMuscular: 'espalda',
+      equipo: 'barra',
+      seriesSugeridas: 4,
+      repsSugeridas: '6-8',
+      descansoSugerido: 150,
+      gifSlug: 'barbell-row',
+      gifUrl: './icons/gifs/barbell-row.gif',
+      startImgUrl: './icons/gifs/barbell-row-start.gif',
+      endImgUrl: './icons/gifs/barbell-row-end.gif',
+      illustrationUrl: './icons/ejercicios/ej-remo-pendlay.jpg',
+      remoteGifUrl: 'https://fitnessprogramer.com/wp-content/uploads/2021/02/Barbell-Bent-Over-Row.gif',
+      notas: 'Espalda 100% paralela al piso. Cada repetición sale de peso muerto en el suelo con tirón explosivo al pecho.',
+      musculoActivo: 'Cadena Posterior, Dorsal, Romboides y Erectores Espinales',
+      orden: 19
+    },
+    {
+      id: 'ej-remo-barra-t',
+      nombre: 'Remo en Barra T (T-Bar Row)',
+      grupoMuscular: 'espalda',
+      equipo: 'barra',
+      seriesSugeridas: 4,
+      repsSugeridas: '8-12',
+      descansoSugerido: 120,
+      gifSlug: 'barbell-row',
+      gifUrl: './icons/gifs/barbell-row.gif',
+      startImgUrl: './icons/gifs/barbell-row-start.gif',
+      endImgUrl: './icons/gifs/barbell-row-end.gif',
+      illustrationUrl: './icons/ejercicios/ej-remo-barra-t.jpg',
+      remoteGifUrl: 'https://fitnessprogramer.com/wp-content/uploads/2021/02/T-Bar-Row.gif',
+      notas: 'Agarre neutro estrecho con maneral. Tracción profunda con codos pegados sintiendo la densidad de espalda.',
+      musculoActivo: 'Dorsal Ancho, Romboides y Trapecio Medio',
+      orden: 20
+    },
+    {
+      id: 'ej-jalon-pecho-neutro',
+      nombre: 'Jalón al Pecho Agarre Neutro Estrecho (Triángulo)',
+      grupoMuscular: 'espalda',
+      equipo: 'polea',
+      seriesSugeridas: 4,
+      repsSugeridas: '10-12',
+      descansoSugerido: 90,
+      gifSlug: 'lat-pulldown',
+      gifUrl: './icons/gifs/lat-pulldown.gif',
+      startImgUrl: './icons/gifs/lat-pulldown-start.gif',
+      endImgUrl: './icons/gifs/lat-pulldown-end.gif',
+      illustrationUrl: './icons/ejercicios/ej-jalon-pecho-neutro.jpg',
+      remoteGifUrl: 'https://fitnessprogramer.com/wp-content/uploads/2021/02/Lat-Pulldown.gif',
+      notas: 'Llevar los codos directamente hacia los bolsillos laterales de la cadera apretando dorsales.',
+      musculoActivo: 'Dorsal Ancho y Braquial Anterior',
+      orden: 21
+    },
+    {
+      id: 'ej-pullover-polea',
+      nombre: 'Pullover de Dorsal en Polea Alta (Brazo Rígido)',
+      grupoMuscular: 'espalda',
+      equipo: 'polea',
+      seriesSugeridas: 3,
+      repsSugeridas: '12-15',
+      descansoSugerido: 60,
+      gifSlug: 'lat-pulldown',
+      gifUrl: './icons/gifs/lat-pulldown.gif',
+      startImgUrl: './icons/gifs/lat-pulldown-start.gif',
+      endImgUrl: './icons/gifs/lat-pulldown-end.gif',
+      illustrationUrl: './icons/ejercicios/ej-pullover-polea.jpg',
+      remoteGifUrl: 'https://fitnessprogramer.com/wp-content/uploads/2021/02/Straight-Arm-Pulldown.gif',
+      notas: 'Codos casi extendidos pero no bloqueados. Bajar la barra en arco hacia los muslos apretando los dorsales.',
+      musculoActivo: 'Dorsal Ancho y Redondo Mayor (Aislamiento Puro)',
+      orden: 22
     },
 
     // PIERNAS & GLÚTEOS
@@ -354,6 +644,96 @@
       notas: 'Empujar el suelo con toda la planta del pie delantero.',
       orden: 17
     },
+    {
+      id: 'ej-estocadas-bulgaras-kb',
+      nombre: 'Sentadilla Búlgara con Pesa Rusa (Kettlebell)',
+      grupoMuscular: 'piernas',
+      equipo: 'mancuerna',
+      seriesSugeridas: 3,
+      repsSugeridas: '8-10',
+      descansoSugerido: 90,
+      gifSlug: 'bulgarian-split-squat',
+      gifUrl: './icons/gifs/bulgarian-split-squat.gif',
+      startImgUrl: './icons/gifs/bulgarian-split-squat-start.gif',
+      endImgUrl: './icons/gifs/bulgarian-split-squat-end.gif',
+      illustrationUrl: './icons/ejercicios/ej-estocadas-bulgaras-kb.jpg',
+      remoteGifUrl: 'https://fitnessprogramer.com/wp-content/uploads/2021/05/Dumbbell-Bulgarian-Split-Squat.gif',
+      notas: 'Pie trasero en banco. Pesa rusa colgada o en rack. Bajar con torso erguido o leve inclinación para glúteo.',
+      musculoActivo: 'Glúteo Mayor, Cuádriceps y Estabilizadores de Cadera',
+      orden: 24
+    },
+    {
+      id: 'ej-sentadilla-goblet-kb',
+      nombre: 'Sentadilla Goblet con Pesa Rusa / Kettlebell',
+      grupoMuscular: 'piernas',
+      equipo: 'mancuerna',
+      seriesSugeridas: 3,
+      repsSugeridas: '10-12',
+      descansoSugerido: 90,
+      gifSlug: 'barbell-squat',
+      gifUrl: './icons/gifs/barbell-squat.gif',
+      startImgUrl: './icons/gifs/barbell-squat-start.gif',
+      endImgUrl: './icons/gifs/barbell-squat-end.gif',
+      illustrationUrl: './icons/ejercicios/ej-sentadilla-goblet-kb.jpg',
+      remoteGifUrl: 'https://fitnessprogramer.com/wp-content/uploads/2021/05/Goblet-Squat.gif',
+      notas: 'Sostener la pesa rusa pegada al pecho por las asas. Bajar profundo manteniendo torso erguido.',
+      musculoActivo: 'Cuádriceps, Glúteos y Core',
+      orden: 25
+    },
+    {
+      id: 'ej-peso-muerto-kb',
+      nombre: 'Peso Muerto Rumano con Pesas Rusas (Kettlebells)',
+      grupoMuscular: 'piernas',
+      equipo: 'mancuerna',
+      seriesSugeridas: 4,
+      repsSugeridas: '10-12',
+      descansoSugerido: 90,
+      gifSlug: 'romanian-deadlift',
+      gifUrl: './icons/gifs/romanian-deadlift.gif',
+      startImgUrl: './icons/gifs/romanian-deadlift-start.gif',
+      endImgUrl: './icons/gifs/romanian-deadlift-end.gif',
+      illustrationUrl: './icons/ejercicios/ej-peso-muerto-kb.jpg',
+      remoteGifUrl: 'https://fitnessprogramer.com/wp-content/uploads/2021/02/Barbell-Romanian-Deadlift.gif',
+      notas: 'Una pesa rusa en cada mano. Bisagra de cadera empujando glúteos atrás sintiendo el estiramiento de isquios.',
+      musculoActivo: 'Isquiotibiales, Glúteo Mayor y Erectores Espinales',
+      orden: 26
+    },
+    {
+      id: 'ej-sentadilla-frontal',
+      nombre: 'Sentadilla Frontal con Barra (Front Squat)',
+      grupoMuscular: 'piernas',
+      equipo: 'barra',
+      seriesSugeridas: 4,
+      repsSugeridas: '6-8',
+      descansoSugerido: 150,
+      gifSlug: 'barbell-squat',
+      gifUrl: './icons/gifs/barbell-squat.gif',
+      startImgUrl: './icons/gifs/barbell-squat-start.gif',
+      endImgUrl: './icons/gifs/barbell-squat-end.gif',
+      illustrationUrl: './icons/ejercicios/ej-sentadilla-frontal.jpg',
+      remoteGifUrl: 'https://fitnessprogramer.com/wp-content/uploads/2021/02/Barbell-Front-Squat.gif',
+      notas: 'Barra apoyada sobre los deltoides anteriores con codos altos. Torso completamente vertical.',
+      musculoActivo: 'Cuádriceps (Énfasis Vasto Medial/Lateral) y Core',
+      orden: 27
+    },
+    {
+      id: 'ej-gemelos-pie',
+      nombre: 'Elevación de Talones de Pie para Gemelos (Calf Raise)',
+      grupoMuscular: 'piernas',
+      equipo: 'maquina',
+      seriesSugeridas: 4,
+      repsSugeridas: '12-15',
+      descansoSugerido: 60,
+      gifSlug: 'jump-squat',
+      gifUrl: './icons/gifs/jump-squat.gif',
+      startImgUrl: './icons/gifs/jump-squat-start.gif',
+      endImgUrl: './icons/gifs/jump-squat-end.gif',
+      illustrationUrl: './icons/ejercicios/ej-gemelos-pie.jpg',
+      remoteGifUrl: 'https://fitnessprogramer.com/wp-content/uploads/2021/02/Calf-Raise.gif',
+      notas: 'Bajar los talones al máximo estiramiento con pausa de 1s y subir explosivo en puntas de pie.',
+      musculoActivo: 'Gastrocnemio (Gemelos) y Sóleo',
+      orden: 28
+    },
 
     // HOMBROS
     {
@@ -419,6 +799,60 @@
       remoteGifUrl: 'https://fitnessprogramer.com/wp-content/uploads/2021/02/Face-Pull.gif',
       notas: 'Llevar la soga hacia la frente rotando externamente los hombros.',
       orden: 21
+    },
+    {
+      id: 'ej-elevaciones-laterales-polea',
+      nombre: 'Elevaciones Laterales Unilaterales en Polea Baja',
+      grupoMuscular: 'hombros',
+      equipo: 'polea',
+      seriesSugeridas: 4,
+      repsSugeridas: '12-15',
+      descansoSugerido: 60,
+      gifSlug: 'lateral-raise',
+      gifUrl: './icons/gifs/lateral-raise.gif',
+      startImgUrl: './icons/gifs/lateral-raise-start.gif',
+      endImgUrl: './icons/gifs/lateral-raise-end.gif',
+      illustrationUrl: './icons/ejercicios/ej-elevaciones-laterales-polea.jpg',
+      remoteGifUrl: 'https://fitnessprogramer.com/wp-content/uploads/2021/02/Cable-Lateral-Raise.gif',
+      notas: 'Polea a la altura de la rodilla pasando por detrás del cuerpo. Tensión constante en todo el recorrido.',
+      musculoActivo: 'Deltoides Lateral (Porción Media)',
+      orden: 30
+    },
+    {
+      id: 'ej-pajaros-mancuerna',
+      nombre: 'Pájaros / Vuelos Posteriores con Mancuernas (Rear Delts)',
+      grupoMuscular: 'hombros',
+      equipo: 'mancuerna',
+      seriesSugeridas: 3,
+      repsSugeridas: '12-15',
+      descansoSugerido: 60,
+      gifSlug: 'lateral-raise',
+      gifUrl: './icons/gifs/lateral-raise.gif',
+      startImgUrl: './icons/gifs/lateral-raise-start.gif',
+      endImgUrl: './icons/gifs/lateral-raise-end.gif',
+      illustrationUrl: './icons/ejercicios/ej-pajaros-mancuerna.jpg',
+      remoteGifUrl: 'https://fitnessprogramer.com/wp-content/uploads/2021/02/Rear-Lateral-Raise.gif',
+      notas: 'Torso inclinado casi paralelo al suelo. Abrir los brazos guiando con los codos sin juntar excesivamente las escápulas.',
+      musculoActivo: 'Deltoides Posterior e Infraespinoso',
+      orden: 31
+    },
+    {
+      id: 'ej-press-arnold',
+      nombre: 'Press Arnold Sentado con Mancuernas',
+      grupoMuscular: 'hombros',
+      equipo: 'mancuerna',
+      seriesSugeridas: 3,
+      repsSugeridas: '8-12',
+      descansoSugerido: 90,
+      gifSlug: 'db-shoulder-press',
+      gifUrl: './icons/gifs/db-shoulder-press.gif',
+      startImgUrl: './icons/gifs/db-shoulder-press-start.gif',
+      endImgUrl: './icons/gifs/db-shoulder-press-end.gif',
+      illustrationUrl: './icons/ejercicios/ej-press-arnold.jpg',
+      remoteGifUrl: 'https://fitnessprogramer.com/wp-content/uploads/2021/02/Arnold-Press.gif',
+      notas: 'Comenzar con mancuernas frente a la barbilla en supino y rotar hacia afuera a prono mientras se empuja hacia arriba.',
+      musculoActivo: 'Deltoides Anterior, Lateral y Tríceps',
+      orden: 32
     },
 
     // BRAZOS (BÍCEPS & TRÍCEPS)
@@ -486,6 +920,134 @@
       notas: 'Bajar la barra detrás de la frente manteniendo los codos cerrados.',
       orden: 25
     },
+    // VARIANTES DE CURL MARTILLO Y BÍCEPS
+    {
+      id: 'ej-curl-martillo-inclinado',
+      nombre: 'Curl Martillo en Banco Inclinado (60°)',
+      grupoMuscular: 'brazos',
+      equipo: 'mancuerna',
+      seriesSugeridas: 3,
+      repsSugeridas: '10-12',
+      descansoSugerido: 75,
+      gifSlug: 'hammer-curl',
+      gifUrl: './icons/gifs/hammer-curl.gif',
+      startImgUrl: './icons/gifs/hammer-curl-start.gif',
+      endImgUrl: './icons/gifs/hammer-curl-end.gif',
+      illustrationUrl: './icons/ejercicios/ej-curl-martillo-inclinado.jpg',
+      remoteGifUrl: 'https://fitnessprogramer.com/wp-content/uploads/2021/02/Incline-Hammer-Curl.gif',
+      notas: 'Respaldo a 60°. Brazos colgando detrás del cuerpo para estirar al máximo la cabeza larga del bíceps.',
+      musculoActivo: 'Braquial Anterior, Braquiorradial y Cabeza Larga del Bíceps',
+      orden: 34
+    },
+    {
+      id: 'ej-curl-martillo-cruzado',
+      nombre: 'Curl Martillo Cruzado al Pecho (Pinwheel Curl)',
+      grupoMuscular: 'brazos',
+      equipo: 'mancuerna',
+      seriesSugeridas: 3,
+      repsSugeridas: '10-12',
+      descansoSugerido: 60,
+      gifSlug: 'hammer-curl',
+      gifUrl: './icons/gifs/hammer-curl.gif',
+      startImgUrl: './icons/gifs/hammer-curl-start.gif',
+      endImgUrl: './icons/gifs/hammer-curl-end.gif',
+      illustrationUrl: './icons/ejercicios/ej-curl-martillo-cruzado.jpg',
+      remoteGifUrl: 'https://fitnessprogramer.com/wp-content/uploads/2021/02/Hammer-Curl.gif',
+      notas: 'Llevar la mancuerna en diagonal hacia el hombro opuesto. Aísla intensamente el músculo braquial.',
+      musculoActivo: 'Braquial Anterior (Grosor del Brazo) y Braquiorradial',
+      orden: 35
+    },
+    {
+      id: 'ej-curl-martillo-polea',
+      nombre: 'Curl Martillo en Polea Baja con Soga',
+      grupoMuscular: 'brazos',
+      equipo: 'polea',
+      seriesSugeridas: 3,
+      repsSugeridas: '12-15',
+      descansoSugerido: 60,
+      gifSlug: 'hammer-curl',
+      gifUrl: './icons/gifs/hammer-curl.gif',
+      startImgUrl: './icons/gifs/hammer-curl-start.gif',
+      endImgUrl: './icons/gifs/hammer-curl-end.gif',
+      illustrationUrl: './icons/ejercicios/ej-curl-martillo-polea.jpg',
+      remoteGifUrl: 'https://fitnessprogramer.com/wp-content/uploads/2021/02/Cable-Hammer-Curl.gif',
+      notas: 'Tensión constante al inicio y final del recorrido. Mantener codos clavados a los costados del torso.',
+      musculoActivo: 'Braquiorradial, Braquial y Bíceps Braquial',
+      orden: 36
+    },
+    {
+      id: 'ej-curl-inclinado-manc',
+      nombre: 'Curl de Bíceps en Banco Inclinado con Mancuernas',
+      grupoMuscular: 'brazos',
+      equipo: 'mancuerna',
+      seriesSugeridas: 3,
+      repsSugeridas: '8-12',
+      descansoSugerido: 75,
+      gifSlug: 'barbell-curl',
+      gifUrl: './icons/gifs/barbell-curl.gif',
+      startImgUrl: './icons/gifs/barbell-curl-start.gif',
+      endImgUrl: './icons/gifs/barbell-curl-end.gif',
+      illustrationUrl: './icons/ejercicios/ej-curl-inclinado-manc.jpg',
+      remoteGifUrl: 'https://fitnessprogramer.com/wp-content/uploads/2021/02/Incline-Dumbbell-Curl.gif',
+      notas: 'Máximo estiramiento previo de la cabeza larga. Supinar la muñeca al subir apretando en la cima.',
+      musculoActivo: 'Cabeza Larga del Bíceps Braquial',
+      orden: 37
+    },
+    {
+      id: 'ej-curl-scott',
+      nombre: 'Curl en Banco Scott / Predicador con Barra Z',
+      grupoMuscular: 'brazos',
+      equipo: 'barra',
+      seriesSugeridas: 3,
+      repsSugeridas: '10-12',
+      descansoSugerido: 75,
+      gifSlug: 'barbell-curl',
+      gifUrl: './icons/gifs/barbell-curl.gif',
+      startImgUrl: './icons/gifs/barbell-curl-start.gif',
+      endImgUrl: './icons/gifs/barbell-curl-end.gif',
+      illustrationUrl: './icons/ejercicios/ej-curl-scott.jpg',
+      remoteGifUrl: 'https://fitnessprogramer.com/wp-content/uploads/2021/02/Preacher-Curl.gif',
+      notas: 'Brazos apoyados en la almohadilla impidiendo cualquier inercia o trampa corporal.',
+      musculoActivo: 'Cabeza Corta del Bíceps Braquial (Pico del Bíceps)',
+      orden: 38
+    },
+    // VARIANTES DE TRÍCEPS
+    {
+      id: 'ej-fondos-banco-triceps',
+      nombre: 'Fondos de Tríceps en Banco (Bench Dips)',
+      grupoMuscular: 'brazos',
+      equipo: 'corporal',
+      seriesSugeridas: 3,
+      repsSugeridas: '12-15',
+      descansoSugerido: 60,
+      gifSlug: 'triceps-pushdown',
+      gifUrl: './icons/gifs/triceps-pushdown.gif',
+      startImgUrl: './icons/gifs/triceps-pushdown-start.gif',
+      endImgUrl: './icons/gifs/triceps-pushdown-end.gif',
+      illustrationUrl: './icons/ejercicios/ej-fondos-banco-triceps.jpg',
+      remoteGifUrl: 'https://fitnessprogramer.com/wp-content/uploads/2021/06/Bench-Dips.gif',
+      notas: 'Espalda cerca del banco, bajar hasta 90° de flexión de codo y extender con fuerza.',
+      musculoActivo: 'Tríceps Braquial (Tres Cabezas)',
+      orden: 39
+    },
+    {
+      id: 'ej-press-cerrado-triceps',
+      nombre: 'Press de Banca Agarre Cerrado para Tríceps',
+      grupoMuscular: 'brazos',
+      equipo: 'barra',
+      seriesSugeridas: 4,
+      repsSugeridas: '8-10',
+      descansoSugerido: 90,
+      gifSlug: 'bench-press',
+      gifUrl: './icons/gifs/bench-press.gif',
+      startImgUrl: './icons/gifs/bench-press-start.gif',
+      endImgUrl: './icons/gifs/bench-press-end.gif',
+      illustrationUrl: './icons/ejercicios/ej-press-cerrado-triceps.jpg',
+      remoteGifUrl: 'https://fitnessprogramer.com/wp-content/uploads/2021/02/Close-Grip-Bench-Press.gif',
+      notas: 'Manos al ancho de los hombros (no más cerradas para proteger muñecas). Codos cerca del cuerpo.',
+      musculoActivo: 'Tríceps Braquial (Cabeza Lateral y Medial) y Pectoral Interno',
+      orden: 40
+    },
 
     // CORE & ABDOMINALES
     {
@@ -535,6 +1097,42 @@
       remoteGifUrl: 'https://fitnessprogramer.com/wp-content/uploads/2021/02/Kneeling-Cable-Crunch.gif',
       notas: 'Flexionar la columna vertebral acercando las costillas a la pelvis.',
       orden: 28
+    },
+    {
+      id: 'ej-elevaciones-piernas-colgado',
+      nombre: 'Elevaciones de Piernas Colgado en Barra (Hanging Leg Raise)',
+      grupoMuscular: 'core',
+      equipo: 'corporal',
+      seriesSugeridas: 3,
+      repsSugeridas: '10-15',
+      descansoSugerido: 60,
+      gifSlug: 'cable-crunch',
+      gifUrl: './icons/gifs/cable-crunch.gif',
+      startImgUrl: './icons/gifs/cable-crunch-start.gif',
+      endImgUrl: './icons/gifs/cable-crunch-end.gif',
+      illustrationUrl: './icons/ejercicios/ej-elevaciones-piernas-colgado.jpg',
+      remoteGifUrl: 'https://fitnessprogramer.com/wp-content/uploads/2021/02/Hanging-Leg-Raise.gif',
+      notas: 'Colgado de la barra, bascular la pelvis hacia arriba llevando los pies a 90° o tocando la barra sin balanceo.',
+      musculoActivo: 'Recto Abdominal Inferior y Flexores de Cadera',
+      orden: 42
+    },
+    {
+      id: 'ej-ab-crunch-declinado',
+      nombre: 'Crunch en Banco Declinado con Disco al Pecho',
+      grupoMuscular: 'core',
+      equipo: 'corporal',
+      seriesSugeridas: 3,
+      repsSugeridas: '12-15',
+      descansoSugerido: 60,
+      gifSlug: 'cable-crunch',
+      gifUrl: './icons/gifs/cable-crunch.gif',
+      startImgUrl: './icons/gifs/cable-crunch-start.gif',
+      endImgUrl: './icons/gifs/cable-crunch-end.gif',
+      illustrationUrl: './icons/ejercicios/ej-ab-crunch-declinado.jpg',
+      remoteGifUrl: 'https://fitnessprogramer.com/wp-content/uploads/2021/02/Decline-Crunch.gif',
+      notas: 'Pies trabados en el banco declinado. Flexión torácica controlada subiendo hasta la mitad para mantener tensión continua.',
+      musculoActivo: 'Recto Abdominal Superior y Oblicuos',
+      orden: 43
     },
 
     // ==========================================
@@ -955,7 +1553,40 @@
     'ej-amrap-kb-swing': './icons/ejercicios/ej-amrap-kb-swing.jpg',
     'ej-amrap-thrusters': './icons/ejercicios/ej-amrap-thrusters.jpg',
     'ej-amrap-burpees': './icons/ejercicios/ej-amrap-burpees.jpg',
-    'ej-amrap-box-jumps': './icons/ejercicios/ej-amrap-box-jumps.jpg'
+    'ej-amrap-box-jumps': './icons/ejercicios/ej-amrap-box-jumps.jpg',
+    'ej-dominadas-pronas': './icons/ejercicios/ej-dominadas-pronas.jpg',
+    'ej-dominadas-supinas': './icons/ejercicios/ej-dominadas-supinas.jpg',
+    'ej-dominadas-neutras': './icons/ejercicios/ej-dominadas-neutras.jpg',
+    'ej-dominadas-anillas': './icons/ejercicios/ej-dominadas-anillas.jpg',
+    'ej-dominadas-asistidas': './icons/ejercicios/ej-dominadas-asistidas.jpg',
+    'ej-dominadas-lastradas': './icons/ejercicios/ej-dominadas-lastradas.jpg',
+    'ej-estocadas-bulgaras-kb': './icons/ejercicios/ej-estocadas-bulgaras-kb.jpg',
+    'ej-sentadilla-goblet-kb': './icons/ejercicios/ej-sentadilla-goblet-kb.jpg',
+    'ej-peso-muerto-kb': './icons/ejercicios/ej-peso-muerto-kb.jpg',
+    'ej-sentadilla-frontal': './icons/ejercicios/ej-sentadilla-frontal.jpg',
+    'ej-aperturas-banco-plano': './icons/ejercicios/ej-aperturas-banco-plano.jpg',
+    'ej-aperturas-banco-inclinado': './icons/ejercicios/ej-aperturas-banco-inclinado.jpg',
+    'ej-press-plano-manc': './icons/ejercicios/ej-press-plano-manc.jpg',
+    'ej-flexiones-suelo': './icons/ejercicios/ej-flexiones-suelo.jpg',
+    'ej-remo-barra-prono': './icons/ejercicios/ej-remo-barra-prono.jpg',
+    'ej-remo-barra-supino': './icons/ejercicios/ej-remo-barra-supino.jpg',
+    'ej-remo-pendlay': './icons/ejercicios/ej-remo-pendlay.jpg',
+    'ej-remo-barra-t': './icons/ejercicios/ej-remo-barra-t.jpg',
+    'ej-jalon-pecho-neutro': './icons/ejercicios/ej-jalon-pecho-neutro.jpg',
+    'ej-pullover-polea': './icons/ejercicios/ej-pullover-polea.jpg',
+    'ej-curl-martillo-inclinado': './icons/ejercicios/ej-curl-martillo-inclinado.jpg',
+    'ej-curl-martillo-cruzado': './icons/ejercicios/ej-curl-martillo-cruzado.jpg',
+    'ej-curl-martillo-polea': './icons/ejercicios/ej-curl-martillo-polea.jpg',
+    'ej-curl-inclinado-manc': './icons/ejercicios/ej-curl-inclinado-manc.jpg',
+    'ej-curl-scott': './icons/ejercicios/ej-curl-scott.jpg',
+    'ej-fondos-banco-triceps': './icons/ejercicios/ej-fondos-banco-triceps.jpg',
+    'ej-press-cerrado-triceps': './icons/ejercicios/ej-press-cerrado-triceps.jpg',
+    'ej-elevaciones-laterales-polea': './icons/ejercicios/ej-elevaciones-laterales-polea.jpg',
+    'ej-pajaros-mancuerna': './icons/ejercicios/ej-pajaros-mancuerna.jpg',
+    'ej-press-arnold': './icons/ejercicios/ej-press-arnold.jpg',
+    'ej-elevaciones-piernas-colgado': './icons/ejercicios/ej-elevaciones-piernas-colgado.jpg',
+    'ej-ab-crunch-declinado': './icons/ejercicios/ej-ab-crunch-declinado.jpg',
+    'ej-gemelos-pie': './icons/ejercicios/ej-gemelos-pie.jpg'
   };
 
   /**
@@ -1471,11 +2102,14 @@
    */
   Engine.agregarEjercicioARutina = function (state, rutinaId, itemEjercicio) {
     const ahora = Date.now();
+    const catalogo = (state.ejercicios || []).concat(Engine.CATALOGO_EJERCICIOS || []);
+    const matchedEj = catalogo.find(e => e.id === itemEjercicio.ejercicioId);
     const rutinas = (state.rutinas || []).map(r => {
       if (r.id !== rutinaId) return r;
       const ejerciciosActuales = Array.isArray(r.ejercicios) ? [...r.ejercicios] : [];
       ejerciciosActuales.push({
         ejercicioId: itemEjercicio.ejercicioId,
+        nombre: itemEjercicio.nombre || (matchedEj ? matchedEj.nombre : ''),
         seriesObjetivo: Number(itemEjercicio.seriesObjetivo) || 3,
         repsObjetivo: itemEjercicio.repsObjetivo || '8-10',
         descansoSegundos: Number(itemEjercicio.descansoSegundos) || 90,
@@ -1483,6 +2117,65 @@
       });
       return { ...r, ejercicios: ejerciciosActuales, updatedAt: ahora };
     });
+    return { ...state, rutinas, updatedAt: ahora };
+  };
+
+  /**
+   * Obtiene el entrenamiento activo actual o null si no hay sesión en curso.
+   */
+  Engine.getEntrenamientoActivo = function (state) {
+    if (!state) return null;
+    if (state.entrenamientoActivoId) {
+      return (state.entrenamientos || []).find(t => t.id === state.entrenamientoActivoId && !t.deleted) || null;
+    }
+    return (state.entrenamientos || []).find(t => !t.deleted && !t.completado) || null;
+  };
+
+  /**
+   * Guarda los ejercicios de la sesión de hoy como una nueva rutina en "Mis Rutinas".
+   */
+  Engine.guardarSesionComoRutina = function (state, nombreRutina, dias = ['Lunes', 'Miércoles', 'Viernes']) {
+    const ahora = Date.now();
+    const entActivo = Engine.getEntrenamientoActivo(state);
+    if (!entActivo) return state;
+
+    const seriesEntreno = (state.series || []).filter(s => s.entrenamientoId === entActivo.id && !s.deleted);
+    const sesionHoy = (state.ejerciciosSesionHoy || []).filter(e => (!e.entrenamientoId || e.entrenamientoId === entActivo.id) && !e.deleted);
+
+    const ejIds = [];
+    sesionHoy.forEach(e => {
+      if (!ejIds.includes(e.ejercicioId)) ejIds.push(e.ejercicioId);
+    });
+    seriesEntreno.forEach(s => {
+      if (!ejIds.includes(s.ejercicioId)) ejIds.push(s.ejercicioId);
+    });
+
+    const catalogo = (state.ejercicios || []).concat(Engine.CATALOGO_EJERCICIOS || []);
+    const ejerciciosRutina = ejIds.map(id => {
+      const ej = catalogo.find(c => c.id === id);
+      const sesionItem = sesionHoy.find(s => s.ejercicioId === id);
+      return {
+        ejercicioId: id,
+        nombre: ej ? ej.nombre : id,
+        seriesObjetivo: sesionItem ? (sesionItem.seriesObjetivo || 3) : 3,
+        repsObjetivo: sesionItem ? (sesionItem.repsObjetivo || '8-10') : '8-10',
+        descansoSegundos: ej ? (ej.descansoSugerido || 90) : 90,
+        notaProfesor: ''
+      };
+    });
+
+    const nuevaRutina = {
+      id: Engine.generateId('rt'),
+      nombre: nombreRutina || `Rutina ${Engine.todayISO()}`,
+      dias: dias,
+      horario: '19:00',
+      creadaPor: 'Alumno',
+      ejercicios: ejerciciosRutina,
+      deleted: false,
+      updatedAt: ahora
+    };
+
+    const rutinas = [...(state.rutinas || []), nuevaRutina];
     return { ...state, rutinas, updatedAt: ahora };
   };
 
