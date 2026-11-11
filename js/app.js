@@ -19,7 +19,7 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '2.7.0';
+  const APP_VERSION = '2.8.0';
 
   /** Número válido o valor por defecto (a diferencia de `|| def`, respeta el 0: RIR 0 = serie al fallo). */
   const numOr = (v, def) => (Number.isFinite(v) ? v : def);
@@ -33,7 +33,7 @@
 
   // Modo de visualización en pantalla adaptado estrictamente según dispositivo
   let layoutMode = getAutoLayoutMode();
-  let activeTab = 'hoy'; // 'hoy' | 'rutinas' | 'salud' | 'evolucion' | 'ajustes'
+  let activeTab = 'hoy'; // 'hoy' | 'rutinas' | 'historico' | 'salud' | 'evolucion' | 'ajustes'
   let activeModal = null; // null | { type, ... }
   let previousModal = null; // Para volver al modal anterior al cerrar el visor (👁️)
   let lastDeletedSerie = null;
@@ -42,6 +42,11 @@
   let draftSugerenciaTexto = '';
   let isDictatingSugerencia = false;
   let activeSpeechRecognition = null;
+
+  // Estado para edición simplificada y vista de histórico
+  let editingEjercicios = new Set();
+  let historialBusqueda = '';
+  let expandedHistorialEjIds = new Set();
 
   // Estado persistente de formularios de Salud y Ficha Física para que guardar uno NUNCA modifique ni reinicie el otro
   let draftReadiness = {
@@ -499,6 +504,38 @@
     const rutinasActivas = (state.rutinas || []).filter(r => !r.deleted);
     const observacionesRecientes = (state.observaciones || []).filter(o => !o.deleted).slice(0, 2);
 
+    // Check-in rápido al llegar al gimnasio: "¿Cómo estás hoy?"
+    const readinessHoy = (state.readinessLogs || []).find(r => r.fecha === Engine.todayISO() && !r.deleted);
+    const estadoActual = readinessHoy ? (readinessHoy.observacionAlumno || '') : '';
+    const checkinCardHtml = `
+      <div class="card checkin-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+          <div>
+            <span class="badge badge-neon">Llegando al gym</span>
+            <h3 style="font-size: 15px; font-weight: 800; margin-top: 4px; color: var(--text-main);">👋 ¿Cómo estás hoy para entrenar?</h3>
+          </div>
+          ${estadoActual ? `<span class="badge badge-blue">✓ ${h(estadoActual)}</span>` : ''}
+        </div>
+        <div class="checkin-chips">
+          <button type="button" class="checkin-chip ${estadoActual === 'Excelente' ? 'selected' : ''}" data-action="quick-checkin" data-estado="Excelente" data-energia="5" data-estres="1">
+            ⚡ Excelente
+          </button>
+          <button type="button" class="checkin-chip ${estadoActual === 'Con energía' ? 'selected' : ''}" data-action="quick-checkin" data-estado="Con energía" data-energia="5" data-estres="1">
+            🔥 Con energía
+          </button>
+          <button type="button" class="checkin-chip ${estadoActual === 'Normal' ? 'selected' : ''}" data-action="quick-checkin" data-estado="Normal" data-energia="4" data-estres="2">
+            😊 Normal
+          </button>
+          <button type="button" class="checkin-chip ${estadoActual === 'Cansado' ? 'selected' : ''}" data-action="quick-checkin" data-estado="Cansado" data-energia="2" data-estres="3">
+            😴 Cansado
+          </button>
+          <button type="button" class="checkin-chip ${estadoActual === 'Con molestia' ? 'selected' : ''}" data-action="quick-checkin" data-estado="Con molestia" data-energia="2" data-estres="4">
+            ⚠️ Con molestia
+          </button>
+        </div>
+      </div>
+    `;
+
     // Si NO hay un entrenamiento en curso
     if (!entActivo) {
       const hoyInfo = Engine.rutinaParaHoy(state);
@@ -526,6 +563,8 @@
             </button>
           </div>
         </div>
+
+        ${checkinCardHtml}
 
         <!-- Acción principal del día -->
         <div class="card hoy-cta">
@@ -740,7 +779,9 @@
     const descanso = Engine.getDescanso(state);
 
     return `
-        <!-- Encabezado de Sesión Activa -->
+      ${checkinCardHtml}
+
+      <!-- Encabezado de Sesión Activa -->
       <div class="card">
         <div class="card-header">
           <div>
@@ -779,8 +820,7 @@
       <!-- ENTRENAMIENTO DE HOY & RUTINA AMRAP                      -->
       <!-- ======================================================== -->
       <div class="training-section-header">
-        <span class="training-section-title">${renderIcon('activity')} Entrenamiento de Hoy</span>
-        <span class="badge badge-neon" title="Descanso automático entre series">${descanso.automatico ? `⏱ ${descanso.segundos}s auto` : '⏱ manual'}</span>
+        <span class="training-section-title">${renderIcon('activity')} Ejercicios de Hoy</span>
       </div>
 
       <!-- Rutinas AMRAP dentro del Día (con múltiples ejercicios y tiempos de trabajo/descanso) -->
@@ -863,106 +903,82 @@
         </div>
       ` : `<div data-drag-list="sesion" style="display: flex; flex-direction: column; gap: 12px;">` + ejerciciosList.map((item, idx) => {
         const ej = item.ejercicio;
+        const media = Engine.resolveEjercicioMedia(ej);
         const seriesDelEj = seriesEntreno.filter(s => s.ejercicioId === ej.id);
         const prev = Engine.getUltimaSesionEjercicio(state, ej.id, entActivo.id);
         const sug = Engine.sugerirProgresion(state, ej.id, { excluirEntrenamientoId: entActivo.id, repsObjetivo: item.targetReps, seriesObjetivo: item.targetSets, equipo: ej.equipo });
         const ultimaHoy = seriesDelEj[seriesDelEj.length - 1];
-        // Valores iniciales: lo que ya cargaste hoy > sugerencia > la vez pasada > 30×8
+        // Valores iniciales: lo que ya cargaste hoy > sugerencia > la vez pasada > 30x10
         const defaultPeso = ultimaHoy ? ultimaHoy.pesoKg : (sug.pesoKg != null ? sug.pesoKg : (prev ? prev.mejor.pesoKg : 30));
-        const defaultReps = ultimaHoy ? ultimaHoy.reps : (sug.reps || (prev ? prev.mejor.reps : 8));
-        const defaultRir = ultimaHoy && Number.isFinite(Number(ultimaHoy.rir)) ? Number(ultimaHoy.rir) : 2;
-        const defaultSeriesCant = item.targetSets || ej.seriesSugeridas || 3;
-        const esBarra = /barra/i.test(ej.equipo || '');
-        const discos = esBarra ? Engine.calcularDiscos(defaultPeso) : null;
-        const hechas = seriesDelEj.length;
-        const completo = hechas >= defaultSeriesCant;
+        const defaultReps = ultimaHoy ? ultimaHoy.reps : (sug.reps || (prev ? prev.mejor.reps : 10));
+        const defaultSeriesCant = seriesDelEj.length > 0 ? seriesDelEj.length : (item.targetSets || ej.seriesSugeridas || 3);
+        const yaGuardado = seriesDelEj.length > 0 && !editingEjercicios.has(ej.id);
 
         return `
-          <div class="card ej-card ${completo ? 'completo' : ''}" data-drag-id="${h(ej.id)}">
-            <div class="ej-head">
-              <button type="button" class="drag-handle" data-drag-handle aria-label="Arrastrar para ordenar" title="Mantené apretado y arrastrá para ordenar">⋮⋮</button>
-              <div style="flex: 1; min-width: 0;">
-                <div class="ej-meta">#${idx + 1} · ${h(ej.grupoMuscular)} · ${h(ej.equipo)} · objetivo ${item.targetSets}×${h(item.targetReps)}</div>
-                <h3 class="ej-title">${h(ej.nombre)}</h3>
-                <div class="ej-prev">
-                  ${prev
-                    ? `<span>La vez pasada (${h(prev.fecha.slice(5).split('-').reverse().join('/'))}): <strong>${h(prev.texto)}</strong></span>`
-                    : '<span>Primera vez con este ejercicio.</span>'}
+          <div class="card ej-card ${yaGuardado ? 'completo' : ''}" data-drag-id="${h(ej.id)}">
+            <div class="ej-card-top">
+              <div class="ej-thumb" title="${h(ej.nombre)}">
+                ${media.illustrationUrl ? `
+                  <img class="ej-thumb-img" src="${h(media.illustrationUrl)}" alt="${h(ej.nombre)}" loading="lazy">
+                ` : `
+                  <div class="ej-thumb-fallback">${h((ej.nombre || 'EJ').slice(0, 2).toUpperCase())}</div>
+                `}
+              </div>
+              <div class="ej-info">
+                <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                  <span class="badge badge-neon">${h(ej.grupoMuscular)}</span>
+                  <span style="font-size: 11px; color: var(--text-dim); text-transform: uppercase; font-weight: 700;">${h(ej.equipo || 'peso')}</span>
                 </div>
-                ${sug.accion !== 'nuevo' && !ultimaHoy ? `
-                  <button type="button" class="sug-chip ${sug.accion}" data-action="apply-sugerencia" data-ejercicio-id="${h(ej.id)}" data-peso="${sug.pesoKg}" data-reps="${sug.reps}" title="${h(sug.motivo)}">
-                    ${sug.accion === 'subir' ? '▲' : sug.accion === 'bajar' ? '▼' : '→'} Sugerido: <strong>${sug.pesoKg} kg × ${sug.reps}</strong> <span class="sug-why">¿por qué?</span>
-                  </button>` : ''}
-                ${item.notaProfesor ? `<p class="ej-nota">🩺 ${h(item.notaProfesor)}</p>` : ''}
+                <h3 class="ej-title" style="margin: 3px 0 2px 0;">${h(ej.nombre)}</h3>
+                <div class="ej-clase-anterior">
+                  ${prev
+                    ? `⏮ Clase anterior: <strong>${h(prev.texto)}</strong>`
+                    : '<span class="primera-vez">✨ Primera vez con este ejercicio</span>'}
+                </div>
+                ${item.notaProfesor ? `<p class="ej-nota" style="margin-top: 4px;">🩺 ${h(item.notaProfesor)}</p>` : ''}
               </div>
               <div class="ej-tools">
-                <button type="button" class="btn-eye-icon" data-action="view-ejercicio" data-ejercicio-id="${h(ej.id)}" title="Ver técnica y lámina">${renderIcon('eye')}</button>
-                <button type="button" class="btn-icon-action" data-action="open-edit-sesion-ej" data-ejercicio-id="${h(ej.id)}" data-entrenamiento-id="${h(entActivo.id)}" data-series="${item.targetSets}" data-reps="${h(item.targetReps)}" data-notas="${h(item.notaProfesor || ej.notas || '')}" title="Cambiar o editar">✏️</button>
-                <button type="button" class="btn-icon-action danger" data-action="delete-sesion-ej" data-ejercicio-id="${h(ej.id)}" data-entrenamiento-id="${h(entActivo.id)}" title="Quitar de hoy">✕</button>
+                <button type="button" class="btn-eye-icon" data-action="view-ejercicio" data-ejercicio-id="${h(ej.id)}" title="Ver técnica e ilustración">${renderIcon('eye')}</button>
+                <button type="button" class="btn-icon-action danger" data-action="delete-sesion-ej" data-ejercicio-id="${h(ej.id)}" data-entrenamiento-id="${h(entActivo.id)}" title="Quitar ejercicio de hoy">✕</button>
               </div>
             </div>
 
-            ${seriesDelEj.length > 0 ? `
-              <div class="series-done">
-                ${seriesDelEj.map((sr, sIdx) => `
-                  <div class="serie-pill ${sr.tipo !== 'efectiva' ? 'alt' : ''}" title="${h(sr.tipo)} · RPE ${sr.rpe ?? 8}">
-                    <span class="serie-num">${sIdx + 1}</span>
-                    <strong>${sr.pesoKg}</strong><span class="u">kg</span> × <strong>${sr.reps}</strong>
-                    <span class="rir">RIR ${sr.rir ?? 2}</span>
-                    ${sr.tipo !== 'efectiva' ? `<span class="tipo">${h(sr.tipo.slice(0, 5))}</span>` : ''}
-                    <button type="button" data-action="delete-serie" data-serie-id="${h(sr.id)}" title="Borrar serie">✕</button>
+            ${yaGuardado ? `
+              <div class="ej-saved-box">
+                <div class="ej-saved-summary">
+                  <span style="font-size: 16px; color: var(--accent-emerald);">✓</span>
+                  <div class="ej-saved-data">
+                    <span style="color: var(--accent-emerald);">${seriesDelEj.length} series guardadas</span>
+                    <span style="color: var(--text-dim); margin: 0 4px;">·</span>
+                    <span>${ultimaHoy.pesoKg} kg × ${ultimaHoy.reps} reps</span>
                   </div>
-                `).join('')}
-                <span class="series-progress">${hechas}/${defaultSeriesCant} series${completo ? ' ✓' : ''}</span>
-              </div>
-            ` : ''}
-
-            <div class="serie-form">
-              <div class="serie-field">
-                <label class="form-label" for="input-peso-${h(ej.id)}">Peso (kg)</label>
-                <div class="stepper-row">
-                  <button type="button" class="btn-step" data-action="quick-add-weight" data-target-input="input-peso-${h(ej.id)}" data-amount="-2.5">−2,5</button>
-                  <input type="number" step="0.5" id="input-peso-${h(ej.id)}" class="serie-input big" value="${defaultPeso}" inputmode="decimal" data-discos-for="${esBarra ? h(ej.id) : ''}">
-                  <button type="button" class="btn-step" data-action="quick-add-weight" data-target-input="input-peso-${h(ej.id)}" data-amount="2.5">+2,5</button>
                 </div>
-                ${esBarra ? `<div class="discos" id="discos-${h(ej.id)}">${h(discos.texto)}</div>` : ''}
-              </div>
-              <div class="serie-field">
-                <label class="form-label" for="input-reps-${h(ej.id)}">Reps</label>
-                <div class="stepper-row">
-                  <button type="button" class="btn-step" data-action="quick-add-reps" data-target-input="input-reps-${h(ej.id)}" data-amount="-1">−</button>
-                  <input type="number" id="input-reps-${h(ej.id)}" class="serie-input big" value="${defaultReps}" inputmode="numeric">
-                  <button type="button" class="btn-step" data-action="quick-add-reps" data-target-input="input-reps-${h(ej.id)}" data-amount="1">+</button>
+                <div class="ej-saved-actions">
+                  <button type="button" class="btn-sm btn-secondary" data-action="edit-saved-exercise" data-ejercicio-id="${h(ej.id)}" title="Modificar peso o repeticiones">✏️ Modificar</button>
+                  <button type="button" class="btn-sm btn-secondary danger" data-action="delete-all-series-ej" data-ejercicio-id="${h(ej.id)}" data-entrenamiento-id="${h(entActivo.id)}" title="Borrar series">✕ Borrar</button>
                 </div>
               </div>
-              <div class="serie-field">
-                <label class="form-label">RIR <span class="form-hint">reps que te quedaron en el tanque</span></label>
-                <div class="rir-seg" data-rir-group="${h(ej.id)}">
-                  ${[0, 1, 2, 3, 4].map(v => `<button type="button" class="${v === defaultRir ? 'on' : ''}" data-action="set-rir" data-ejercicio-id="${h(ej.id)}" data-value="${v}">${v === 0 ? '0<small>fallo</small>' : v === 4 ? '4+' : v}</button>`).join('')}
+            ` : `
+              <div class="ej-input-box">
+                <div class="ej-inputs-grid">
+                  <div class="ej-input-col">
+                    <label class="ej-input-label" for="bulk-peso-${h(ej.id)}">PESO (KG)</label>
+                    <input type="number" step="0.5" id="bulk-peso-${h(ej.id)}" class="ej-val-input" value="${defaultPeso}" inputmode="decimal" placeholder="0">
+                  </div>
+                  <div class="ej-input-col">
+                    <label class="ej-input-label" for="bulk-reps-${h(ej.id)}">REPES</label>
+                    <input type="number" id="bulk-reps-${h(ej.id)}" class="ej-val-input" value="${defaultReps}" inputmode="numeric" placeholder="10">
+                  </div>
+                  <div class="ej-input-col">
+                    <label class="ej-input-label" for="bulk-series-${h(ej.id)}">SERIES</label>
+                    <input type="number" id="bulk-series-${h(ej.id)}" class="ej-val-input" value="${defaultSeriesCant}" inputmode="numeric" min="1" max="10">
+                  </div>
                 </div>
-                <input type="hidden" id="select-rir-${h(ej.id)}" value="${defaultRir}">
-                <input type="hidden" id="select-rpe-${h(ej.id)}" value="${10 - defaultRir}">
-              </div>
-              <div class="serie-field tipo-row">
-                <label class="form-label" for="select-tipo-${h(ej.id)}">Tipo</label>
-                <select id="select-tipo-${h(ej.id)}" class="serie-input">
-                  <option value="efectiva" selected>Efectiva</option>
-                  <option value="calentamiento">Calentamiento</option>
-                  <option value="dropset">Dropset</option>
-                  <option value="fallo">Al fallo</option>
-                </select>
-              </div>
-
-              <button type="button" class="btn-primary btn-xl" data-action="save-serie" data-ejercicio-id="${h(ej.id)}" data-entrenamiento-id="${h(entActivo.id)}">
-                ✓ Guardar serie ${hechas + 1}
-              </button>
-              <div class="serie-secondary">
-                <input type="hidden" id="input-cant-series-${h(ej.id)}" value="${Math.max(1, defaultSeriesCant - hechas)}">
-                <button type="button" class="btn-link" data-action="save-serie-completa" data-ejercicio-id="${h(ej.id)}" data-entrenamiento-id="${h(entActivo.id)}" title="Guarda de una vez las series que faltan con estos mismos datos">
-                  Repetir para las ${Math.max(1, defaultSeriesCant - hechas)} serie${Math.max(1, defaultSeriesCant - hechas) === 1 ? '' : 's'} que faltan
+                <button type="button" class="btn-primary btn-save-bulk" data-action="save-ejercicio-completo" data-ejercicio-id="${h(ej.id)}" data-entrenamiento-id="${h(entActivo.id)}">
+                  ✓ Guardar series juntas
                 </button>
               </div>
-            </div>
+            `}
           </div>
         `;
       }).join('') + `</div>`}
@@ -1118,6 +1134,138 @@
                 </div>
               </div>
             `).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  // 6.2b Pestaña HISTÓRICO DE EJERCICIOS Y CLASES ANTERIORES
+  function renderAlumnoHistoricoSection(state, user) {
+    const todosEjercicios = [
+      ...(state.ejercicios || []).filter(e => !e.deleted),
+      ...Engine.CATALOGO_EJERCICIOS.filter(c => !(state.ejercicios || []).some(e => e.id === c.id && !e.deleted))
+    ];
+
+    const q = (historialBusqueda || '').toLowerCase().trim();
+    const filtrados = todosEjercicios.filter(e => {
+      if (!q) return true;
+      return (e.nombre || '').toLowerCase().includes(q) || (e.grupoMuscular || '').toLowerCase().includes(q);
+    });
+
+    // Ordenar: primero los que tienen historial (más recientes primero), luego los demás alfabéticamente
+    filtrados.sort((a, b) => {
+      const prevA = Engine.getUltimaSesionEjercicio(state, a.id);
+      const prevB = Engine.getUltimaSesionEjercicio(state, b.id);
+      if (prevA && !prevB) return -1;
+      if (!prevA && prevB) return 1;
+      if (prevA && prevB) return (prevB.fecha || '').localeCompare(prevA.fecha || '');
+      return (a.nombre || '').localeCompare(b.nombre || '');
+    });
+
+    const entrenamientosPasados = (state.entrenamientos || []).filter(t => !t.deleted && t.completado);
+    const volumenTotal = (state.series || [])
+      .filter(s => !s.deleted && s.completada)
+      .reduce((acc, s) => acc + Engine.computeVolumenSerie(s), 0);
+
+    return `
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <span class="badge badge-neon">Historial de Clases & Ejercicios</span>
+            <h2 class="card-title" style="font-size: 20px; margin-top: 4px; color: var(--text-main);">Mi Histórico de Gimnasio</h2>
+            <p style="font-size: 12px; color: var(--text-dim); margin-top: 2px;">
+              Revisá qué peso y repeticiones hiciste en cada clase anterior para saber qué carga levantar hoy.
+            </p>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: var(--bg-elevated); padding: 12px; border-radius: var(--radius-md); text-align: center; margin-bottom: 12px;">
+          <div>
+            <span style="font-size: 10px; text-transform: uppercase; color: var(--text-dim); font-weight: 700;">Clases Realizadas</span>
+            <p style="font-size: 18px; font-weight: 800; font-family: var(--font-mono); color: var(--text-main);">${entrenamientosPasados.length}</p>
+          </div>
+          <div>
+            <span style="font-size: 10px; text-transform: uppercase; color: var(--text-dim); font-weight: 700;">Volumen Total</span>
+            <p style="font-size: 18px; font-weight: 800; font-family: var(--font-mono); color: var(--cta-blue-light);">${Math.round(volumenTotal).toLocaleString()} kg</p>
+          </div>
+        </div>
+
+        <!-- Buscador instantáneo de ejercicio -->
+        <div style="position: relative; margin-bottom: 12px;">
+          <input type="text" id="historial-search-input" class="form-input" placeholder="🔍 Buscar ejercicio (ej: dominadas, sentadilla, press...)" value="${h(historialBusqueda)}" data-action="search-historial" style="font-size: 14px; padding-left: 12px; padding-right: 36px;">
+          ${historialBusqueda ? `
+            <button type="button" data-action="clear-historial-search" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-dim); font-size: 14px; cursor: pointer; padding: 4px 6px;">✕</button>
+          ` : ''}
+        </div>
+
+        <!-- Lista de tarjetas de ejercicios con imagen y registro de clases -->
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          ${filtrados.length === 0 ? `
+            <div style="text-align: center; padding: 24px; color: var(--text-dim); font-size: 13px;">
+              No se encontraron ejercicios con "${h(historialBusqueda)}".
+            </div>
+          ` : filtrados.map(ej => {
+            const media = Engine.resolveEjercicioMedia(ej);
+            const historial = Engine.getHistorialCompletoEjercicio(state, ej.id);
+            const prev = Engine.getUltimaSesionEjercicio(state, ej.id);
+            const isExpanded = expandedHistorialEjIds.has(ej.id);
+
+            return `
+              <div class="historico-ej-card">
+                <div class="ej-card-top" style="align-items: center;">
+                  <div class="ej-thumb" title="${h(ej.nombre)}">
+                    ${media.illustrationUrl ? `
+                      <img class="ej-thumb-img" src="${h(media.illustrationUrl)}" alt="${h(ej.nombre)}" loading="lazy">
+                    ` : `
+                      <div class="ej-thumb-fallback">${h((ej.nombre || 'EJ').slice(0, 2).toUpperCase())}</div>
+                    `}
+                  </div>
+                  <div class="ej-info">
+                    <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                      <span class="badge badge-neon">${h(ej.grupoMuscular)}</span>
+                      <span style="font-size: 11px; color: var(--text-dim); text-transform: uppercase; font-weight: 700;">${h(ej.equipo || 'peso')}</span>
+                    </div>
+                    <h3 class="ej-title" style="margin: 3px 0 2px 0;">${h(ej.nombre)}</h3>
+                    <div class="ej-clase-anterior">
+                      ${prev
+                        ? `⏮ Última clase (${h(prev.fecha.slice(5).split('-').reverse().join('/'))}): <strong>${h(prev.texto)}</strong>`
+                        : '<span class="primera-vez">Sin clases registradas aún</span>'}
+                    </div>
+                  </div>
+                  <div class="ej-tools">
+                    <button type="button" class="btn-eye-icon" data-action="view-ejercicio" data-ejercicio-id="${h(ej.id)}" title="Ver técnica e ilustración">${renderIcon('eye')}</button>
+                  </div>
+                </div>
+
+                ${historial.length > 0 ? `
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px; padding-top: 6px; border-top: 1px dashed var(--border-subtle); font-size: 12px;">
+                    <span style="color: var(--text-dim);">${historial.length} clase${historial.length > 1 ? 's' : ''} registrada${historial.length > 1 ? 's' : ''}</span>
+                    <button type="button" class="btn-link" data-action="toggle-expand-historial-ej" data-ejercicio-id="${h(ej.id)}" style="font-size: 12px; font-weight: 700;">
+                      ${isExpanded ? '▴ Ocultar historial' : `▾ Ver todas las clases (${historial.length})`}
+                    </button>
+                  </div>
+
+                  ${isExpanded ? `
+                    <div class="historico-clases-list">
+                      ${historial.map(sesion => `
+                        <div class="historico-clase-item">
+                          <div>
+                            <strong>🗓 ${h(sesion.fecha ? sesion.fecha.split('-').reverse().join('/') : 'Clase')}</strong>
+                            <div style="font-size: 11.5px; color: var(--text-dim); margin-top: 1px;">
+                              ${sesion.series.length} series · Mejor: <strong>${sesion.mejorSerie.pesoKg} kg × ${sesion.mejorSerie.reps} reps</strong>
+                            </div>
+                          </div>
+                          <span class="badge badge-neon" style="font-family: var(--font-mono); font-size: 11px;">
+                            ${Math.round(sesion.volumenTotal).toLocaleString()} kg
+                          </span>
+                        </div>
+                      `).join('')}
+                    </div>
+                  ` : ''}
+                ` : ''}
+              </div>
+            `;
+          }).join('')}
         </div>
       </div>
     `;
@@ -1888,8 +2036,8 @@
     let content = '';
     if (activeTab === 'hoy') content = renderAlumnoHoySection(state, user);
     else if (activeTab === 'rutinas') content = renderAlumnoRutinasSection(state);
+    else if (activeTab === 'historico' || activeTab === 'evolucion') content = renderAlumnoHistoricoSection(state, user);
     else if (activeTab === 'salud') content = renderAlumnoSaludSection(state);
-    else if (activeTab === 'evolucion') content = renderAlumnoEvolucionSection(state);
     else content = renderAlumnoAjustesSection(state, user);
 
     return `
@@ -1918,11 +2066,11 @@
           <button type="button" class="nav-item ${activeTab === 'rutinas' ? 'active' : ''}" data-action="switch-tab" data-tab="rutinas">
             <span class="nav-icon">${renderIcon('clipboard')}</span><span>Rutinas</span>
           </button>
-          <button type="button" class="nav-item ${activeTab === 'salud' ? 'active' : ''}" data-action="switch-tab" data-tab="salud">
-            <span class="nav-icon">${renderIcon('activity')}</span><span>Salud & Días</span>
+          <button type="button" class="nav-item ${activeTab === 'historico' || activeTab === 'evolucion' ? 'active' : ''}" data-action="switch-tab" data-tab="historico">
+            <span class="nav-icon">${renderIcon('chart')}</span><span>Histórico</span>
           </button>
-          <button type="button" class="nav-item ${activeTab === 'evolucion' ? 'active' : ''}" data-action="switch-tab" data-tab="evolucion">
-            <span class="nav-icon">${renderIcon('chart')}</span><span>Evolución</span>
+          <button type="button" class="nav-item ${activeTab === 'salud' ? 'active' : ''}" data-action="switch-tab" data-tab="salud">
+            <span class="nav-icon">${renderIcon('activity')}</span><span>Salud</span>
           </button>
           <button type="button" class="nav-item ${activeTab === 'ajustes' ? 'active' : ''}" data-action="switch-tab" data-tab="ajustes">
             <span class="nav-icon">${renderIcon('settings')}</span><span>Cuenta</span>
@@ -1936,8 +2084,8 @@
     let content = '';
     if (activeTab === 'hoy') content = renderAlumnoHoySection(state, user);
     else if (activeTab === 'rutinas') content = renderAlumnoRutinasSection(state);
+    else if (activeTab === 'historico' || activeTab === 'evolucion') content = renderAlumnoHistoricoSection(state, user);
     else if (activeTab === 'salud') content = renderAlumnoSaludSection(state);
-    else if (activeTab === 'evolucion') content = renderAlumnoEvolucionSection(state);
     else content = renderAlumnoAjustesSection(state, user);
 
     return `
@@ -1961,11 +2109,11 @@
               <button type="button" class="pc-nav-btn ${activeTab === 'rutinas' ? 'active' : ''}" data-action="switch-tab" data-tab="rutinas">
                 ${renderIcon('clipboard')}<span>Mis Rutinas & Catálogo (+)</span>
               </button>
+              <button type="button" class="pc-nav-btn ${activeTab === 'historico' || activeTab === 'evolucion' ? 'active' : ''}" data-action="switch-tab" data-tab="historico">
+                ${renderIcon('chart')}<span>Histórico de Clases & Ejercicios</span>
+              </button>
               <button type="button" class="pc-nav-btn ${activeTab === 'salud' ? 'active' : ''}" data-action="switch-tab" data-tab="salud">
                 ${renderIcon('activity')}<span>Salud Física/Psicológica & Días</span>
-              </button>
-              <button type="button" class="pc-nav-btn ${activeTab === 'evolucion' ? 'active' : ''}" data-action="switch-tab" data-tab="evolucion">
-                ${renderIcon('chart')}<span>Histórico Evolutivo & Fotos</span>
               </button>
               <button type="button" class="pc-nav-btn ${activeTab === 'ajustes' ? 'active' : ''}" data-action="switch-tab" data-tab="ajustes">
                 ${renderIcon('settings')}<span>Cuenta & Respaldo Offline</span>
@@ -2217,19 +2365,30 @@
 
           <!-- Lista de Ejercicios con 👁️ y botón "+ Añadir" -->
           <div style="display: flex; flex-direction: column; gap: 8px; max-height: 340px; overflow-y: auto;">
-            ${filtrados.map(e => `
-              <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; background: var(--bg-elevated); padding: 12px 14px; border-radius: var(--radius-md);">
-                <div style="flex: 1;">
-                  <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
-                    <span class="badge badge-neon">${h(e.grupoMuscular)}</span>
-                    <span style="font-size: 11px; color: var(--text-dim); text-transform: uppercase; font-weight: 700;">${h(e.equipo)}</span>
-                    ${e.esAmrap || e.grupoMuscular === 'amrap' ? `<span class="badge badge-amber">${e.tiempoTrabajoSeg || 40}s / ${e.tiempoDescansoSeg || 20}s</span>` : ''}
+            ${filtrados.map(e => {
+              const media = Engine.resolveEjercicioMedia(e);
+              return `
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; background: var(--bg-elevated); padding: 10px 12px; border-radius: var(--radius-md);">
+                <div style="display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0;">
+                  <div class="catalog-item-thumb">
+                    ${media.illustrationUrl ? `
+                      <img class="catalog-thumb-img" src="${h(media.illustrationUrl)}" alt="${h(e.nombre)}" loading="lazy">
+                    ` : `
+                      <div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; color: var(--text-dim); background: var(--bg-surface);">${h((e.nombre || 'EJ').slice(0, 2).toUpperCase())}</div>
+                    `}
                   </div>
-                  <div style="font-size: 14px; font-weight: 800; margin-top: 3px; color: var(--text-main);">${h(e.nombre)}</div>
-                  <div style="font-size: 11.5px; color: var(--text-dim);">${h(e.notas)}</div>
+                  <div style="flex: 1; min-width: 0;">
+                    <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+                      <span class="badge badge-neon">${h(e.grupoMuscular)}</span>
+                      <span style="font-size: 10px; color: var(--text-dim); text-transform: uppercase; font-weight: 700;">${h(e.equipo)}</span>
+                      ${e.esAmrap || e.grupoMuscular === 'amrap' ? `<span class="badge badge-amber">${e.tiempoTrabajoSeg || 40}s / ${e.tiempoDescansoSeg || 20}s</span>` : ''}
+                    </div>
+                    <div style="font-size: 13.5px; font-weight: 800; margin-top: 2px; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${h(e.nombre)}</div>
+                    <div style="font-size: 11px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${h(e.notas || '')}</div>
+                  </div>
                 </div>
-                <div style="display: flex; align-items: center; gap: 6px;">
-                  <button type="button" class="btn-eye-icon" data-action="view-ejercicio" data-ejercicio-id="${h(e.id)}" title="Ver posición inicial y final">
+                <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+                  <button type="button" class="btn-eye-icon" data-action="view-ejercicio" data-ejercicio-id="${h(e.id)}" title="Ver técnica e ilustración">
                     ${renderIcon('eye')}
                   </button>
                   <button type="button" class="btn-primary" data-action="pick-catalog-exercise" data-ejercicio-id="${h(e.id)}" style="width: auto; min-height: 36px; padding: 0 14px;">
@@ -2237,7 +2396,7 @@
                   </button>
                 </div>
               </div>
-            `).join('')}
+            `;}).join('')}
           </div>
         </div>
       `;
@@ -3177,10 +3336,9 @@
         showToast('No tenés un entrenamiento activo.');
         return;
       }
-      const nombre = prompt('Nombre para tu nueva rutina:', `Rutina de ${Engine.todayISO()}`);
-      if (!nombre || !nombre.trim()) return;
-      Store.commit(s => Engine.guardarSesionComoRutina(s, nombre.trim()));
-      showToast(`✓ Rutina "${nombre.trim()}" guardada en Mis Rutinas.`);
+      const nombre = `Rutina de ${Engine.diaDeLaSemana(Engine.todayISO())}`;
+      Store.commit(s => Engine.guardarSesionComoRutina(s, nombre));
+      showToast('✓ Rutina guardada');
       render();
     },
 
@@ -3439,6 +3597,7 @@
       const seriesHoy = (Store.getState().series || []).filter(x => x.entrenamientoId === id && !x.deleted).length;
       if (!seriesHoy && !window.confirm('No guardaste ninguna serie en esta sesión. ¿Cerrarla igual?')) return;
       Store.commit(s => Engine.finalizarEntrenamiento(s, id));
+      editingEjercicios.clear();
       Timer.stop();
       syncWakeLock(false);
       activeModal = { type: 'resumen-sesion', entrenamientoId: id };
@@ -3681,6 +3840,7 @@
       if (!ejId) return;
 
       Store.commit(s => Engine.quitarEjercicioDeSesion(s, trId, ejId));
+      editingEjercicios.delete(ejId);
       if (activeModal && activeModal.type === 'edit-sesion-ej') {
         activeModal = null;
       }
@@ -3920,6 +4080,114 @@
         input.value = Math.max(0, Math.round((curr + amount) * 100) / 100).toString();
         input.dispatchEvent(new Event('input', { bubbles: true }));
       }
+    },
+
+    // --- CHECK-IN RÁPIDO AL LLEGAR AL GYM ---
+    'quick-checkin': el => {
+      const estado = el.getAttribute('data-estado');
+      const energia = Number(el.getAttribute('data-energia')) || 4;
+      const estres = Number(el.getAttribute('data-estres')) || 2;
+      Store.commit(state => Engine.registrarReadiness(state, {
+        energia,
+        estres,
+        observacionAlumno: estado
+      }));
+      showToast(`✓ Estado registrado: ${estado}`);
+      render();
+    },
+
+    // --- GUARDAR SERIES JUNTAS (SOLO KG Y REPES) ---
+    'save-ejercicio-completo': el => {
+      const ejId = el.getAttribute('data-ejercicio-id');
+      const entId = el.getAttribute('data-entrenamiento-id');
+      const pesoEl = document.getElementById(`bulk-peso-${ejId}`);
+      const repsEl = document.getElementById(`bulk-reps-${ejId}`);
+      const seriesEl = document.getElementById(`bulk-series-${ejId}`);
+
+      const pesoKg = pesoEl ? parseFloat(pesoEl.value) || 0 : 0;
+      const reps = repsEl ? parseInt(repsEl.value, 10) || 0 : 0;
+      const seriesCant = seriesEl ? parseInt(seriesEl.value, 10) || 3 : 3;
+
+      if (reps <= 0) {
+        showToast('Indicá al menos 1 repetición');
+        if (repsEl) repsEl.focus();
+        return;
+      }
+
+      Store.commit(state => {
+        const seriesPrevias = (state.series || []).filter(
+          s => s.entrenamientoId === entId && s.ejercicioId === ejId && !s.deleted
+        );
+        let curState = state;
+        if (seriesPrevias.length > 0) {
+          curState = Engine.borrarMultiplesSeries(state, seriesPrevias.map(s => s.id));
+        }
+        return Engine.guardarMultiplesSeries(curState, {
+          entrenamientoId: entId,
+          ejercicioId: ejId,
+          cantidadSeries: seriesCant,
+          pesoKg,
+          reps,
+          tipo: 'efectiva'
+        });
+      });
+
+      editingEjercicios.delete(ejId);
+      if (navigator.vibrate) {
+        try { navigator.vibrate([60, 30, 60]); } catch (_) {}
+      }
+      showToast(`✓ ${seriesCant} series guardadas (${pesoKg} kg × ${reps} reps)`);
+      render();
+    },
+
+    'edit-saved-exercise': el => {
+      const ejId = el.getAttribute('data-ejercicio-id');
+      if (ejId) {
+        editingEjercicios.add(ejId);
+        render();
+      }
+    },
+
+    'delete-all-series-ej': el => {
+      const ejId = el.getAttribute('data-ejercicio-id');
+      const entId = el.getAttribute('data-entrenamiento-id');
+      Store.commit(state => {
+        const seriesDelEj = (state.series || []).filter(
+          s => s.entrenamientoId === entId && s.ejercicioId === ejId && !s.deleted
+        );
+        if (!seriesDelEj.length) return state;
+        return Engine.borrarMultiplesSeries(state, seriesDelEj.map(s => s.id));
+      });
+      editingEjercicios.delete(ejId);
+      showToast('Series eliminadas');
+      render();
+    },
+
+    // --- HISTÓRICO Y BUSCADOR DE EJERCICIOS ---
+    'search-historial': el => {
+      historialBusqueda = (el.value || '').trim();
+      render();
+      const input = document.getElementById('historial-search-input');
+      if (input) {
+        input.focus();
+        input.setSelectionRange(input.value.length, input.value.length);
+      }
+    },
+
+    'clear-historial-search': () => {
+      historialBusqueda = '';
+      render();
+    },
+
+    'toggle-expand-historial-ej': el => {
+      const ejId = el.getAttribute('data-ejercicio-id');
+      if (!ejId) return;
+      if (expandedHistorialEjIds.has(ejId)) {
+        expandedHistorialEjIds.delete(ejId);
+      } else {
+        expandedHistorialEjIds.add(ejId);
+      }
+      render();
     },
 
     // --- CARGAR 1 SERIE (SIN CRONÓMETRO DE DESCANSO) ---
@@ -4240,13 +4508,27 @@
       return;
     }
     const target = e.target.closest('input[data-action="search-catalog"]');
-    if (!target) return;
-    catalogoBusqueda = target.value;
-    renderModals();
-    const input = document.getElementById('catalog-search-input');
-    if (input) {
-      input.focus();
-      input.setSelectionRange(input.value.length, input.value.length);
+    if (target) {
+      catalogoBusqueda = target.value;
+      renderModals();
+      const input = document.getElementById('catalog-search-input');
+      if (input) {
+        input.focus();
+        input.setSelectionRange(input.value.length, input.value.length);
+      }
+      return;
+    }
+
+    const histTarget = e.target.closest('input[data-action="search-historial"]');
+    if (histTarget) {
+      historialBusqueda = histTarget.value;
+      render();
+      const histInput = document.getElementById('historial-search-input');
+      if (histInput) {
+        histInput.focus();
+        histInput.setSelectionRange(histInput.value.length, histInput.value.length);
+      }
+      return;
     }
   });
 

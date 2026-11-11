@@ -3025,6 +3025,44 @@
   };
 
   /**
+   * Obtiene todas las sesiones históricas donde se realizó este ejercicio, ordenadas por fecha descendente.
+   */
+  Engine.getHistorialCompletoEjercicio = function (state, ejercicioId) {
+    if (!state) return [];
+    const candidatas = (state.series || []).filter(s =>
+      s.ejercicioId === ejercicioId && !s.deleted && s.tipo !== 'calentamiento'
+    );
+    if (!candidatas.length) return [];
+
+    const porEnt = new Map();
+    candidatas.forEach(s => {
+      const entId = s.entrenamientoId || 'sin-id';
+      if (!porEnt.has(entId)) porEnt.set(entId, []);
+      porEnt.get(entId).push(s);
+    });
+
+    const resultado = [];
+    porEnt.forEach((series, entId) => {
+      const tr = (state.entrenamientos || []).find(x => x.id === entId);
+      const fecha = (tr && tr.fecha) || series[0].fecha || '';
+      const ordenadas = series.slice().sort((a, b) => (a.numeroSerie || 0) - (b.numeroSerie || 0));
+      const mejor = ordenadas.reduce((a, s) => (
+        Engine.compute1RM(s.pesoKg, s.reps) > Engine.compute1RM(a.pesoKg, a.reps) ? s : a
+      ), ordenadas[0]);
+
+      resultado.push({
+        entrenamientoId: entId,
+        fecha: fecha,
+        series: ordenadas,
+        mejorSerie: { pesoKg: mejor.pesoKg, reps: mejor.reps },
+        volumenTotal: Engine.computeVolumenEntrenamiento(ordenadas, entId)
+      });
+    });
+
+    return resultado.sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
+  };
+
+  /**
    * Progresión sugerida para hoy a partir de la vez pasada (doble progresión simple):
    * - Si completó las series objetivo con todas las reps ≥ tope del rango y RIR ≥ 2 → sube el peso.
    * - Si alguna serie quedó muy corta (RIR 0 y reps < piso) → baja un escalón.

@@ -648,7 +648,7 @@ body.modal-open {
   padding-bottom: env(safe-area-inset-bottom);
   background: var(--bg-surface);
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
   z-index: 50;
 }
 
@@ -1621,4 +1621,274 @@ body.drag-active { user-select: none; -webkit-user-select: none; }
   .mobility-card { grid-template-columns: auto 1fr; }
   .mobility-card .drag-handle { grid-row: 1 / span 2; }
   .mobility-card > div:last-child { grid-column: 2; justify-content: flex-start; }
+}
+
+/* ======================================================== */
+/* NUEVOS ESTILOS v2.8: CHECK-IN RÁPIDO, EJERCICIOS Y MINIATURAS */
+/* ======================================================== */
+.checkin-card {
+  padding: 14px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  margin-bottom: 12px;
+}
+.checkin-title {
+  font-size: 13.5px;
+  font-weight: 800;
+  color: var(--text-main);
+}
+.checkin-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+.checkin-chip {
+  height: 36px;
+  padding: 0 12px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-elevated);
+  color: var(--text-main);
+  font-weight: 700;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.checkin-chip:hover {
+  background: var(--cta-blue-soft);
+  color: var(--cta-blue-light);
+}
+.checkin-chip.selected {
+  background: var(--cta-blue);
+  border-color: var(--cta-blue);
+  color: #ffffff;
+}
+
+/* Encabezado del ejercicio con miniatura */
+.ej-card-top {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.ej-thumb {
+  width: 58px;
+  height: 58px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: #09090b;
+  border: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ej-thumb:active {
+  transform: scale(0.96);
+}
+.ej-thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.ej-thumb-fallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+}
+.ej-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ej-badge-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.ej-equipo-tag {
+  font-size: 10.5px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.ej-name {
+  font-size: 15.5px;
+  font-weight: 800;
+  color: var(--text-main);
+  line-height: 1.25;
+}
+.ej-clase-anterior {
+  font-size: 12px;
+  color: var(--cta-blue-light);
+  margin-top: 3px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.ej-clase-anterior strong {
+  color: var(--text-main);
+  font-family: var(--font-mono);
+  font-weight: 800;
+}
+.ej-clase-anterior .primera-vez {
+  color: var(--text-dim);
+  font-style: italic;
+  font-weight: 500;
+}
+
+/* Formulario simplificado: SOLO KG Y REPES (guardar todas juntas) */
+.ej-input-box {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+.ej-inputs-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1.2fr 1fr;
+  gap: 8px;
+}
+.ej-input-col {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ej-input-label {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+  text-align: center;
+}
+.ej-val-input {
+  height: 48px;
+  font-size: 20px;
+  font-weight: 800;
+  font-family: var(--font-mono);
+  text-align: center;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-main);
+  width: 100%;
+}
+.ej-val-input:focus {
+  border-color: var(--cta-blue);
+  outline: none;
+  box-shadow: 0 0 0 2px var(--cta-blue-soft);
+}
+.btn-save-bulk {
+  width: 100%;
+  min-height: 46px;
+  margin-top: 10px;
+  font-size: 14px;
+  font-weight: 800;
+  border-radius: var(--radius-sm);
+  background: var(--cta-blue);
+  color: #ffffff;
+  cursor: pointer;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.35);
+  transition: transform 0.1s ease, background 0.15s ease;
+}
+.btn-save-bulk:active {
+  transform: scale(0.98);
+  background: var(--cta-blue-hover);
+}
+
+/* Estado de ejercicio ya guardado */
+.ej-saved-box {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--bg-surface);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ej-saved-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ej-saved-data {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text-main);
+}
+.ej-saved-actions {
+  display: flex;
+  gap: 6px;
+}
+.btn-sm {
+  min-height: 32px !important;
+  padding: 0 10px !important;
+  font-size: 11.5px !important;
+  width: auto !important;
+}
+
+/* Miniatura en el modal del catálogo */
+.catalog-item-thumb {
+  width: 50px;
+  height: 50px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: #09090b;
+  border: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+.catalog-thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Pestaña de Histórico */
+.historico-ej-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.historico-clases-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border-subtle);
+}
+.historico-clase-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--bg-elevated);
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
 }
