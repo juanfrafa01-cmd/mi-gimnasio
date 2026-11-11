@@ -1892,3 +1892,118 @@ body.drag-active { user-select: none; -webkit-user-select: none; }
   border-radius: var(--radius-sm);
   font-size: 12.5px;
 }
+
+/* ==========================================================================
+   ESTADO PSICOFÍSICO Y SALUD SIMPLIFICADA
+   ========================================================================== */
+.salud-date-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  background: var(--bg-elevated);
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 12px;
+}
+.salud-status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.salud-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 12px 8px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-main);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+  min-height: 82px;
+}
+.salud-chip:active {
+  transform: scale(0.97);
+}
+.salud-chip.selected {
+  border-color: var(--cta-blue);
+  background: var(--cta-blue-soft);
+  box-shadow: 0 0 0 1px var(--cta-blue);
+}
+.salud-emoji {
+  font-size: 24px;
+  margin-bottom: 4px;
+  line-height: 1;
+}
+.salud-chip strong {
+  font-size: 13px;
+  font-weight: 800;
+  display: block;
+}
+.salud-chip small {
+  font-size: 10.5px;
+  color: var(--text-dim);
+  margin-top: 2px;
+  display: block;
+}
+.salud-chip.selected small {
+  color: var(--cta-blue-light);
+}
+
+.salud-submetrics {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--bg-elevated);
+  padding: 12px;
+  border-radius: var(--radius-md);
+  margin-bottom: 12px;
+}
+.salud-submetric-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.salud-metric-label {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  letter-spacing: 0.05em;
+}
+.salud-metric-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.salud-m-chip {
+  flex: 1;
+  min-width: 50px;
+  min-height: 36px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-main);
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0 8px;
+  transition: all 0.12s ease;
+}
+.salud-m-chip:active {
+  transform: scale(0.97);
+}
+.salud-m-chip.selected {
+  background: var(--cta-blue);
+  color: #ffffff;
+  border-color: var(--cta-blue);
+}

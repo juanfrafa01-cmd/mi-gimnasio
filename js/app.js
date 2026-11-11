@@ -19,7 +19,7 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '2.8.0';
+  const APP_VERSION = '2.9.0';
 
   /** Número válido o valor por defecto (a diferencia de `|| def`, respeta el 0: RIR 0 = serie al fallo). */
   const numOr = (v, def) => (Number.isFinite(v) ? v : def);
@@ -51,13 +51,17 @@
   // Estado persistente de formularios de Salud y Ficha Física para que guardar uno NUNCA modifique ni reinicie el otro
   let draftReadiness = {
     userKey: null,
-    energia: '4',
-    estres: '2',
-    sueno: '4',
+    fecha: Engine.todayISO(),
+    estadoGeneral: 'Excelente',
+    energia: '5',
+    estres: '1',
+    sueno: '5',
     alimentacion: '4',
     zonaDolor: '',
     observacionAlumno: ''
   };
+
+  let isPerfilOpen = false;
 
   let draftPerfil = {
     userKey: null,
@@ -73,13 +77,20 @@
   function syncSaludDraftsWithState(state, user) {
     const uKey = user ? user.username : 'anon';
     const p = (state && state.perfil) || {};
-    const lastLog = state && Array.isArray(state.readinessLogs)
-      ? state.readinessLogs.find(r => !r.deleted)
+    const hoyISO = Engine.todayISO();
+    const targetFecha = draftReadiness.fecha || hoyISO;
+    const logFecha = state && Array.isArray(state.readinessLogs)
+      ? state.readinessLogs.find(r => r.fecha === targetFecha && !r.deleted)
       : null;
+    const lastLog = logFecha || (state && Array.isArray(state.readinessLogs)
+      ? state.readinessLogs.find(r => !r.deleted)
+      : null);
 
     if (draftReadiness.userKey !== uKey) {
       draftReadiness = {
         userKey: uKey,
+        fecha: hoyISO,
+        estadoGeneral: lastLog ? (lastLog.observacionAlumno || 'Excelente') : 'Excelente',
         energia: lastLog ? String(lastLog.energia) : '4',
         estres: lastLog ? String(lastLog.estres) : '2',
         sueno: lastLog ? String(lastLog.sueno || 4) : '4',
@@ -104,19 +115,13 @@
   }
 
   function captureSaludDraftsFromDOM() {
-    const rdEnergia = document.getElementById('rd-energia');
-    const rdEstres = document.getElementById('rd-estres');
-    const rdSueno = document.getElementById('rd-sueno');
-    const rdAlim = document.getElementById('rd-alimentacion');
+    const rdFecha = document.getElementById('rd-fecha');
     const rdDolor = document.getElementById('rd-dolor');
     const rdObs = document.getElementById('rd-obs');
 
-    if (rdEnergia) draftReadiness.energia = rdEnergia.value;
-    if (rdEstres) draftReadiness.estres = rdEstres.value;
-    if (rdSueno) draftReadiness.sueno = rdSueno.value;
-    if (rdAlim) draftReadiness.alimentacion = rdAlim.value;
-    if (rdDolor) draftReadiness.zonaDolor = rdDolor.value;
-    if (rdObs) draftReadiness.observacionAlumno = rdObs.value;
+    if (rdFecha && rdFecha.value) draftReadiness.fecha = rdFecha.value;
+    if (rdDolor) draftReadiness.zonaDolor = rdDolor.value.trim();
+    if (rdObs) draftReadiness.observacionAlumno = rdObs.value.trim();
 
     const pfEdad = document.getElementById('pf-edad');
     const pfPeso = document.getElementById('pf-peso');
@@ -1271,192 +1276,248 @@
     `;
   }
 
-  // 6.3 Pestaña SALUD FÍSICA Y PSICOLÓGICA + PERFIL DE DÍAS/HORARIOS + OBSERVACIONES
+  // 6.3 Pestaña SALUD FÍSICA Y PSICOLÓGICA (SIMPLIFICADA, RÁPIDA Y A DEMANDA)
   function renderAlumnoSaludSection(state) {
     syncSaludDraftsWithState(state, Store.user);
     const diasSeleccionados = Array.isArray(draftPerfil.diasSemana) ? draftPerfil.diasSemana : [];
     const logs = (state.readinessLogs || []).filter(r => !r.deleted);
     const observaciones = (state.observaciones || []).filter(o => !o.deleted);
 
+    const hoyISO = Engine.todayISO();
+    const ayerDate = new Date(Date.now() - 86400000);
+    const ayerISO = `${ayerDate.getFullYear()}-${String(ayerDate.getMonth() + 1).padStart(2, '0')}-${String(ayerDate.getDate()).padStart(2, '0')}`;
+
+    const selFecha = draftReadiness.fecha || hoyISO;
+    const logDeEstaFecha = logs.find(l => l.fecha === selFecha);
+
     const selEnergia = String(draftReadiness.energia || '4');
     const selEstres = String(draftReadiness.estres || '2');
     const selSueno = String(draftReadiness.sueno || '4');
-    const selAlim = String(draftReadiness.alimentacion || '4');
+    const selEstado = draftReadiness.estadoGeneral || (logDeEstaFecha ? logDeEstaFecha.observacionAlumno : 'Excelente');
+
+    const fechaDisplay = selFecha === hoyISO ? 'Hoy' : (selFecha === ayerISO ? 'Ayer' : selFecha.split('-').reverse().join('/'));
 
     return `
-      <div class="pc-grid-2">
-        <!-- Columna 1: Check-in de Salud Física y Psicológica de Hoy -->
-        <div class="card">
-          <div class="card-header">
-            <div>
-              <span class="badge badge-neon">Check-in Diario Psicofísico</span>
-              <h2 class="card-title" style="margin-top: 4px; color: var(--text-main);">¿Cómo te encontrás hoy física y psicológicamente?</h2>
+      <!-- Tarjeta Principal: Registro Psicofísico Rápido -->
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <span class="badge badge-neon">Estado Psicofísico</span>
+            <h2 class="card-title" style="font-size: 20px; margin-top: 4px; color: var(--text-main);">¿Cómo te sentís para entrenar?</h2>
+            <p style="font-size: 12px; color: var(--text-dim); margin-top: 2px;">
+              Registrá tu energía, descanso y sensaciones el día que quieras (hoy o cualquier fecha pasada).
+            </p>
+          </div>
+          ${logDeEstaFecha ? `<span class="badge badge-blue">✓ Ya registrado</span>` : ''}
+        </div>
+
+        <!-- Selector Rápido de Fecha ("el día que quiera registrarlo") -->
+        <div class="salud-date-bar">
+          <span style="font-size: 11px; font-weight: 800; color: var(--text-dim); text-transform: uppercase;">Día a registrar:</span>
+          <button type="button" class="btn-sm btn-secondary ${selFecha === hoyISO ? 'btn-primary' : ''}" data-action="set-readiness-date" data-date="${hoyISO}" style="font-size: 11px !important;">
+            Hoy (${hoyISO.slice(5).split('-').reverse().join('/')})
+          </button>
+          <button type="button" class="btn-sm btn-secondary ${selFecha === ayerISO ? 'btn-primary' : ''}" data-action="set-readiness-date" data-date="${ayerISO}" style="font-size: 11px !important;">
+            Ayer (${ayerISO.slice(5).split('-').reverse().join('/')})
+          </button>
+          <input type="date" id="rd-fecha" class="form-input" value="${h(selFecha)}" data-action="change-readiness-date" style="width: auto; min-height: 32px; padding: 2px 8px; font-size: 11.5px; font-family: var(--font-mono);">
+        </div>
+
+        <!-- 1. Sensación General en 1 Toque -->
+        <div class="salud-status-grid">
+          <button type="button" class="salud-chip ${selEstado === 'Excelente' ? 'selected' : ''}" data-action="pick-salud-estado" data-estado="Excelente" data-energia="5" data-estres="1" data-sueno="5">
+            <span class="salud-emoji">⚡</span>
+            <strong>Excelente</strong>
+            <small>A tope de energía</small>
+          </button>
+          <button type="button" class="salud-chip ${selEstado === 'Con energía' ? 'selected' : ''}" data-action="pick-salud-estado" data-estado="Con energía" data-energia="4" data-estres="1" data-sueno="4">
+            <span class="salud-emoji">🔥</span>
+            <strong>Con energía</strong>
+            <small>Fuerte y motivado</small>
+          </button>
+          <button type="button" class="salud-chip ${selEstado === 'Normal' ? 'selected' : ''}" data-action="pick-salud-estado" data-estado="Normal" data-energia="3" data-estres="2" data-sueno="3">
+            <span class="salud-emoji">😊</span>
+            <strong>Normal</strong>
+            <small>Cumplir el plan</small>
+          </button>
+          <button type="button" class="salud-chip ${selEstado === 'Cansado' ? 'selected' : ''}" data-action="pick-salud-estado" data-estado="Cansado" data-energia="2" data-estres="3" data-sueno="2">
+            <span class="salud-emoji">😴</span>
+            <strong>Cansado</strong>
+            <small>Fatiga / poco sueño</small>
+          </button>
+          <button type="button" class="salud-chip ${selEstado === 'Con molestia' ? 'selected' : ''}" data-action="pick-salud-estado" data-estado="Con molestia" data-energia="2" data-estres="4" data-sueno="3">
+            <span class="salud-emoji">⚠️</span>
+            <strong>Con molestia</strong>
+            <small>Dolor o sobrecarga</small>
+          </button>
+        </div>
+
+        <!-- 2. Ajuste Fino Opcional (Chips rápidos sin desplegables) -->
+        <div class="salud-submetrics">
+          <div class="salud-submetric-row">
+            <span class="salud-metric-label">Energía Física</span>
+            <div class="salud-metric-chips">
+              ${[1, 2, 3, 4, 5].map(v => `
+                <button type="button" class="salud-m-chip ${Number(selEnergia) === v ? 'selected' : ''}" data-action="set-salud-metric" data-metric="energia" data-val="${v}">
+                  ${v === 1 ? '1 Agotado' : v === 3 ? '3 Normal' : v === 5 ? '5 Máxima' : v}
+                </button>
+              `).join('')}
             </div>
           </div>
 
-          <form data-action="submit-readiness" style="display: flex; flex-direction: column; gap: 12px;">
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-              <div class="form-group">
-                <label class="form-label">Energía Física (1 a 5)</label>
-                <select id="rd-energia" class="form-input">
-                  <option value="5" ${selEnergia === '5' ? 'selected' : ''}>5 — Excelente / Tope de fuerza</option>
-                  <option value="4" ${selEnergia === '4' ? 'selected' : ''}>4 — Muy buena energía</option>
-                  <option value="3" ${selEnergia === '3' ? 'selected' : ''}>3 — Normal / Estándar</option>
-                  <option value="2" ${selEnergia === '2' ? 'selected' : ''}>2 — Cansado / Fatigado</option>
-                  <option value="1" ${selEnergia === '1' ? 'selected' : ''}>1 — Agotamiento extremo</option>
-                </select>
-              </div>
+          <div class="salud-submetric-row">
+            <span class="salud-metric-label">Estrés y Presión</span>
+            <div class="salud-metric-chips">
+              <button type="button" class="salud-m-chip ${Number(selEstres) <= 1 ? 'selected' : ''}" data-action="set-salud-metric" data-metric="estres" data-val="1">🧘 Relajado (1)</button>
+              <button type="button" class="salud-m-chip ${Number(selEstres) === 2 || Number(selEstres) === 3 ? 'selected' : ''}" data-action="set-salud-metric" data-metric="estres" data-val="2">😐 Normal (2)</button>
+              <button type="button" class="salud-m-chip ${Number(selEstres) >= 4 ? 'selected' : ''}" data-action="set-salud-metric" data-metric="estres" data-val="4">🤯 Alto estrés (4+)</button>
+            </div>
+          </div>
 
-              <div class="form-group">
-                <label class="form-label">Estrés Mental / Laboral (1 a 5)</label>
-                <select id="rd-estres" class="form-input">
-                  <option value="1" ${selEstres === '1' ? 'selected' : ''}>1 — Totalmente relajado</option>
-                  <option value="2" ${selEstres === '2' ? 'selected' : ''}>2 — Tranquilo</option>
-                  <option value="3" ${selEstres === '3' ? 'selected' : ''}>3 — Estrés moderado</option>
-                  <option value="4" ${selEstres === '4' ? 'selected' : ''}>4 — Estrés alto (Alerta Profe)</option>
-                  <option value="5" ${selEstres === '5' ? 'selected' : ''}>5 — Estrés crítico / Ansiedad</option>
-                </select>
-              </div>
+          <div class="salud-submetric-row">
+            <span class="salud-metric-label">Descanso y Sueño</span>
+            <div class="salud-metric-chips">
+              <button type="button" class="salud-m-chip ${Number(selSueno) >= 4 ? 'selected' : ''}" data-action="set-salud-metric" data-metric="sueno" data-val="5">😴 Bien (+7 hs)</button>
+              <button type="button" class="salud-m-chip ${Number(selSueno) === 3 ? 'selected' : ''}" data-action="set-salud-metric" data-metric="sueno" data-val="3">🛌 Regular (6 hs)</button>
+              <button type="button" class="salud-m-chip ${Number(selSueno) <= 2 ? 'selected' : ''}" data-action="set-salud-metric" data-metric="sueno" data-val="2">🥱 Poco (&lt;5 hs)</button>
+            </div>
+          </div>
 
-              <div class="form-group">
-                <label class="form-label">Calidad de Sueño (1 a 5)</label>
-                <select id="rd-sueno" class="form-input">
-                  <option value="5" ${selSueno === '5' ? 'selected' : ''}>5 — Dormí +8 hs profundo</option>
-                  <option value="4" ${selSueno === '4' ? 'selected' : ''}>4 — Buen descanso (7 hs)</option>
-                  <option value="3" ${selSueno === '3' ? 'selected' : ''}>3 — Regular (6 hs)</option>
-                  <option value="2" ${selSueno === '2' ? 'selected' : ''}>2 — Cortado / Poco sueño</option>
-                  <option value="1" ${selSueno === '1' ? 'selected' : ''}>1 — Insomnio / Mal descanso</option>
-                </select>
-              </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px;">
+            <div>
+              <label class="form-label" style="font-size: 10.5px;">Molestia o dolor (opcional)</label>
+              <input type="text" id="rd-dolor" class="form-input" value="${h(draftReadiness.zonaDolor || '')}" placeholder="Ej: Hombro derecho, lumbar...">
+            </div>
+            <div>
+              <label class="form-label" style="font-size: 10.5px;">Nota personal (opcional)</label>
+              <input type="text" id="rd-obs" class="form-input" value="${h(draftReadiness.observacionAlumno || '')}" placeholder="Sensaciones, motivación...">
+            </div>
+          </div>
+        </div>
 
+        <button type="button" class="btn-primary btn-xl" data-action="submit-readiness">
+          ✓ Guardar Estado Psicofísico (${fechaDisplay})
+        </button>
+      </div>
+
+      <!-- Historial de Estados Psicofísicos Registrados -->
+      <div class="card" style="margin-top: 14px;">
+        <div class="card-header">
+          <div>
+            <span class="badge badge-neon">Historial Clínico</span>
+            <h3 class="card-title" style="font-size: 17px; margin-top: 4px; color: var(--text-main);">
+              Bitácora de Estados Registrados (${logs.length})
+            </h3>
+          </div>
+        </div>
+
+        ${logs.length === 0 ? `
+          <div style="padding: 18px; text-align: center; color: var(--text-dim); font-size: 13px;">
+            Aún no registraste ningún estado psicofísico. Tocá las opciones arriba para registrar tu día.
+          </div>
+        ` : `
+          <div style="display: flex; flex-direction: column; gap: 8px; max-height: 280px; overflow-y: auto;">
+            ${logs.map(l => `
+              <div style="background: var(--bg-elevated); padding: 10px 12px; border-radius: var(--radius-sm); font-size: 12.5px; display: flex; justify-content: space-between; align-items: center; gap: 10px;">
+                <div style="flex: 1; min-width: 0;">
+                  <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                    <strong>🗓 ${h(l.fecha.split('-').reverse().join('/'))}</strong>
+                    <span style="font-size: 11px; color: var(--text-dim);">${h(l.hora || '')}</span>
+                    <span class="badge badge-blue">Energía ${l.energia}/5</span>
+                    <span class="badge badge-neon">Estrés ${l.estres}/5</span>
+                    ${l.zonaDolor ? `<span class="badge badge-amber">⚠️ ${h(l.zonaDolor)}</span>` : ''}
+                  </div>
+                  ${l.observacionAlumno ? `<p style="color: var(--text-muted); margin-top: 4px; font-size: 12px;">"${h(l.observacionAlumno)}"</p>` : ''}
+                </div>
+                <div style="display: flex; gap: 6px; flex-shrink: 0;">
+                  <button type="button" class="btn-sm btn-secondary" data-action="set-readiness-date" data-date="${h(l.fecha)}" title="Editar este día">✏️</button>
+                  <button type="button" class="btn-sm btn-secondary danger" data-action="delete-readiness-log" data-log-id="${h(l.id)}" title="Borrar registro">✕</button>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        `}
+      </div>
+
+      <!-- Ficha Física y Días de Gimnasio (Organizada y Limpia) -->
+      <div class="card" style="margin-top: 14px;">
+        <div class="card-header" style="cursor: pointer;" data-action="toggle-perfil-collapse">
+          <div>
+            <span class="badge badge-blue">Datos Corporales & Asistencia</span>
+            <h3 class="card-title" style="font-size: 17px; margin-top: 4px; color: var(--text-main);">
+              Mi Ficha Física y Días de Gimnasio
+            </h3>
+            <p style="font-size: 12px; color: var(--text-dim);">
+              Días que vas a entrenar, horario y medidas antropométricas.
+            </p>
+          </div>
+          <button type="button" class="btn-icon-action" style="pointer-events: none;">
+            ${isPerfilOpen ? '▲' : '▼'}
+          </button>
+        </div>
+
+        ${isPerfilOpen ? `
+          <form data-action="save-perfil-fisico" style="display: flex; flex-direction: column; gap: 12px; margin-top: 10px; border-top: 1px dashed var(--border-subtle); padding-top: 12px;">
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
               <div class="form-group">
-                <label class="form-label">Nutrición e Hidratación (1 a 5)</label>
-                <select id="rd-alimentacion" class="form-input">
-                  <option value="5" ${selAlim === '5' ? 'selected' : ''}>5 — Óptima pre-entreno</option>
-                  <option value="4" ${selAlim === '4' ? 'selected' : ''}>4 — Bien alimentado</option>
-                  <option value="3" ${selAlim === '3' ? 'selected' : ''}>3 — Normal</option>
-                  <option value="2" ${selAlim === '2' ? 'selected' : ''}>2 — Comí poco hoy</option>
-                  <option value="1" ${selAlim === '1' ? 'selected' : ''}>1 — En ayunas / Deshidratado</option>
-                </select>
+                <label class="form-label">Edad</label>
+                <input type="number" id="pf-edad" class="form-input" value="${h(draftPerfil.edad || '')}" placeholder="Ej: 28">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Peso (kg)</label>
+                <input type="number" step="0.1" id="pf-peso" class="form-input" value="${h(draftPerfil.pesoKg || '')}" placeholder="Ej: 78.5">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Altura (cm)</label>
+                <input type="number" id="pf-altura" class="form-input" value="${h(draftPerfil.alturaCm || '')}" placeholder="Ej: 176">
               </div>
             </div>
 
             <div class="form-group">
-              <label class="form-label">¿Tenés alguna molestia articular o muscular hoy?</label>
-              <input type="text" id="rd-dolor" class="form-input" value="${h(draftReadiness.zonaDolor || '')}" placeholder="Dejá vacío si estás sin dolor, o escribí ej: Molestia hombro derecho...">
+              <label class="form-label">¿Qué días de la semana vas al gimnasio?</label>
+              <div class="day-chips" id="pf-dias-container">
+                ${DIAS_SEMANA.map(d => `
+                  <button type="button" class="day-chip ${diasSeleccionados.includes(d) ? 'selected' : ''}" data-action="toggle-perfil-dia" data-dia="${d}">
+                    ${d}
+                  </button>
+                `).join('')}
+              </div>
             </div>
 
             <div class="form-group">
-              <label class="form-label">Observación personal del día (Opcional)</label>
-              <textarea id="rd-obs" class="form-input" rows="2" placeholder="Cómo te sentís de ánimo, motivación, sensaciones...">${h(draftReadiness.observacionAlumno || '')}</textarea>
+              <label class="form-label">Horario Habitual de Entreno</label>
+              <input type="time" id="pf-horario" class="form-input" value="${h(draftPerfil.horarioHabitual || '19:00')}" style="max-width: 220px;">
             </div>
 
-            <button type="submit" class="btn-primary">
-              ✓ Registrar Estado Físico y Psicológico de Hoy
+            <div class="form-group">
+              <label class="form-label">Lesiones o Antecedentes</label>
+              <input type="text" id="pf-lesiones" class="form-input" value="${h(draftPerfil.lesiones || '')}" placeholder="Ej: Ninguna / Molestia lumbar leve">
+            </div>
+
+            <button type="button" class="btn-primary" data-action="save-perfil-fisico">
+              ✓ Guardar Ficha Física y Días
             </button>
           </form>
-
-          ${logs.length > 0 ? `
-            <div style="padding-top: 12px;">
-              <h4 style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--text-dim); margin-bottom: 8px;">
-                Últimos Check-ins Registrados (${logs.length})
-              </h4>
-              <div style="display: flex; flex-direction: column; gap: 6px; max-height: 220px; overflow-y: auto;">
-                ${logs.map(l => `
-                  <div style="background: var(--bg-elevated); padding: 10px 12px; border-radius: var(--radius-sm); font-size: 12px;">
-                    <div style="display: flex; justify-content: space-between; font-weight: 700; color: var(--text-main);">
-                      <span>${h(l.fecha)} (${h(l.hora)})</span>
-                      <span style="color: var(--cta-blue-light);">Energía ${l.energia}/5 · Estrés ${l.estres}/5</span>
-                    </div>
-                    ${l.zonaDolor ? `<p style="color: var(--text-muted); margin-top: 2px;">Molestia: ${h(l.zonaDolor)}</p>` : ''}
-                    ${l.observacionAlumno ? `<p style="color: var(--text-dim); margin-top: 2px;">"${h(l.observacionAlumno)}"</p>` : ''}
-                  </div>
-                `).join('')}
-              </div>
-            </div>
-          ` : ''}
-        </div>
-
-        <!-- Columna 2: Datos Físicos, Días de Semana, Horarios y Observaciones -->
-        <div style="display: flex; flex-direction: column; gap: 16px;">
-          <div class="card">
-            <span class="badge badge-blue">Mi Ficha Física y Asistencia</span>
-            <h2 class="card-title" style="color: var(--text-main);">Días que voy al Gimnasio, Horarios y Biometría</h2>
-
-            <form data-action="save-perfil-fisico" style="display: flex; flex-direction: column; gap: 12px;">
-              <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
-                <div class="form-group">
-                  <label class="form-label">Edad</label>
-                  <input type="number" id="pf-edad" class="form-input" value="${h(draftPerfil.edad || '')}" placeholder="Ej: 28">
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Peso Actual (kg)</label>
-                  <input type="number" step="0.1" id="pf-peso" class="form-input" value="${h(draftPerfil.pesoKg || '')}" placeholder="Ej: 78.5">
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Altura (cm)</label>
-                  <input type="number" id="pf-altura" class="form-input" value="${h(draftPerfil.alturaCm || '')}" placeholder="Ej: 176">
-                </div>
-              </div>
-
-              <div class="form-group">
-                <label class="form-label">¿Qué días de la semana vas al gimnasio?</label>
-                <div class="day-chips" id="pf-dias-container">
-                  ${DIAS_SEMANA.map(d => `
-                    <button type="button" class="day-chip ${diasSeleccionados.includes(d) ? 'selected' : ''}" data-action="toggle-perfil-dia" data-dia="${d}">
-                      ${d}
-                    </button>
-                  `).join('')}
-                </div>
-              </div>
-
-              <div class="form-group">
-                <label class="form-label">Horario Habitual de Entreno</label>
-                <input type="time" id="pf-horario" class="form-input" value="${h(draftPerfil.horarioHabitual || '19:00')}" style="max-width: 220px;">
-              </div>
-
-              <div class="form-group">
-                <label class="form-label">Lesiones o Antecedentes (Columna, Articulaciones, etc.)</label>
-                <input type="text" id="pf-lesiones" class="form-input" value="${h(draftPerfil.lesiones || '')}" placeholder="Ej: Ninguna / Escoliosis lumbar leve / Menisco">
-              </div>
-
-              <div class="form-group">
-                <label class="form-label">Objetivo Principal</label>
-                <input type="text" id="pf-objetivo" class="form-input" value="${h(draftPerfil.objetivoCorto || '')}" placeholder="Ej: Ganar masa muscular y fuerza en básicos">
-              </div>
-
-              <button type="button" class="btn-primary" data-action="save-perfil-fisico">
-                ✓ Guardar Ficha Física, Días y Horario
-              </button>
-            </form>
-          </div>
-
-          <!-- Bitácora de Observaciones (Alumno + Profesor) -->
-          <div class="card">
-            <h3 class="card-title" style="color: var(--text-main);">Bitácora de Observaciones Clínicas y Notas</h3>
-            <form data-action="add-alumno-observacion" style="display: flex; gap: 8px;">
-              <input type="text" id="alumno-obs-input" class="form-input" placeholder="Agregar nota u observación sobre tu entrenamiento..." required>
-              <button type="submit" class="btn-secondary" style="width: auto; white-space: nowrap;">+ Guardar Nota</button>
-            </form>
-
-            ${observaciones.length === 0 ? `
-              <p style="font-size: 12px; color: var(--text-dim);">No hay observaciones cargadas todavía.</p>
-            ` : `
-              <div class="timeline">
-                ${observaciones.map(o => `
-                  <div class="timeline-item">
-                    <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-dim);">
-                      <strong>${h(o.autor)} · ${h(o.categoria)}</strong>
-                      <span>${h(o.fecha)} ${h(o.hora)}</span>
-                    </div>
-                    <p style="font-size: 13px; margin-top: 4px; color: var(--text-main);">${h(o.texto)}</p>
-                  </div>
-                `).join('')}
-              </div>
-            `}
-          </div>
-        </div>
+        ` : ''}
       </div>
+
+      <!-- Bitácora de Observaciones Clínicas (Docente / Alumno) -->
+      ${observaciones.length > 0 ? `
+        <div class="card" style="margin-top: 14px;">
+          <h3 class="card-title" style="font-size: 16px; color: var(--text-main);">Indicaciones y Notas del Profesor</h3>
+          <div class="timeline" style="margin-top: 8px;">
+            ${observaciones.map(o => `
+              <div class="timeline-item">
+                <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-dim);">
+                  <strong>${h(o.autor)} · ${h(o.categoria)}</strong>
+                  <span>${h(o.fecha)} ${h(o.hora)}</span>
+                </div>
+                <p style="font-size: 13px; margin-top: 4px; color: var(--text-main);">${h(o.texto)}</p>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      ` : ''}
     `;
   }
 
@@ -4299,22 +4360,102 @@
     },
 
     // --- SALUD PSICOFÍSICA, PERFIL DE DÍAS/HORARIOS Y OBSERVACIONES (AISLADOS) ---
-    'submit-readiness': () => {
-      // Capturamos primero ambos formularios del DOM para no alterar la Ficha Física
+    'set-readiness-date': el => {
       captureSaludDraftsFromDOM();
+      const date = el.getAttribute('data-date');
+      if (!date) return;
+      draftReadiness.fecha = date;
+      const state = Store.getState();
+      const log = (state.readinessLogs || []).find(r => r.fecha === date && !r.deleted);
+      if (log) {
+        draftReadiness.energia = String(log.energia || 4);
+        draftReadiness.estres = String(log.estres || 2);
+        draftReadiness.sueno = String(log.sueno || 4);
+        draftReadiness.alimentacion = String(log.alimentacion || 4);
+        draftReadiness.zonaDolor = log.zonaDolor || '';
+        draftReadiness.observacionAlumno = log.observacionAlumno || '';
+        draftReadiness.estadoGeneral = log.observacionAlumno || 'Excelente';
+      }
+      render();
+    },
+
+    'change-readiness-date': el => {
+      captureSaludDraftsFromDOM();
+      const date = el.value;
+      if (!date) return;
+      draftReadiness.fecha = date;
+      const state = Store.getState();
+      const log = (state.readinessLogs || []).find(r => r.fecha === date && !r.deleted);
+      if (log) {
+        draftReadiness.energia = String(log.energia || 4);
+        draftReadiness.estres = String(log.estres || 2);
+        draftReadiness.sueno = String(log.sueno || 4);
+        draftReadiness.alimentacion = String(log.alimentacion || 4);
+        draftReadiness.zonaDolor = log.zonaDolor || '';
+        draftReadiness.observacionAlumno = log.observacionAlumno || '';
+        draftReadiness.estadoGeneral = log.observacionAlumno || 'Excelente';
+      }
+      render();
+    },
+
+    'pick-salud-estado': el => {
+      captureSaludDraftsFromDOM();
+      const estado = el.getAttribute('data-estado');
+      const energia = el.getAttribute('data-energia');
+      const estres = el.getAttribute('data-estres');
+      const sueno = el.getAttribute('data-sueno');
+
+      draftReadiness.estadoGeneral = estado;
+      if (energia) draftReadiness.energia = energia;
+      if (estres) draftReadiness.estres = estres;
+      if (sueno) draftReadiness.sueno = sueno;
+      if (!draftReadiness.observacionAlumno || ['Excelente', 'Con energía', 'Normal', 'Cansado', 'Con molestia'].includes(draftReadiness.observacionAlumno)) {
+        draftReadiness.observacionAlumno = estado;
+      }
+      render();
+    },
+
+    'set-salud-metric': el => {
+      captureSaludDraftsFromDOM();
+      const metric = el.getAttribute('data-metric');
+      const val = el.getAttribute('data-val');
+      if (metric && val) {
+        draftReadiness[metric] = val;
+        render();
+      }
+    },
+
+    'submit-readiness': () => {
+      captureSaludDraftsFromDOM();
+      const fecha = draftReadiness.fecha || Engine.todayISO();
 
       Store.commit(s =>
         Engine.registrarReadiness(s, {
+          fecha,
           energia: draftReadiness.energia,
           estres: draftReadiness.estres,
           sueno: draftReadiness.sueno,
-          alimentacion: draftReadiness.alimentacion,
+          alimentacion: draftReadiness.alimentacion || 4,
           dolorArticular: Boolean(draftReadiness.zonaDolor),
           zonaDolor: draftReadiness.zonaDolor,
-          observacionAlumno: draftReadiness.observacionAlumno
+          observacionAlumno: draftReadiness.observacionAlumno || draftReadiness.estadoGeneral || ''
         })
       );
-      showToast('✓ Estado físico y psicológico de hoy guardado.');
+      const formattedDate = fecha.split('-').reverse().join('/');
+      showToast(`✓ Estado psicofísico guardado (${formattedDate}).`);
+      render();
+    },
+
+    'delete-readiness-log': el => {
+      const logId = el.getAttribute('data-log-id');
+      if (!logId) return;
+      Store.commit(s => Engine.borrarReadiness(s, logId));
+      showToast('Registro de salud eliminado.');
+      render();
+    },
+
+    'toggle-perfil-collapse': () => {
+      isPerfilOpen = !isPerfilOpen;
       render();
     },
 
@@ -4589,6 +4730,12 @@
   });
 
   document.addEventListener('change', e => {
+    const dateInput = e.target.closest('input[data-action="change-readiness-date"]');
+    if (dateInput) {
+      if (actions['change-readiness-date']) actions['change-readiness-date'](dateInput);
+      return;
+    }
+
     const movSelect = e.target.closest('select[data-action="select-movilidad-preset"]');
     if (movSelect) {
       const opt = movSelect.options[movSelect.selectedIndex];

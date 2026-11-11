@@ -1919,15 +1919,17 @@
    */
   Engine.registrarReadiness = function (state, data) {
     const ahora = Date.now();
+    const fecha = data.fecha || Engine.todayISO();
+    const prevLogs = (state.readinessLogs || []).filter(r => !(r.fecha === fecha && !r.deleted));
     const nuevoLog = {
       id: Engine.generateId('rd'),
-      fecha: data.fecha || Engine.todayISO(),
-      hora: Engine.timeNow(),
+      fecha: fecha,
+      hora: data.hora || Engine.timeNow(),
       energia: Number(data.energia) || 3,
       estres: Number(data.estres) || 3,
       sueno: Number(data.sueno) || 3,
       alimentacion: Number(data.alimentacion) || 3,
-      dolorArticular: Boolean(data.dolorArticular),
+      dolorArticular: Boolean(data.dolorArticular || (data.zonaDolor && data.zonaDolor.trim().length > 0)),
       zonaDolor: data.zonaDolor || '',
       observacionAlumno: data.observacionAlumno || '',
       deleted: false,
@@ -1936,7 +1938,21 @@
 
     return {
       ...state,
-      readinessLogs: [nuevoLog, ...(state.readinessLogs || [])],
+      readinessLogs: [nuevoLog, ...prevLogs],
+      updatedAt: ahora
+    };
+  };
+
+  /**
+   * Soft delete de un registro psicofísico (Readiness).
+   */
+  Engine.borrarReadiness = function (state, logId) {
+    const ahora = Date.now();
+    return {
+      ...state,
+      readinessLogs: (state.readinessLogs || []).map(r => (
+        r.id === logId ? { ...r, deleted: true, updatedAt: ahora } : r
+      )),
       updatedAt: ahora
     };
   };
