@@ -1624,40 +1624,48 @@ body.drag-active { user-select: none; -webkit-user-select: none; }
 }
 
 /* ======================================================== */
-/* NUEVOS ESTILOS v2.8: CHECK-IN RÁPIDO, EJERCICIOS Y MINIATURAS */
+/* NUEVOS ESTILOS v3.0: ONE-PAGE MOBILE, CHECK-IN, HISTÓRICO Y SALUD */
 /* ======================================================== */
 .checkin-card {
-  padding: 14px 16px;
+  padding: 10px 12px !important;
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  margin-bottom: 12px;
+  margin-bottom: 0;
+  gap: 6px !important;
+}
+.checkin-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
 }
 .checkin-title {
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 800;
   color: var(--text-main);
 }
 .checkin-chips {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  margin-top: 8px;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
 }
 .checkin-chip {
-  height: 36px;
-  padding: 0 12px;
-  border-radius: var(--radius-full);
+  height: 32px;
+  padding: 0 4px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border-subtle);
   background: var(--bg-elevated);
   color: var(--text-main);
   font-weight: 700;
-  font-size: 12.5px;
+  font-size: 11px !important;
   cursor: pointer;
   transition: all 0.15s ease;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
+  gap: 2px;
+  white-space: nowrap;
 }
 .checkin-chip:hover {
   background: var(--cta-blue-soft);
@@ -1669,16 +1677,45 @@ body.drag-active { user-select: none; -webkit-user-select: none; }
   color: #ffffff;
 }
 
+/* Barra compacta de sesión activa (One-Page) */
+.active-session-bar {
+  padding: 10px 12px !important;
+  gap: 6px !important;
+}
+.active-session-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.active-session-title {
+  font-size: 15.5px;
+  font-weight: 800;
+  margin-top: 2px;
+  color: var(--text-main);
+  line-height: 1.2;
+}
+.active-session-actions {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
 /* Encabezado del ejercicio con miniatura */
+.ej-card {
+  padding: 10px 12px !important;
+  gap: 8px !important;
+}
 .ej-card-top {
   display: flex;
-  gap: 12px;
-  align-items: flex-start;
+  gap: 10px;
+  align-items: center;
 }
 .ej-thumb {
-  width: 58px;
-  height: 58px;
-  border-radius: var(--radius-md);
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-sm);
   overflow: hidden;
   background: #09090b;
   border: 1px solid var(--border-subtle);
@@ -1703,14 +1740,15 @@ body.drag-active { user-select: none; -webkit-user-select: none; }
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24px;
+  font-size: 15px;
+  font-weight: 800;
 }
 .ej-info {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
 }
 .ej-badge-row {
   display: flex;
@@ -1726,17 +1764,23 @@ body.drag-active { user-select: none; -webkit-user-select: none; }
   letter-spacing: 0.04em;
 }
 .ej-name {
-  font-size: 15.5px;
+  font-size: 14.5px;
   font-weight: 800;
   color: var(--text-main);
-  line-height: 1.25;
+  line-height: 1.2;
+}
+.ej-title {
+  font-size: 14.5px;
+  font-weight: 800;
+  color: var(--text-main);
+  line-height: 1.2;
 }
 .ej-clase-anterior {
-  font-size: 12px;
+  font-size: 11.5px;
   color: var(--cta-blue-light);
-  margin-top: 3px;
+  margin-top: 1px;
   font-weight: 600;
-  line-height: 1.3;
+  line-height: 1.25;
 }
 .ej-clase-anterior strong {
   color: var(--text-main);
@@ -1749,10 +1793,10 @@ body.drag-active { user-select: none; -webkit-user-select: none; }
   font-weight: 500;
 }
 
-/* Formulario simplificado: SOLO KG Y REPES (guardar todas juntas) */
+/* Formulario simplificado en 1 sola línea: KG + REPES + SERIES + GUARDAR */
 .ej-input-box {
-  margin-top: 12px;
-  padding-top: 12px;
+  margin-top: 4px;
+  padding-top: 6px;
   border-top: 1px solid var(--border-subtle);
 }
 .ej-inputs-grid {
@@ -1760,22 +1804,28 @@ body.drag-active { user-select: none; -webkit-user-select: none; }
   grid-template-columns: 1.2fr 1.2fr 1fr;
   gap: 8px;
 }
+.ej-inputs-inline-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 0.85fr auto;
+  gap: 6px;
+  align-items: end;
+}
 .ej-input-col {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 .ej-input-label {
-  font-size: 10px;
+  font-size: 9.5px;
   font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
   color: var(--text-dim);
   text-align: center;
 }
 .ej-val-input {
-  height: 48px;
-  font-size: 20px;
+  height: 38px;
+  font-size: 16px !important;
   font-weight: 800;
   font-family: var(--font-mono);
   text-align: center;
@@ -1784,17 +1834,28 @@ body.drag-active { user-select: none; -webkit-user-select: none; }
   background: var(--bg-surface);
   color: var(--text-main);
   width: 100%;
+  padding: 0 4px;
 }
 .ej-val-input:focus {
   border-color: var(--cta-blue);
   outline: none;
   box-shadow: 0 0 0 2px var(--cta-blue-soft);
 }
+.btn-save-inline {
+  width: auto !important;
+  height: 38px !important;
+  min-height: 38px !important;
+  padding: 0 12px !important;
+  font-size: 12.5px !important;
+  font-weight: 800;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
 .btn-save-bulk {
   width: 100%;
-  min-height: 46px;
-  margin-top: 10px;
-  font-size: 14px;
+  min-height: 42px;
+  margin-top: 8px;
+  font-size: 13.5px;
   font-weight: 800;
   border-radius: var(--radius-sm);
   background: var(--cta-blue);
@@ -1805,12 +1866,6 @@ body.drag-active { user-select: none; -webkit-user-select: none; }
   align-items: center;
   justify-content: center;
   gap: 6px;
-  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.35);
-  transition: transform 0.1s ease, background 0.15s ease;
-}
-.btn-save-bulk:active {
-  transform: scale(0.98);
-  background: var(--cta-blue-hover);
 }
 
 /* Estado de ejercicio ya guardado */
@@ -1821,38 +1876,38 @@ body.drag-active { user-select: none; -webkit-user-select: none; }
   background: var(--bg-surface);
   border: 1px solid rgba(16, 185, 129, 0.35);
   border-radius: var(--radius-sm);
-  padding: 10px 14px;
-  margin-top: 10px;
+  padding: 6px 10px;
+  margin-top: 4px;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
 }
 .ej-saved-summary {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
 }
 .ej-saved-data {
   font-family: var(--font-mono);
-  font-size: 14px;
+  font-size: 12.5px;
   font-weight: 800;
   color: var(--text-main);
 }
 .ej-saved-actions {
   display: flex;
-  gap: 6px;
+  gap: 4px;
 }
 .btn-sm {
-  min-height: 32px !important;
-  padding: 0 10px !important;
+  min-height: 30px !important;
+  padding: 0 9px !important;
   font-size: 11.5px !important;
   width: auto !important;
 }
 
 /* Miniatura en el modal del catálogo */
 .catalog-item-thumb {
-  width: 50px;
-  height: 50px;
+  width: 46px;
+  height: 46px;
   border-radius: var(--radius-sm);
   overflow: hidden;
   background: #09090b;
@@ -1866,20 +1921,65 @@ body.drag-active { user-select: none; -webkit-user-select: none; }
   display: block;
 }
 
-/* Pestaña de Histórico */
+/* Pestaña de Histórico y Contenedores One-Page */
+.onepage-card {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px !important;
+}
+.onepage-tabs-bar {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  background: var(--bg-elevated);
+  padding: 4px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+.onepage-tab-btn {
+  min-height: 32px;
+  border-radius: var(--radius-sm);
+  font-size: 12px !important;
+  font-weight: 800;
+  color: var(--text-muted);
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  transition: all 0.12s ease;
+}
+.onepage-tab-btn.active {
+  background: var(--cta-blue);
+  color: #ffffff;
+}
+.onepage-scroll-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-right: 2px;
+}
+
 .historico-ej-card {
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  padding: 14px;
+  padding: 10px 12px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
+  flex-shrink: 0;
 }
 .historico-clases-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   padding-top: 6px;
   border-top: 1px dashed var(--border-subtle);
 }
@@ -1888,29 +1988,27 @@ body.drag-active { user-select: none; -webkit-user-select: none; }
   justify-content: space-between;
   align-items: center;
   background: var(--bg-elevated);
-  padding: 8px 10px;
+  padding: 6px 8px;
   border-radius: var(--radius-sm);
-  font-size: 12.5px;
+  font-size: 12px;
 }
 
 /* ==========================================================================
-   ESTADO PSICOFÍSICO Y SALUD SIMPLIFICADA
+   ESTADO PSICOFÍSICO Y SALUD SIMPLIFICADA (ONE-PAGE)
    ========================================================================== */
 .salud-date-bar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
   background: var(--bg-elevated);
-  padding: 10px 12px;
+  padding: 6px 10px;
   border-radius: var(--radius-sm);
-  margin-bottom: 12px;
 }
 .salud-status-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-  gap: 8px;
-  margin-bottom: 12px;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
 }
 .salud-chip {
   display: flex;
@@ -1918,15 +2016,15 @@ body.drag-active { user-select: none; -webkit-user-select: none; }
   align-items: center;
   justify-content: center;
   text-align: center;
-  padding: 12px 8px;
-  border-radius: var(--radius-md);
+  padding: 6px 4px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border-subtle);
   background: var(--bg-surface);
   color: var(--text-main);
   cursor: pointer;
   transition: all 0.15s ease;
   user-select: none;
-  min-height: 82px;
+  min-height: 54px;
 }
 .salud-chip:active {
   transform: scale(0.97);
@@ -1937,67 +2035,62 @@ body.drag-active { user-select: none; -webkit-user-select: none; }
   box-shadow: 0 0 0 1px var(--cta-blue);
 }
 .salud-emoji {
-  font-size: 24px;
-  margin-bottom: 4px;
+  font-size: 18px;
+  margin-bottom: 2px;
   line-height: 1;
 }
 .salud-chip strong {
-  font-size: 13px;
+  font-size: 10.5px;
   font-weight: 800;
   display: block;
+  white-space: nowrap;
 }
 .salud-chip small {
-  font-size: 10.5px;
-  color: var(--text-dim);
-  margin-top: 2px;
-  display: block;
-}
-.salud-chip.selected small {
-  color: var(--cta-blue-light);
+  display: none;
 }
 
 .salud-submetrics {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
   background: var(--bg-elevated);
-  padding: 12px;
+  padding: 8px 10px;
   border-radius: var(--radius-md);
-  margin-bottom: 12px;
 }
-.salud-submetric-row {
-  display: flex;
-  flex-direction: column;
+.salud-submetric-inline {
+  display: grid;
+  grid-template-columns: 62px 1fr;
+  align-items: center;
   gap: 6px;
 }
 .salud-metric-label {
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 800;
   text-transform: uppercase;
   color: var(--text-dim);
-  letter-spacing: 0.05em;
+  letter-spacing: 0.03em;
 }
 .salud-metric-chips {
   display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
+  gap: 4px;
 }
 .salud-m-chip {
   flex: 1;
-  min-width: 50px;
-  min-height: 36px;
+  min-width: 0;
+  min-height: 30px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-subtle);
   background: var(--bg-surface);
   color: var(--text-main);
-  font-size: 12px;
+  font-size: 11px !important;
   font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  padding: 0 8px;
+  padding: 0 4px;
   transition: all 0.12s ease;
+  white-space: nowrap;
 }
 .salud-m-chip:active {
   transform: scale(0.97);
@@ -2006,4 +2099,56 @@ body.drag-active { user-select: none; -webkit-user-select: none; }
   background: var(--cta-blue);
   color: #ffffff;
   border-color: var(--cta-blue);
+}
+
+/* ==========================================================================
+   MODO TELÉFONO ONE-PAGE SIN SCROLL DE PÁGINA
+   ========================================================================== */
+.layout-phone-shell {
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+  padding-bottom: calc(58px + env(safe-area-inset-bottom));
+}
+.layout-phone-shell .app-header {
+  padding: calc(8px + env(safe-area-inset-top, 0px)) 12px 8px 12px;
+  flex-shrink: 0;
+}
+.layout-phone-shell .app-logo-svg {
+  width: 28px;
+  height: 28px;
+}
+.layout-phone-shell .app-brand-title {
+  font-size: 14.5px;
+}
+.layout-phone-shell .app-brand-sub {
+  font-size: 10px;
+}
+.layout-phone-shell .view-container {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 10px;
+  gap: 8px;
+  display: flex;
+  flex-direction: column;
+}
+.layout-phone-shell .card {
+  padding: 10px 12px;
+  gap: 8px;
+}
+.layout-phone-shell .jf-copyright-seal {
+  display: none;
+}
+.layout-phone-shell .bottom-nav {
+  height: calc(56px + env(safe-area-inset-bottom));
+}
+.empty-workout-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 20px 14px !important;
 }
