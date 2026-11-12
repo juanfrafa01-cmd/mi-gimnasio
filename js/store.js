@@ -784,6 +784,7 @@
       const raw = localStorage.getItem(AESTHETIC_PREF_KEY);
       return raw ? JSON.parse(raw) : {
         bgStyle: 'zinc',
+        bgPattern: 'none',
         accentColor: '#3B82F6',
         accentName: 'Azul Eléctrico',
         logoBg: '#18181B',
@@ -792,6 +793,7 @@
     } catch {
       return {
         bgStyle: 'zinc',
+        bgPattern: 'none',
         accentColor: '#3B82F6',
         accentName: 'Azul Eléctrico',
         logoBg: '#18181B',
@@ -804,6 +806,9 @@
     if (typeof document === 'undefined' || !document.documentElement) return;
     const p = prefs || Store.getAestheticPreference();
     const root = document.documentElement;
+
+    // 0. Patrón o textura de fondo (camo, basquet, pesas, carbon, grid, hex, none)
+    root.setAttribute('data-bg-pattern', p.bgPattern || 'none');
 
     // 1. Estilo de fondo
     if (p.bgStyle === 'oled') {

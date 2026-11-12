@@ -1925,6 +1925,7 @@
       id: Engine.generateId('rd'),
       fecha: fecha,
       hora: data.hora || Engine.timeNow(),
+      estadoGeneral: data.estadoGeneral || '',
       energia: Number(data.energia) || 3,
       estres: Number(data.estres) || 3,
       sueno: Number(data.sueno) || 3,
@@ -1958,18 +1959,105 @@
   };
 
   /**
+   * Obtiene el check-in de asistencia al gimnasio del día (o null si no se registró).
+   */
+  Engine.getCheckinGymHoy = function (state, fechaISO = Engine.todayISO()) {
+    if (!state) return null;
+    const reg = (state.checkinsGym || []).find(c => !c.deleted && c.fecha === fechaISO);
+    if (reg) return reg;
+    const trHoy = (state.entrenamientos || []).find(
+      t => !t.deleted && t.fecha === fechaISO && t.checkinRealizado
+    );
+    return trHoy
+      ? { id: `chk-${trHoy.id}`, fecha: fechaISO, horaLlegada: trHoy.horaLlegada || trHoy.inicio, entrenamientoId: trHoy.id, presente: true }
+      : null;
+  };
+
+  /**
+   * Registra que el alumno fue hoy al gimnasio ("Check-in de asistencia")
+   * e inicia la sesión guiada si aún no hay una abierta.
+   */
+  Engine.registrarCheckinGym = function (state, opts = {}) {
+    const ahora = Date.now();
+    const fecha = opts.fecha || Engine.todayISO();
+    const horaLlegada = opts.hora || Engine.timeNow();
+
+    let next = state;
+    if (!next.entrenamientoActivoId) {
+      next = Engine.iniciarEntrenamiento(next, opts.rutinaId || null, fecha, {
+        pasoInicial: opts.pasoInicial || 'psicofisico'
+      });
+    }
+
+    const trId = next.entrenamientoActivoId;
+    const entrenamientos = (next.entrenamientos || []).map(t =>
+      t.id === trId
+        ? {
+            ...t,
+            checkinRealizado: true,
+            horaLlegada: t.horaLlegada || horaLlegada,
+            modulosConfig: {
+              ...(t.modulosConfig || {}),
+              pasoActual: opts.pasoInicial || (t.modulosConfig && t.modulosConfig.pasoActual) || 'psicofisico'
+            },
+            updatedAt: ahora
+          }
+        : t
+    );
+
+    const prevCheckins = (next.checkinsGym || []).filter(c => !(c.fecha === fecha && !c.deleted));
+    const nuevoCheckin = {
+      id: Engine.generateId('chk'),
+      fecha,
+      horaLlegada,
+      entrenamientoId: trId,
+      presente: true,
+      deleted: false,
+      updatedAt: ahora
+    };
+
+    return {
+      ...next,
+      entrenamientos,
+      checkinsGym: [nuevoCheckin, ...prevCheckins],
+      updatedAt: ahora
+    };
+  };
+
+  /**
    * Inicia un nuevo entrenamiento vinculado a una rutina (o libre).
    */
-  Engine.iniciarEntrenamiento = function (state, rutinaId = null, fecha = Engine.todayISO()) {
+  Engine.iniciarEntrenamiento = function (state, rutinaId = null, fecha = Engine.todayISO(), opts = {}) {
     const nuevoId = Engine.generateId('tr');
     const ahora = Date.now();
+    const rutina = rutinaId ? (state.rutinas || []).find(r => r.id === rutinaId && !r.deleted) : null;
+    const rutBloques = (rutina && rutina.bloquesConfig) || {};
+
     const nuevoEntrenamiento = {
       id: nuevoId,
       fecha: fecha,
       rutinaId: rutinaId,
       inicio: Engine.timeNow(),
+      horaLlegada: Engine.timeNow(),
+      checkinRealizado: opts.checkinRealizado !== undefined ? Boolean(opts.checkinRealizado) : false,
       fin: null,
       notas: '',
+      modulosConfig: {
+        pasoActual: opts.pasoInicial || (rutinaId ? 'A' : 'psicofisico'),
+        activacionActiva: opts.activacionActiva !== undefined ? Boolean(opts.activacionActiva) : true,
+        movilidadActiva: opts.movilidadActiva !== undefined ? Boolean(opts.movilidadActiva) : true,
+        A: {
+          modalidad: (rutBloques.A && rutBloques.A.modalidad) || 'horizontal',
+          nombre: (rutBloques.A && rutBloques.A.nombre) || 'Bloque A',
+          rondasObjetivo: (rutBloques.A && rutBloques.A.rondasObjetivo) || 3
+        },
+        B: {
+          modalidad: (rutBloques.B && rutBloques.B.modalidad) || 'horizontal',
+          nombre: (rutBloques.B && rutBloques.B.nombre) || 'Bloque B',
+          rondasObjetivo: (rutBloques.B && rutBloques.B.rondasObjetivo) || 3
+        },
+        cierreActivo: true
+      },
       completado: false,
       deleted: false,
       updatedAt: ahora
@@ -1981,6 +2069,36 @@
       entrenamientoActivoId: nuevoId,
       updatedAt: ahora
     };
+  };
+
+  /**
+   * Actualiza la configuración modular de la sesión activa (paso actual, modulación Vertical/Horizontal de Bloque A/B, etc.).
+   */
+  Engine.setConfigBloqueSesion = function (state, entrenamientoId, patch) {
+    const ahora = Date.now();
+    const entrenamientos = (state.entrenamientos || []).map(t => {
+      if (t.id !== entrenamientoId) return t;
+      const prevCfg = t.modulosConfig || {
+        pasoActual: 'psicofisico',
+        activacionActiva: true,
+        movilidadActiva: true,
+        A: { modalidad: 'horizontal', nombre: 'Bloque A', rondasObjetivo: 3 },
+        B: { modalidad: 'horizontal', nombre: 'Bloque B', rondasObjetivo: 3 },
+        cierreActivo: true
+      };
+      const nextCfg = {
+        ...prevCfg,
+        ...patch,
+        A: patch.A ? { ...(prevCfg.A || {}), ...patch.A } : prevCfg.A,
+        B: patch.B ? { ...(prevCfg.B || {}), ...patch.B } : prevCfg.B
+      };
+      return {
+        ...t,
+        modulosConfig: nextCfg,
+        updatedAt: ahora
+      };
+    });
+    return { ...state, entrenamientos, updatedAt: ahora };
   };
 
   /**
@@ -2126,6 +2244,7 @@
       ejerciciosActuales.push({
         ejercicioId: itemEjercicio.ejercicioId,
         nombre: itemEjercicio.nombre || (matchedEj ? matchedEj.nombre : ''),
+        bloque: itemEjercicio.bloque || 'A',
         seriesObjetivo: Number(itemEjercicio.seriesObjetivo) || 3,
         repsObjetivo: itemEjercicio.repsObjetivo || '8-10',
         descansoSegundos: Number(itemEjercicio.descansoSegundos) || 90,
@@ -2173,6 +2292,7 @@
       return {
         ejercicioId: id,
         nombre: ej ? ej.nombre : id,
+        bloque: (sesionItem && sesionItem.bloque) || (sesionItem && sesionItem.segmento === 'activacion' ? 'activacion' : sesionItem && sesionItem.segmento === 'movilidad' ? 'movilidad' : 'A'),
         seriesObjetivo: sesionItem ? (sesionItem.seriesObjetivo || 3) : 3,
         repsObjetivo: sesionItem ? (sesionItem.repsObjetivo || '8-10') : '8-10',
         descansoSegundos: ej ? (ej.descansoSugerido || 90) : 90,
@@ -2180,12 +2300,14 @@
       };
     });
 
+    const cfg = entActivo.modulosConfig || null;
     const nuevaRutina = {
       id: Engine.generateId('rt'),
       nombre: nombreRutina || `Rutina ${Engine.todayISO()}`,
       dias: dias,
       horario: '19:00',
       creadaPor: 'Alumno',
+      bloquesConfig: cfg ? { A: cfg.A, B: cfg.B } : null,
       ejercicios: ejerciciosRutina,
       deleted: false,
       updatedAt: ahora
@@ -2227,7 +2349,7 @@
     const id = ejData.id || Engine.generateId('ej');
     const nuevoEjercicio = {
       id: id,
-      nombre: ejData.nombre,
+      nombre: String(ejData.nombre || 'Nuevo Ejercicio').trim(),
       grupoMuscular: ejData.grupoMuscular || 'pecho',
       equipo: ejData.equipo || 'barra',
       seriesSugeridas: Number(ejData.seriesSugeridas) || 3,
@@ -2235,6 +2357,7 @@
       descansoSugerido: Number(ejData.descansoSugerido) || 90,
       gifUrl: ejData.gifUrl || '',
       notas: ejData.notas || '',
+      esPersonalizado: true,
       orden: ejData.orden || 99,
       deleted: false,
       updatedAt: ahora
@@ -2246,7 +2369,7 @@
       ? existentes.map((e, i) => (i === index ? nuevoEjercicio : e))
       : [...existentes, nuevoEjercicio];
 
-    return { ...state, ejercicios, updatedAt: ahora };
+    return { ...state, ejercicios, lastCreatedEjercicioId: id, updatedAt: ahora };
   };
 
   /**
@@ -2693,8 +2816,8 @@
   };
 
   /**
-   * Agrega un ejercicio del catálogo a la sesión de entrenamiento de hoy en su segmento
-   * ('activacion' | 'movilidad' | 'entrenamiento') sin crear series falsas.
+   * Agrega un ejercicio del catálogo a la sesión de entrenamiento de hoy en su módulo/bloque
+   * ('activacion' | 'movilidad' | 'A' | 'B' | 'cierre') sin crear series falsas.
    */
   Engine.agregarEjercicioASesion = function (state, entrenamientoId, item) {
     const ahora = Date.now();
@@ -2706,12 +2829,30 @@
       excluidosHoy[entrenamientoId] = copyMap;
     }
 
-    const yaExiste = lista.find(
+    const excluidas = { ...(state.activacionesExcluidas || {}) };
+    if (excluidas[item.ejercicioId]) {
+      delete excluidas[item.ejercicioId];
+    }
+
+    const resolvedSegmento = item.segmento || (item.bloque === 'activacion' ? 'activacion' : item.bloque === 'movilidad' ? 'movilidad' : 'entrenamiento');
+    const resolvedBloque = item.bloque || (resolvedSegmento === 'activacion' ? 'activacion' : resolvedSegmento === 'movilidad' ? 'movilidad' : 'A');
+
+    const idxExiste = lista.findIndex(
       x => x.entrenamientoId === entrenamientoId && x.ejercicioId === item.ejercicioId && !x.deleted
     );
-    if (yaExiste) {
+    if (idxExiste !== -1) {
+      if (item.bloque) {
+        lista[idxExiste] = {
+          ...lista[idxExiste],
+          bloque: resolvedBloque,
+          segmento: resolvedSegmento,
+          updatedAt: ahora
+        };
+      }
       return {
         ...state,
+        ejerciciosSesionHoy: lista,
+        activacionesExcluidas: excluidas,
         ejerciciosExcluidosHoy: excluidosHoy,
         updatedAt: ahora
       };
@@ -2721,7 +2862,8 @@
       id: Engine.generateId('es'),
       entrenamientoId,
       ejercicioId: item.ejercicioId,
-      segmento: item.segmento || 'entrenamiento',
+      segmento: resolvedSegmento,
+      bloque: resolvedBloque,
       seriesObjetivo: Number(item.seriesObjetivo) || 3,
       repsObjetivo: item.repsObjetivo || '8-12',
       pesoObjetivo: Number(item.pesoObjetivo) || 0,
@@ -2731,17 +2873,120 @@
       updatedAt: ahora
     });
 
-    const excluidas = { ...(state.activacionesExcluidas || {}) };
-    if (excluidas[item.ejercicioId]) {
-      delete excluidas[item.ejercicioId];
-    }
-
     return {
       ...state,
       ejerciciosSesionHoy: lista,
       activacionesExcluidas: excluidas,
       ejerciciosExcluidosHoy: excluidosHoy,
       updatedAt: ahora
+    };
+  };
+
+  /**
+   * Mueve o asigna un ejercicio de la sesión activa a otro bloque ('activacion' | 'movilidad' | 'A' | 'B' | 'cierre').
+   */
+  Engine.moverEjercicioDeBloque = function (state, entrenamientoId, ejercicioId, nuevoBloque) {
+    const ahora = Date.now();
+    const bloqueValido = ['activacion', 'movilidad', 'A', 'B', 'cierre'].includes(nuevoBloque) ? nuevoBloque : 'A';
+    const nuevoSeg = bloqueValido === 'activacion' ? 'activacion' : bloqueValido === 'movilidad' ? 'movilidad' : 'entrenamiento';
+    const lista = Array.isArray(state.ejerciciosSesionHoy) ? [...state.ejerciciosSesionHoy] : [];
+    const idx = lista.findIndex(x => x.entrenamientoId === entrenamientoId && x.ejercicioId === ejercicioId && !x.deleted);
+
+    if (idx !== -1) {
+      lista[idx] = { ...lista[idx], bloque: bloqueValido, segmento: nuevoSeg, updatedAt: ahora };
+    } else {
+      lista.push({
+        id: Engine.generateId('es'),
+        entrenamientoId,
+        ejercicioId,
+        segmento: nuevoSeg,
+        bloque: bloqueValido,
+        seriesObjetivo: 3,
+        repsObjetivo: '8-12',
+        pesoObjetivo: 0,
+        notas: '',
+        completado: false,
+        deleted: false,
+        updatedAt: ahora
+      });
+    }
+
+    return { ...state, ejerciciosSesionHoy: lista, updatedAt: ahora };
+  };
+
+  /**
+   * Registra una vuelta completa en modulación Vertical (circuito): 1 serie real por cada ejercicio del bloque.
+   */
+  Engine.completarVueltaVerticalBloque = function (state, entrenamientoId, bloque, registros = []) {
+    if (!entrenamientoId || !Array.isArray(registros) || registros.length === 0) return state;
+    const ahora = Date.now();
+    let s = state;
+    const nuevasIds = [];
+    registros.forEach((reg, idx) => {
+      if (!reg || !reg.ejercicioId) return;
+      const repsNum = Number(reg.reps);
+      const pesoNum = Number(reg.pesoKg);
+      if (!(repsNum > 0 || pesoNum > 0)) return;
+      const previas = (s.series || []).filter(
+        sr => sr.entrenamientoId === entrenamientoId && sr.ejercicioId === reg.ejercicioId && !sr.deleted
+      );
+      s = Engine.guardarSerie(s, {
+        entrenamientoId,
+        ejercicioId: reg.ejercicioId,
+        numeroSerie: previas.length + 1,
+        tipo: reg.tipo || 'efectiva',
+        pesoKg: pesoNum || 0,
+        reps: repsNum || 0,
+        rir: reg.rir !== undefined ? Number(reg.rir) : 2
+      });
+      if (s.series && s.series.length > 0) {
+        const lastSr = s.series[s.series.length - 1];
+        if (lastSr && lastSr.id) nuevasIds.push(lastSr.id);
+      }
+    });
+    return {
+      ...s,
+      lastBatchSerieIds: nuevasIds,
+      updatedAt: ahora
+    };
+  };
+
+  /**
+   * Marca o desmarca un ejercicio de Activación o Movilidad en la sesión de hoy.
+   */
+  Engine.toggleEjercicioActivacionOMovilidad = function (state, entrenamientoId, ejercicioId, fechaISO = Engine.todayISO()) {
+    let s = state;
+    const ahora = Date.now();
+    const lista = Array.isArray(s.ejerciciosSesionHoy) ? [...s.ejerciciosSesionHoy] : [];
+    const idx = lista.findIndex(x => x.entrenamientoId === entrenamientoId && x.ejercicioId === ejercicioId && !x.deleted);
+    if (idx !== -1) {
+      lista[idx] = { ...lista[idx], completado: !lista[idx].completado, updatedAt: ahora };
+      s = { ...s, ejerciciosSesionHoy: lista, updatedAt: ahora };
+    }
+    const ej = (s.ejercicios || []).find(e => e.id === ejercicioId) || (Engine.CATALOGO_EJERCICIOS || []).find(e => e.id === ejercicioId);
+    if (ej && ej.grupoMuscular === 'activacion') {
+      s = Engine.toggleActivacion(s, ejercicioId, fechaISO);
+    }
+    return s;
+  };
+
+  /**
+   * Calcula el progreso de vueltas/series de un bloque ('A' | 'B' | 'cierre') para mostrar en UI sin lógica ad-hoc.
+   */
+  Engine.computeBloqueProgreso = function (state, entrenamientoId, ejercicioIds = [], rondasObjetivo = 3) {
+    const ids = Array.isArray(ejercicioIds) ? ejercicioIds : [];
+    const counts = ids.map(ejId =>
+      (state.series || []).filter(s => s.entrenamientoId === entrenamientoId && s.ejercicioId === ejId && !s.deleted).length
+    );
+    const totalSeries = counts.reduce((acc, n) => acc + n, 0);
+    const vueltasCompletadas = counts.length > 0 ? Math.min(...counts) : 0;
+    const objetivo = Math.max(1, Number(rondasObjetivo) || 3);
+    return {
+      totalEjercicios: ids.length,
+      totalSeries,
+      vueltasCompletadas,
+      rondaActual: Math.min(objetivo, vueltasCompletadas + 1),
+      rondasObjetivo: objetivo
     };
   };
 
@@ -3415,6 +3660,7 @@
       ejercicios: Engine.CATALOGO_EJERCICIOS.map(e => ({ ...e, deleted: false, updatedAt: Date.now() })),
       rutinas: [],
       entrenamientos: [],
+      checkinsGym: [],
       series: [],
       ejerciciosSesionHoy: [],
       movilidad: [],

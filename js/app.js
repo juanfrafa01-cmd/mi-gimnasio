@@ -19,7 +19,7 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '3.0.0';
+  const APP_VERSION = '3.1.0';
 
   /** Número válido o valor por defecto (a diferencia de `|| def`, respeta el 0: RIR 0 = serie al fallo). */
   const numOr = (v, def) => (Number.isFinite(v) ? v : def);
@@ -57,11 +57,11 @@
   let draftReadiness = {
     userKey: null,
     fecha: Engine.todayISO(),
-    estadoGeneral: 'Excelente',
-    energia: '5',
+    estadoGeneral: 'Bien',
+    energia: '4',
     estres: '1',
     sueno: '5',
-    alimentacion: '4',
+    alimentacion: '5',
     zonaDolor: '',
     observacionAlumno: ''
   };
@@ -95,11 +95,11 @@
       draftReadiness = {
         userKey: uKey,
         fecha: hoyISO,
-        estadoGeneral: lastLog ? (lastLog.observacionAlumno || 'Excelente') : 'Excelente',
-        energia: lastLog ? String(lastLog.energia) : '4',
-        estres: lastLog ? String(lastLog.estres) : '2',
-        sueno: lastLog ? String(lastLog.sueno || 4) : '4',
-        alimentacion: lastLog ? String(lastLog.alimentacion || 4) : '4',
+        estadoGeneral: lastLog ? (lastLog.estadoGeneral || lastLog.observacionAlumno || 'Bien') : 'Bien',
+        energia: lastLog ? String(lastLog.energia || 4) : '4',
+        estres: lastLog ? String(lastLog.estres || 1) : '1',
+        sueno: lastLog ? String(lastLog.sueno || 5) : '5',
+        alimentacion: lastLog ? String(lastLog.alimentacion || 5) : '5',
         zonaDolor: lastLog ? (lastLog.zonaDolor || '') : '',
         observacionAlumno: lastLog ? (lastLog.observacionAlumno || '') : ''
       };
@@ -123,10 +123,14 @@
     const rdFecha = document.getElementById('rd-fecha');
     const rdDolor = document.getElementById('rd-dolor');
     const rdObs = document.getElementById('rd-obs');
+    const stepDolor = document.getElementById('step-psico-dolor');
+    const stepObs = document.getElementById('step-psico-obs');
 
     if (rdFecha && rdFecha.value) draftReadiness.fecha = rdFecha.value;
     if (rdDolor) draftReadiness.zonaDolor = rdDolor.value.trim();
     if (rdObs) draftReadiness.observacionAlumno = rdObs.value.trim();
+    if (stepDolor) draftReadiness.zonaDolor = stepDolor.value.trim();
+    if (stepObs) draftReadiness.observacionAlumno = stepObs.value.trim();
 
     const pfEdad = document.getElementById('pf-edad');
     const pfPeso = document.getElementById('pf-peso');
@@ -196,8 +200,42 @@
   // Estado del panel del Profesor (alumno seleccionado actualmente)
   let selectedAlumnoUsername = null;
 
+  const BG_PATTERNS = [
+    { id: 'none', nombre: 'Liso (Sin fondo)', icon: '⬛', preview: 'background: var(--bg-primary);' },
+    { id: 'camo', nombre: 'Camuflaje', icon: '🪖', preview: 'background: linear-gradient(135deg, #1b2417 25%, #24311e 50%, #34442a 75%, #0e130c 100%);' },
+    { id: 'basquet', nombre: 'Básquet', icon: '🏀', preview: 'background: radial-gradient(circle at center, rgba(249,115,22,0.45), #18181b);' },
+    { id: 'pesas', nombre: 'Pesas', icon: '🏋️', preview: 'background: linear-gradient(135deg, #27272a, #09090b);' },
+    { id: 'carbon', nombre: 'Carbono', icon: '🏎️', preview: 'background: repeating-linear-gradient(45deg, #111115, #111115 4px, #1f1f27 4px, #1f1f27 8px);' },
+    { id: 'grid', nombre: 'Cuadrícula', icon: '📐', preview: 'background: linear-gradient(to right, rgba(255,255,255,0.12) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.12) 1px, transparent 1px), #18181b; background-size: 8px 8px;' },
+    { id: 'hex', nombre: 'Malla Gym', icon: '⬡', preview: 'background: radial-gradient(circle, rgba(59,130,246,0.28), #09090b);' }
+  ];
+
+  function renderBackgroundPatternSelector(aesPref) {
+    const pref = aesPref || (Store.getAestheticPreference ? Store.getAestheticPreference() : {});
+    const activePat = pref.bgPattern || 'none';
+    const nonePat = BG_PATTERNS[0];
+    const restPats = BG_PATTERNS.slice(1);
+    return `
+      <div style="margin-top: 8px; padding-top: 10px; border-top: 1px dashed var(--border-subtle); display: flex; flex-direction: column; gap: 8px;">
+        <span class="theme-selector-label">Tema de Fondo (Personalizable)</span>
+        <button type="button" class="pattern-chip ${activePat === nonePat.id ? 'active' : ''}" data-action="set-aesthetic-pattern" data-pattern="${nonePat.id}" style="flex-direction: row; justify-content: center; padding: 8px 10px;">
+          <span>${nonePat.icon}</span>
+          <span>${nonePat.nombre}</span>
+        </button>
+        <div class="pattern-chips-grid">
+          ${restPats.map(p => `
+            <button type="button" class="pattern-chip ${activePat === p.id ? 'active' : ''}" data-action="set-aesthetic-pattern" data-pattern="${p.id}">
+              <div class="pattern-preview" style="${p.preview}">${p.icon}</div>
+              <span>${h(p.nombre)}</span>
+            </button>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+
   const DIAS_SEMANA = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
-  const GRUPOS_CATALOGO = ['todos', 'pecho', 'espalda', 'piernas', 'hombros', 'brazos', 'core', 'amrap'];
+  const GRUPOS_CATALOGO = ['todos', 'activacion', 'movilidad', 'pecho', 'espalda', 'piernas', 'hombros', 'brazos', 'core', 'amrap'];
 
   // ==========================================
   // SISTEMA DE ÍCONOS MONOCROMÁTICOS (ZINC-400 -> AZUL #2563EB)
@@ -505,7 +543,263 @@
   // 6. SUB-VISTAS DEL ALUMNO (FUNCIONAN EN MÓVIL Y EN PC)
   // ==========================================
 
-  // 6.1 Pestaña HOY / ENTRENAR
+  // Helper para renderizar Bloque A, Bloque B o Cierre dentro de la sesión guiada
+  function renderBloqueEntrenamientoStep(state, entActivo, cfg, bloqueKey, listaEjercicios, seriesEntreno) {
+    const esBloqueCierre = bloqueKey === 'cierre';
+    const bloqueCfg = esBloqueCierre
+      ? { modalidad: 'horizontal', rondasObjetivo: 3 }
+      : (cfg[bloqueKey] || { modalidad: 'horizontal', rondasObjetivo: 3 });
+    const modalidad = esBloqueCierre ? 'horizontal' : (bloqueCfg.modalidad || 'horizontal');
+    const esVertical = modalidad === 'vertical';
+    const rondasObj = Number(bloqueCfg.rondasObjetivo) || 3;
+    const ejIds = listaEjercicios.map(item => item.ejercicio.id);
+    const progreso = Engine.computeBloqueProgreso(state, entActivo.id, ejIds, rondasObj);
+
+    const catalogoCompleto = [...(state.ejercicios || []), ...(Engine.CATALOGO_EJERCICIOS || [])];
+    const martilloEj = esBloqueCierre
+      ? catalogoCompleto.find(e => !e.deleted && /martillo/i.test(e.nombre || ''))
+      : null;
+    const martilloYaAgregado = martilloEj && listaEjercicios.some(item => item.ejercicio.id === martilloEj.id);
+
+    const prevStep = bloqueKey === 'A' ? 'movilidad' : (bloqueKey === 'B' ? 'A' : 'B');
+    const nextStep = bloqueKey === 'A' ? 'B' : (bloqueKey === 'B' ? 'cierre' : null);
+    const prevLabel = bloqueKey === 'A' ? '← Movilidad' : (bloqueKey === 'B' ? '← Bloque A' : '← Bloque B');
+    const nextLabel = bloqueKey === 'A' ? 'Siguiente: Bloque B →' : 'Siguiente: Cierre (Opt.) →';
+
+    return `
+      <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; flex-wrap: wrap;">
+          <div>
+            <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+              <span class="badge ${esBloqueCierre ? 'badge-blue' : 'badge-neon'}">${esBloqueCierre ? 'OPCIONAL · FIN DE CLASE' : (bloqueKey === 'A' ? 'MÓDULO PRINCIPAL A' : 'MÓDULO PRINCIPAL B')}</span>
+              <span class="badge" style="font-family: var(--font-mono);">${listaEjercicios.length} ejercicio${listaEjercicios.length === 1 ? '' : 's'}</span>
+            </div>
+            <h2 class="card-title" style="font-size: 16.5px; margin-top: 4px;">
+              ${esBloqueCierre ? 'Ejercicio de Cierre (Optativo)' : `Bloque ${bloqueKey}`}
+            </h2>
+            ${esBloqueCierre ? `
+              <p style="font-size: 11.5px; color: var(--text-dim); margin-top: 2px;">
+                Ej: Bíceps martillo, abdominales o accesorio final después de Bloque A y B.
+              </p>
+            ` : ''}
+          </div>
+        </div>
+
+        ${!esBloqueCierre ? `
+          <div class="modulation-bar">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+              <span style="font-size: 11px; font-weight: 800; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em;">
+                Modulación del Bloque ${bloqueKey}
+              </span>
+              <span class="badge badge-blue" style="font-size: 10px;">
+                ${esVertical ? '🔁 En Circuito' : '➡️ Serie por Serie'}
+              </span>
+            </div>
+            <div class="modulation-toggle">
+              <button type="button" class="mod-btn ${esVertical ? 'active' : ''}" data-action="set-bloque-modalidad" data-bloque="${bloqueKey}" data-modalidad="vertical">
+                <strong>⬇️ Vertical (Circuito)</strong>
+                <span>1 serie de cada ejercicio y seguís la vuelta</span>
+              </button>
+              <button type="button" class="mod-btn ${!esVertical ? 'active' : ''}" data-action="set-bloque-modalidad" data-bloque="${bloqueKey}" data-modalidad="horizontal">
+                <strong>➡️ Horizontal (Tradicional)</strong>
+                <span>Todas las series seguidas de 1 ejercicio</span>
+              </button>
+            </div>
+
+            ${esVertical ? `
+              <div class="vertical-round-bar">
+                <div style="display: flex; flex-direction: column;">
+                  <strong style="font-size: 12.5px; color: var(--accent-emerald);">
+                    🔁 Vuelta ${progreso.rondaActual} de ${progreso.rondasObjetivo}
+                  </strong>
+                  <span style="font-size: 11px; color: var(--text-muted);">
+                    Completadas: ${progreso.vueltasCompletadas} vuelta${progreso.vueltasCompletadas === 1 ? '' : 's'} · ${progreso.totalSeries} series en total
+                  </span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 4px;">
+                  ${[2, 3, 4, 5].map(r => `
+                    <button type="button" class="badge ${rondasObj === r ? 'badge-emerald' : ''}" data-action="set-bloque-rondas" data-bloque="${bloqueKey}" data-rondas="${r}" style="cursor: pointer; padding: 5px 8px;">
+                      ${r}v
+                    </button>
+                  `).join('')}
+                </div>
+              </div>
+            ` : ''}
+          </div>
+        ` : ''}
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+          <button type="button" class="btn-primary btn-sm" data-action="open-catalog-picker" data-mode="workout" data-bloque="${bloqueKey}" data-filter-group="${esBloqueCierre ? 'brazos' : 'todos'}" style="width: 100% !important;">
+            + Elegir del Catálogo
+          </button>
+          <button type="button" class="btn-create-ej-inline" data-action="open-create-custom-ejercicio" data-bloque="${bloqueKey}" data-grupo="${esBloqueCierre ? 'brazos' : 'pecho'}">
+            + Crear Ejercicio
+          </button>
+        </div>
+
+        ${martilloEj && !martilloYaAgregado ? `
+          <button type="button" class="btn-secondary btn-sm" data-action="quick-add-to-bloque" data-bloque="cierre" data-ejercicio-id="${h(martilloEj.id)}" style="width: 100% !important;">
+            ⚡ Sumar rápido: ${h(martilloEj.nombre)}
+          </button>
+        ` : ''}
+      </div>
+
+      ${listaEjercicios.length === 0 ? `
+        <div class="card" style="text-align: center; padding: 20px 14px;">
+          <p style="font-size: 13px; font-weight: 700; color: var(--text-main);">
+            Todavía no sumaste ejercicios en ${esBloqueCierre ? 'Cierre' : `Bloque ${bloqueKey}`}.
+          </p>
+          <p style="font-size: 11.5px; color: var(--text-dim); margin-top: 2px;">
+            ${esBloqueCierre
+              ? 'Podés sumar bíceps martillo, abdomen o pasar directo a Finalizar.'
+              : 'Elegí un ejercicio del catálogo o creá uno nuevo si no estaba en la lista.'}
+          </p>
+        </div>
+      ` : `
+        <div style="display: flex; flex-direction: column; gap: 10px;" data-drag-list="sesion">
+          ${listaEjercicios.map((item, idx) => {
+            const ej = item.ejercicio;
+            const media = Engine.resolveEjercicioMedia(ej);
+            const seriesDelEj = seriesEntreno.filter(s => s.ejercicioId === ej.id);
+            const prev = Engine.getUltimaSesionEjercicio(state, ej.id, entActivo.id);
+            const sug = Engine.sugerirProgresion(state, ej.id, { excluirEntrenamientoId: entActivo.id, repsObjetivo: item.targetReps, seriesObjetivo: item.targetSets, equipo: ej.equipo });
+            const ultimaHoy = seriesDelEj[seriesDelEj.length - 1];
+            const defaultPeso = ultimaHoy ? ultimaHoy.pesoKg : (sug.pesoKg != null ? sug.pesoKg : (prev ? prev.mejor.pesoKg : 20));
+            const defaultReps = ultimaHoy ? ultimaHoy.reps : (sug.reps || (prev ? prev.mejor.reps : 10));
+            const defaultSeriesCant = seriesDelEj.length > 0 ? seriesDelEj.length : (item.targetSets || ej.seriesSugeridas || 3);
+            const yaGuardado = !esVertical && seriesDelEj.length > 0 && !editingEjercicios.has(ej.id);
+
+            return `
+              <div class="ej-step-card ${yaGuardado ? 'completo' : ''}" data-drag-id="${h(ej.id)}">
+                <div class="ej-card-top">
+                  <div class="ej-thumb" data-action="view-ejercicio" data-ejercicio-id="${h(ej.id)}" title="Ver técnica de ${h(ej.nombre)}">
+                    ${media.illustrationUrl ? `
+                      <img class="ej-thumb-img" src="${h(media.illustrationUrl)}" alt="${h(ej.nombre)}" loading="lazy">
+                    ` : `
+                      <div class="ej-thumb-fallback">${h((ej.nombre || 'EJ').slice(0, 2).toUpperCase())}</div>
+                    `}
+                  </div>
+                  <div class="ej-info">
+                    <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                      <h3 class="ej-title" style="margin: 0;">${idx + 1}. ${h(ej.nombre)}</h3>
+                      <span class="badge badge-neon" style="font-size: 9.5px; padding: 2px 7px;">${h(ej.grupoMuscular)}</span>
+                    </div>
+                    <div class="ej-clase-anterior">
+                      ${prev
+                        ? `⏮ Anterior: <strong>${h(prev.texto)}</strong>`
+                        : '<span class="primera-vez">✨ Primera vez</span>'}
+                    </div>
+                    ${item.notaProfesor ? `<p class="ej-nota" style="margin-top: 2px;">🩺 ${h(item.notaProfesor)}</p>` : ''}
+                  </div>
+                  <div class="ej-tools">
+                    ${!esBloqueCierre ? `
+                      <button type="button" class="badge" data-action="move-ej-bloque" data-ejercicio-id="${h(ej.id)}" data-entrenamiento-id="${h(entActivo.id)}" data-target-bloque="${bloqueKey === 'A' ? 'B' : 'A'}" title="Mover al otro bloque" style="cursor: pointer; font-size: 10px;">
+                        ${bloqueKey === 'A' ? '→ B' : '→ A'}
+                      </button>
+                    ` : ''}
+                    <button type="button" class="btn-eye-icon" data-action="view-ejercicio" data-ejercicio-id="${h(ej.id)}" title="Ver técnica">${renderIcon('eye')}</button>
+                    <button type="button" class="btn-icon-action danger" data-action="delete-sesion-ej" data-ejercicio-id="${h(ej.id)}" data-entrenamiento-id="${h(entActivo.id)}" title="Quitar de hoy">✕</button>
+                  </div>
+                </div>
+
+                ${esVertical ? `
+                  <div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center;">
+                    ${Array.from({ length: Math.max(rondasObj, seriesDelEj.length) }, (_, rIdx) => {
+                      const sDone = seriesDelEj[rIdx];
+                      return sDone
+                        ? `<span class="badge badge-emerald" style="font-size: 10.5px; font-family: var(--font-mono);">V${rIdx + 1}: ${sDone.pesoKg}×${sDone.reps} ✓</span>`
+                        : `<span class="badge" style="font-size: 10.5px; opacity: 0.65;">V${rIdx + 1}: pend.</span>`;
+                    }).join('')}
+                    ${seriesDelEj.length > 0 ? `
+                      <button type="button" class="btn-link" data-action="delete-all-series-ej" data-ejercicio-id="${h(ej.id)}" data-entrenamiento-id="${h(entActivo.id)}" style="font-size: 10.5px; color: var(--accent-rose); padding: 0 4px;">
+                        Borrar series
+                      </button>
+                    ` : ''}
+                  </div>
+
+                  <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: end;">
+                    <div class="ej-input-col">
+                      <label class="ej-input-label" for="vert-peso-${bloqueKey}-${h(ej.id)}">KG</label>
+                      <input type="number" step="0.5" id="vert-peso-${bloqueKey}-${h(ej.id)}" class="ej-val-input" value="${defaultPeso}" inputmode="decimal">
+                    </div>
+                    <div class="ej-input-col">
+                      <label class="ej-input-label" for="vert-reps-${bloqueKey}-${h(ej.id)}">REPES</label>
+                      <input type="number" id="vert-reps-${bloqueKey}-${h(ej.id)}" class="ej-val-input" value="${defaultReps}" inputmode="numeric">
+                    </div>
+                    <button type="button" class="btn-primary" data-action="save-serie-vertical" data-bloque="${bloqueKey}" data-ejercicio-id="${h(ej.id)}" data-entrenamiento-id="${h(entActivo.id)}" style="height: 42px; min-height: 42px; padding: 0 12px; width: auto; font-size: 12.5px !important;">
+                      + Serie V${seriesDelEj.length + 1}
+                    </button>
+                  </div>
+                ` : `
+                  ${yaGuardado ? `
+                    <div class="ej-saved-box">
+                      <div class="ej-saved-summary">
+                        <span style="font-size: 14px; color: var(--accent-emerald);">✓</span>
+                        <div class="ej-saved-data">
+                          <span style="color: var(--accent-emerald);">${seriesDelEj.length} series</span>
+                          <span style="color: var(--text-dim); margin: 0 3px;">·</span>
+                          <span>${ultimaHoy.pesoKg} kg × ${ultimaHoy.reps} reps</span>
+                        </div>
+                      </div>
+                      <div class="ej-saved-actions">
+                        <button type="button" class="btn-sm btn-secondary" data-action="edit-saved-exercise" data-ejercicio-id="${h(ej.id)}" title="Editar">✏️</button>
+                        <button type="button" class="btn-sm btn-secondary danger" data-action="delete-all-series-ej" data-ejercicio-id="${h(ej.id)}" data-entrenamiento-id="${h(entActivo.id)}" title="Borrar series">✕</button>
+                      </div>
+                    </div>
+                  ` : `
+                    <div class="ej-input-box">
+                      <div class="ej-inputs-3col">
+                        <div class="ej-input-col">
+                          <label class="ej-input-label" for="bulk-peso-${h(ej.id)}">KG</label>
+                          <input type="number" step="0.5" id="bulk-peso-${h(ej.id)}" class="ej-val-input" value="${defaultPeso}" inputmode="decimal" placeholder="0">
+                        </div>
+                        <div class="ej-input-col">
+                          <label class="ej-input-label" for="bulk-reps-${h(ej.id)}">REPES</label>
+                          <input type="number" id="bulk-reps-${h(ej.id)}" class="ej-val-input" value="${defaultReps}" inputmode="numeric" placeholder="10">
+                        </div>
+                        <div class="ej-input-col">
+                          <label class="ej-input-label" for="bulk-series-${h(ej.id)}">SERIES</label>
+                          <input type="number" id="bulk-series-${h(ej.id)}" class="ej-val-input" value="${defaultSeriesCant}" inputmode="numeric" min="1" max="10">
+                        </div>
+                      </div>
+                      <button type="button" class="btn-primary btn-save-bulk" data-action="save-ejercicio-completo" data-ejercicio-id="${h(ej.id)}" data-entrenamiento-id="${h(entActivo.id)}">
+                        ✓ Guardar series juntas
+                      </button>
+                    </div>
+                  `}
+                `}
+              </div>
+            `;
+          }).join('')}
+        </div>
+
+        ${esVertical && listaEjercicios.length > 0 ? `
+          <button type="button" class="btn-primary" data-action="complete-vuelta-vertical" data-bloque="${bloqueKey}" data-entrenamiento-id="${h(entActivo.id)}" style="background: linear-gradient(135deg, #10B981, #2563EB); min-height: 52px;">
+            🔁 Completar Vuelta #${progreso.vueltasCompletadas + 1} Completa (1 serie c/u)
+          </button>
+        ` : ''}
+      `}
+
+      <div class="card" style="padding: 10px 12px;">
+        <div style="display: flex; gap: 8px;">
+          <button type="button" class="btn-secondary" data-action="set-workout-step" data-step="${prevStep}" style="flex: 1;">
+            ${prevLabel}
+          </button>
+          ${nextStep ? `
+            <button type="button" class="btn-primary" data-action="set-workout-step" data-step="${nextStep}" style="flex: 1.4;">
+              ${nextLabel}
+            </button>
+          ` : `
+            <button type="button" class="btn-primary" data-action="finish-workout" data-entrenamiento-id="${h(entActivo.id)}" style="flex: 1.4; background: var(--accent-emerald);">
+              ✓ Finalizar Entrenamiento
+            </button>
+          `}
+        </div>
+      </div>
+    `;
+  }
+
+  // 6.1 Pestaña HOY / ENTRENAR (Check-in Hero + Flujo Modular Guiado)
   function renderAlumnoHoySection(state, user) {
     const activoId = state.entrenamientoActivoId;
     const entActivo = activoId
@@ -513,37 +807,11 @@
       : null;
     const rutinasActivas = (state.rutinas || []).filter(r => !r.deleted);
     const observacionesRecientes = (state.observaciones || []).filter(o => !o.deleted).slice(0, 2);
+    const hoyISO = Engine.todayISO();
+    const readinessHoy = (state.readinessLogs || []).find(r => r.fecha === hoyISO && !r.deleted);
+    const checkinHoy = Engine.getCheckinGymHoy ? Engine.getCheckinGymHoy(state, hoyISO) : null;
 
-    // Check-in rápido al llegar al gimnasio: "¿Cómo estás hoy?" (Compacto en 1 línea para diseño One-Page)
-    const readinessHoy = (state.readinessLogs || []).find(r => r.fecha === Engine.todayISO() && !r.deleted);
-    const estadoActual = readinessHoy ? (readinessHoy.observacionAlumno || '') : '';
-    const checkinCardHtml = `
-      <div class="card checkin-card">
-        <div class="checkin-header-row">
-          <span class="checkin-title">👋 ¿Cómo estás hoy para entrenar?</span>
-          ${estadoActual ? `<span class="badge badge-blue">✓ ${h(estadoActual)}</span>` : '<span class="badge badge-neon">Llegando al gym</span>'}
-        </div>
-        <div class="checkin-chips">
-          <button type="button" class="checkin-chip ${estadoActual === 'Excelente' ? 'selected' : ''}" data-action="quick-checkin" data-estado="Excelente" data-energia="5" data-estres="1">
-            ⚡ Excelente
-          </button>
-          <button type="button" class="checkin-chip ${estadoActual === 'Con energía' ? 'selected' : ''}" data-action="quick-checkin" data-estado="Con energía" data-energia="5" data-estres="1">
-            🔥 Energía
-          </button>
-          <button type="button" class="checkin-chip ${estadoActual === 'Normal' ? 'selected' : ''}" data-action="quick-checkin" data-estado="Normal" data-energia="4" data-estres="2">
-            😊 Normal
-          </button>
-          <button type="button" class="checkin-chip ${estadoActual === 'Cansado' ? 'selected' : ''}" data-action="quick-checkin" data-estado="Cansado" data-energia="2" data-estres="3">
-            😴 Cansado
-          </button>
-          <button type="button" class="checkin-chip ${estadoActual === 'Con molestia' ? 'selected' : ''}" data-action="quick-checkin" data-estado="Con molestia" data-energia="2" data-estres="4">
-            ⚠️ Molestia
-          </button>
-        </div>
-      </div>
-    `;
-
-    // Si NO hay un entrenamiento en curso (Diseño One-Page compacto)
+    // PANTALLA INICIAL (SIN ENTRENAMIENTO ABIERTO): BOTÓN GRANDE DE CHECK-IN AL GIMNASIO
     if (!entActivo) {
       const hoyInfo = Engine.rutinaParaHoy(state);
       const ultimo = Engine.ultimoEntrenamiento(state);
@@ -551,102 +819,93 @@
       const rutinaHoy = hoyInfo.rutina;
 
       return `
-        <!-- Cabecera compacta: saludo y último entreno -->
-        <div class="card hoy-head">
-          <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
-            <div style="min-width: 0; flex: 1;">
-              <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                <h2 style="font-size: 17px; font-weight: 800; margin: 0;">¡Hola, ${h(user.displayName)}!</h2>
-                <span class="badge badge-neon">${h(hoyInfo.dia)} · ${hoyInfo.esDiaDeGym ? 'Día de gym' : 'Día libre'}</span>
-              </div>
-              <p style="font-size: 11.5px; color: var(--text-muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                ${ultimo
-                  ? `Último (${h(ultimo.haceTexto)}): <strong>${h(ultimo.nombre)}</strong> · ${ultimo.series} series · ${Math.round(ultimo.volumen).toLocaleString('es-AR')} kg`
-                  : 'Listo para registrar tu primer entrenamiento.'}
-              </p>
-            </div>
-            ${!tieneFicha ? `
-              <button type="button" class="badge badge-blue" data-action="switch-tab" data-tab="salud" style="cursor: pointer; flex-shrink: 0;">Ficha →</button>
-            ` : ''}
+        <div class="hero-checkin-card">
+          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center;">
+            <span class="badge badge-neon">${h(hoyInfo.dia)} · ${hoyInfo.esDiaDeGym ? 'Día de gym' : 'Día libre'}</span>
+            ${checkinHoy ? `<span class="badge badge-emerald">✅ Asistencia hoy ${h(checkinHoy.horaLlegada || '')} hs</span>` : ''}
           </div>
+          <div>
+            <h2 style="font-size: 20px; font-weight: 900; margin: 0;">¡Hola, ${h(user.displayName)}!</h2>
+            <p style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">
+              ${checkinHoy
+                ? 'Ya registraste tu asistencia de hoy. ¿Querés abrir otra sesión?'
+                : '¿Llegaste al gimnasio? Tocá abajo para registrar asistencia y empezar paso a paso.'}
+            </p>
+          </div>
+
+          <button type="button" class="hero-checkin-btn" data-action="checkin-gym-hoy" ${rutinaHoy ? `data-rutina-id="${h(rutinaHoy.id)}"` : ''}>
+            <span>🏋️</span>
+            <span>${checkinHoy ? 'INICIAR NUEVA SESIÓN GUIADA' : '¡HOY FUI AL GIMNASIO! — Registrar'}</span>
+          </button>
+
+          <p style="font-size: 11.5px; color: var(--text-dim);">
+            ${ultimo
+              ? `Última clase (${h(ultimo.haceTexto)}): <strong>${h(ultimo.nombre)}</strong> · ${ultimo.series} series · ${Math.round(ultimo.volumen).toLocaleString('es-AR')} kg`
+              : 'Paso siguiente: Psicofísico → Activación → Movilidad → Bloque A → Bloque B → Cierre'}
+          </p>
+
+          ${!tieneFicha ? `
+            <button type="button" class="badge badge-blue" data-action="switch-tab" data-tab="salud" style="cursor: pointer;">Completar Ficha Salud →</button>
+          ` : ''}
         </div>
 
-        ${checkinCardHtml}
-
-        <!-- Acción principal del día + Mis Rutinas unificadas en One-Page -->
-        <div class="card hoy-cta" style="flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: space-between;">
-          <div>
-            ${rutinaHoy ? `
-              <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
-                <div>
-                  <span class="badge badge-blue">Te toca hoy</span>
-                  <h3 style="font-size: 16px; font-weight: 800; margin-top: 3px;">${h(rutinaHoy.nombre)}</h3>
-                  <p style="font-size: 11.5px; color: var(--text-muted);">
-                    ${(rutinaHoy.ejercicios || []).length} ejercicios · ${h(rutinaHoy.horario || '19:00')} hs
-                  </p>
-                </div>
-              </div>
-              <div style="display: flex; gap: 8px; margin-top: 8px;">
-                <button type="button" class="btn-primary" data-action="start-workout" data-rutina-id="${h(rutinaHoy.id)}" style="flex: 1.4;">
-                  ▶ Empezar ${h(rutinaHoy.nombre)}
-                </button>
-                <button type="button" class="btn-secondary" data-action="start-today-session" style="flex: 1;">
-                  Entreno libre
-                </button>
-              </div>
-            ` : `
-              <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
-                <div>
-                  <span class="badge badge-neon">⚡ Entrenamiento de Hoy</span>
-                  <h3 style="font-size: 16px; font-weight: 800; margin-top: 3px;">${rutinasActivas.length ? 'Elegí tu rutina o entrená libre' : 'Empezá tu sesión de hoy'}</h3>
-                </div>
-                <button type="button" class="btn-primary" data-action="start-today-session" style="width: auto; padding: 0 16px;">
-                  ▶ Entreno libre
-                </button>
-              </div>
-            `}
-          </div>
-
-          <!-- Lista compacta de Mis Rutinas -->
-          <div style="border-top: 1px solid var(--border-subtle); padding-top: 8px; margin-top: 8px; flex: 1; min-height: 0; display: flex; flex-direction: column;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-              <span style="font-size: 12px; font-weight: 800; color: var(--text-main);">📋 Mis rutinas (${rutinasActivas.length})</span>
+        <div class="card">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <span style="font-size: 13px; font-weight: 800;">⚡ Accesos Rápidos y Rutinas (${rutinasActivas.length})</span>
+            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+              <button type="button" class="btn-create-ej-inline" data-action="open-create-custom-ejercicio" style="padding: 6px 10px; font-size: 11.5px;">
+                + Crear Ejercicio
+              </button>
               <button type="button" class="btn-sm btn-secondary" data-action="open-rutina-builder">
-                + Nueva rutina
+                + Nueva Rutina
               </button>
             </div>
+          </div>
 
-            ${rutinasActivas.length === 0 ? `
-              <div style="padding: 12px; text-align: center; border: 1px dashed var(--border-subtle); border-radius: var(--radius-md); font-size: 12px; color: var(--text-muted);">
-                Tocá <strong>"▶ Entreno libre"</strong> para cargar a medida que entrenás, o creá una rutina fija.
+          ${rutinaHoy ? `
+            <div class="rutina-row hoy" style="padding: 10px 12px;">
+              <div style="min-width: 0; flex: 1;">
+                <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                  <span class="badge badge-blue">Te toca hoy</span>
+                  <h3 style="font-size: 14px; font-weight: 800;">${h(rutinaHoy.nombre)}</h3>
+                </div>
+                <div style="font-size: 11.5px; color: var(--text-dim); margin-top: 2px;">
+                  ${(rutinaHoy.ejercicios || []).length} ejercicios · ${h(rutinaHoy.horario || '19:00')} hs
+                </div>
               </div>
-            ` : `
-              <div class="onepage-scroll-list" style="gap: 6px;">
-                ${rutinasActivas.map(r => `
-                  <div class="rutina-row ${rutinaHoy && rutinaHoy.id === r.id ? 'hoy' : ''}" style="padding: 8px 10px;">
-                    <div style="min-width: 0; flex: 1;">
-                      <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                        <h3 style="font-size: 13.5px; font-weight: 800;">${h(r.nombre)}</h3>
-                        ${rutinaHoy && rutinaHoy.id === r.id ? '<span class="badge badge-blue">Hoy</span>' : ''}
-                      </div>
-                      <div style="font-size: 11px; color: var(--text-dim);">
-                        ${(r.dias || []).map(d => h(d.slice(0, 3))).join(' · ')} · ${(r.ejercicios || []).length} ej.
-                      </div>
-                    </div>
-                    <div style="display: flex; gap: 5px;">
-                      <button type="button" class="btn-icon-action" data-action="edit-rutina" data-rutina-id="${h(r.id)}" title="Editar rutina">✏️</button>
-                      <button type="button" class="btn-primary btn-sm" data-action="start-workout" data-rutina-id="${h(r.id)}">▶ Iniciar</button>
+              <button type="button" class="btn-primary btn-sm" data-action="start-workout" data-rutina-id="${h(rutinaHoy.id)}">
+                ▶ Iniciar
+              </button>
+            </div>
+          ` : ''}
+
+          ${rutinasActivas.length > 0 ? `
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              ${rutinasActivas.filter(r => !rutinaHoy || r.id !== rutinaHoy.id).map(r => `
+                <div class="rutina-row" style="padding: 8px 10px;">
+                  <div style="min-width: 0; flex: 1;">
+                    <h3 style="font-size: 13.5px; font-weight: 800;">${h(r.nombre)}</h3>
+                    <div style="font-size: 11px; color: var(--text-dim);">
+                      ${(r.dias || []).map(d => h(d.slice(0, 3))).join(' · ')} · ${(r.ejercicios || []).length} ej.
                     </div>
                   </div>
-                `).join('')}
-              </div>
-            `}
-          </div>
+                  <div style="display: flex; gap: 5px;">
+                    <button type="button" class="btn-icon-action" data-action="edit-rutina" data-rutina-id="${h(r.id)}" title="Editar">✏️</button>
+                    <button type="button" class="btn-primary btn-sm" data-action="start-workout" data-rutina-id="${h(r.id)}">▶</button>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          ` : `
+            <div style="padding: 12px; text-align: center; border: 1px dashed var(--border-subtle); border-radius: var(--radius-md); font-size: 12px; color: var(--text-muted);">
+              Tocá <strong>"¡HOY FUI AL GIMNASIO!"</strong> arriba para registrar tu día y entrenar paso a paso.
+            </div>
+          `}
         </div>
 
         ${observacionesRecientes.length > 0 ? `
-          <div class="card" style="border-left: 3px solid var(--accent-blue); padding: 8px 12px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px;">
+          <div class="card" style="border-left: 3px solid var(--accent-blue); padding: 10px 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; gap: 8px;">
               <strong>🩺 Nota del Profe: ${h(observacionesRecientes[0].texto)}</strong>
               <button type="button" class="badge badge-blue" data-action="switch-tab" data-tab="salud">Ver</button>
             </div>
@@ -655,7 +914,26 @@
       `;
     }
 
-    // SI HAY UN ENTRENAMIENTO ACTIVO EN CURSO ("CARGA TU RUTINA DE HOY")
+    // ENTRENAMIENTO ACTIVO: FLUJO MODULAR PASO A PASO
+    const rawCfg = entActivo.modulosConfig || {};
+    const pasosValidos = ['psicofisico', 'activacion', 'movilidad', 'A', 'B', 'cierre'];
+    const cfg = {
+      pasoActual: pasosValidos.includes(rawCfg.pasoActual) ? rawCfg.pasoActual : 'psicofisico',
+      activacionActiva: rawCfg.activacionActiva !== false,
+      movilidadActiva: rawCfg.movilidadActiva !== false,
+      A: {
+        modalidad: (rawCfg.A && rawCfg.A.modalidad) || 'horizontal',
+        nombre: (rawCfg.A && rawCfg.A.nombre) || 'Bloque A',
+        rondasObjetivo: Number(rawCfg.A && rawCfg.A.rondasObjetivo) || 3
+      },
+      B: {
+        modalidad: (rawCfg.B && rawCfg.B.modalidad) || 'horizontal',
+        nombre: (rawCfg.B && rawCfg.B.nombre) || 'Bloque B',
+        rondasObjetivo: Number(rawCfg.B && rawCfg.B.rondasObjetivo) || 3
+      },
+      cierreActivo: rawCfg.cierreActivo !== false
+    };
+
     const rutinaAsociada = entActivo.rutinaId
       ? (state.rutinas || []).find(r => r.id === entActivo.rutinaId)
       : null;
@@ -663,38 +941,57 @@
       s => s.entrenamientoId === entActivo.id && !s.deleted
     );
     const volumenTotal = Engine.computeVolumenEntrenamiento(state.series, entActivo.id);
-
-    // 1. Segmento Activación (Base + agregados hoy del catálogo, excluyendo los eliminados)
-    const activacionesHoy = Engine.activacionesDe(state, entActivo.fecha || Engine.todayISO());
-    const activacionesExcluidas = state.activacionesExcluidas || {};
-    const baseActivacion = (Engine.EJERCICIOS_ACTIVACION_BASE || []).filter(
-      a => !activacionesExcluidas[a.id]
-    );
-    const extraActSesion = (state.ejerciciosSesionHoy || [])
-      .filter(item => !item.deleted && item.segmento === 'activacion' && !activacionesExcluidas[item.ejercicioId])
-      .map(item => ({
-        id: item.ejercicioId,
-        nombre: item.nombre,
-        prescripcion: `${item.seriesObjetivo || 2} series × ${item.repsObjetivo || '12'}`,
-        foco: item.grupoMuscular || 'Activación',
-        sesionItemId: item.id
-      }));
-    const mapActivacion = new Map();
-    baseActivacion.forEach(a => mapActivacion.set(a.id, a));
-    extraActSesion.forEach(a => {
-      if (!mapActivacion.has(a.id)) mapActivacion.set(a.id, a);
-    });
-    const listaActivacionHoy = Array.from(mapActivacion.values());
-
-    // 2. Segmento Movilidad
-    const movilidadHoy = Engine.movilidadDe(state, entActivo.fecha || Engine.todayISO());
-    const hayMovilidadPrevia = (state.movilidad || []).some(m => !m.deleted && m.fecha && m.fecha < (entActivo.fecha || Engine.todayISO()));
-
-    // 3. Segmento Entrenamiento & AMRAP
-    const bloquesAmrapHoy = (state.bloquesAmrap || []).filter(b => !b.deleted);
-
     const excluidosSesionMap = (state.ejerciciosExcluidosHoy && state.ejerciciosExcluidosHoy[entActivo.id]) || {};
 
+    // 1. Módulo Activación
+    const activacionesHoy = Engine.activacionesDe(state, entActivo.fecha || hoyISO);
+    const activacionesExcluidas = state.activacionesExcluidas || {};
+    const baseActivacion = (Engine.EJERCICIOS_ACTIVACION_BASE || []).filter(a => !activacionesExcluidas[a.id]);
+    const extraActSesion = (state.ejerciciosSesionHoy || [])
+      .filter(item => !item.deleted && (!item.entrenamientoId || item.entrenamientoId === entActivo.id) && (item.bloque === 'activacion' || item.segmento === 'activacion') && !activacionesExcluidas[item.ejercicioId])
+      .map(item => {
+        const ejObj = (state.ejercicios || []).find(e => e.id === item.ejercicioId) || (Engine.CATALOGO_EJERCICIOS || []).find(e => e.id === item.ejercicioId);
+        return {
+          id: item.ejercicioId,
+          nombre: (ejObj && ejObj.nombre) || item.nombre || 'Activación',
+          prescripcion: `${item.seriesObjetivo || 2} series × ${item.repsObjetivo || '12'}`,
+          foco: (ejObj && ejObj.grupoMuscular) || 'Activación',
+          completado: Boolean(item.completado),
+          sesionItemId: item.id,
+          esPersonalizadoEnSesion: true
+        };
+      });
+    const mapActivacion = new Map();
+    baseActivacion.forEach(a => mapActivacion.set(a.id, { ...a, completado: Boolean(activacionesHoy[a.id]) }));
+    extraActSesion.forEach(a => {
+      const done = Boolean(activacionesHoy[a.id] || a.completado);
+      mapActivacion.set(a.id, { ...a, completado: done });
+    });
+    const listaActivacionHoy = Array.from(mapActivacion.values());
+    const actDoneCount = listaActivacionHoy.filter(a => a.completado).length;
+
+    // 2. Módulo Movilidad
+    const movilidadHoy = Engine.movilidadDe(state, entActivo.fecha || hoyISO);
+    const movIdsSeen = new Set(movilidadHoy.map(m => m.ejercicioId));
+    const movExtraSesion = (state.ejerciciosSesionHoy || [])
+      .filter(item => !item.deleted && (!item.entrenamientoId || item.entrenamientoId === entActivo.id) && (item.bloque === 'movilidad' || item.segmento === 'movilidad') && !excluidosSesionMap[item.ejercicioId] && !movIdsSeen.has(item.ejercicioId))
+      .map(item => {
+        const ejObj = (state.ejercicios || []).find(e => e.id === item.ejercicioId) || (Engine.CATALOGO_EJERCICIOS || []).find(e => e.id === item.ejercicioId);
+        return {
+          id: item.id,
+          ejercicioId: item.ejercicioId,
+          nombre: (ejObj && ejObj.nombre) || item.nombre || 'Movilidad',
+          series: item.seriesObjetivo || 2,
+          reps: item.repsObjetivo || '12',
+          completado: Boolean(item.completado),
+          esSesionItem: true
+        };
+      });
+    const listaMovilidadHoy = [...movilidadHoy, ...movExtraSesion];
+    const hayMovilidadPrevia = (state.movilidad || []).some(m => !m.deleted && m.fecha && m.fecha < (entActivo.fecha || hoyISO));
+
+    // 3. Ejercicios principales (Bloque A, Bloque B, Cierre) + AMRAP
+    const bloquesAmrapHoy = (state.bloquesAmrap || []).filter(b => !b.deleted);
     let ejerciciosList = [];
     if (rutinaAsociada && Array.isArray(rutinaAsociada.ejercicios)) {
       ejerciciosList = rutinaAsociada.ejercicios
@@ -703,7 +1000,8 @@
           const ej = (state.ejercicios || []).find(e => e.id === re.ejercicioId)
             || Engine.CATALOGO_EJERCICIOS.find(e => e.id === re.ejercicioId);
           return {
-            ejercicio: ej || { id: re.ejercicioId, nombre: 'Ejercicio', grupoMuscular: 'general', equipo: 'barra' },
+            ejercicio: ej || { id: re.ejercicioId, nombre: re.nombre || 'Ejercicio', grupoMuscular: 'general', equipo: 'barra' },
+            bloque: ['A', 'B', 'cierre'].includes(re.bloque) ? re.bloque : 'A',
             targetSets: re.seriesObjetivo || 3,
             targetReps: re.repsObjetivo || '8-10',
             notaProfesor: re.notaProfesor || '',
@@ -712,17 +1010,18 @@
         });
     }
 
-    // Ejercicios agregados del catálogo a la sesión de hoy (segmento entrenamiento)
     const idsEnLista = new Set(ejerciciosList.map(item => item.ejercicio.id));
     (state.ejerciciosSesionHoy || [])
-      .filter(item => !item.deleted && (!item.entrenamientoId || item.entrenamientoId === entActivo.id) && item.segmento !== 'activacion' && item.segmento !== 'movilidad' && !excluidosSesionMap[item.ejercicioId])
+      .filter(item => !item.deleted && (!item.entrenamientoId || item.entrenamientoId === entActivo.id) && item.segmento !== 'activacion' && item.segmento !== 'movilidad' && item.bloque !== 'activacion' && item.bloque !== 'movilidad' && !excluidosSesionMap[item.ejercicioId])
       .forEach(item => {
+        const resolvedBloque = ['A', 'B', 'cierre'].includes(item.bloque) ? item.bloque : 'A';
         const existingIdx = ejerciciosList.findIndex(x => x.ejercicio.id === item.ejercicioId);
         const ej = (state.ejercicios || []).find(e => e.id === item.ejercicioId)
           || Engine.CATALOGO_EJERCICIOS.find(e => e.id === item.ejercicioId);
         if (existingIdx >= 0 && ej) {
           ejerciciosList[existingIdx] = {
             ejercicio: ej,
+            bloque: resolvedBloque,
             targetSets: item.seriesObjetivo || ejerciciosList[existingIdx].targetSets || 3,
             targetReps: item.repsObjetivo || ejerciciosList[existingIdx].targetReps || '8-10',
             notaProfesor: item.notas || ejerciciosList[existingIdx].notaProfesor || '',
@@ -732,6 +1031,7 @@
           idsEnLista.add(ej.id);
           ejerciciosList.push({
             ejercicio: ej,
+            bloque: resolvedBloque,
             targetSets: item.seriesObjetivo || ej.seriesSugeridas || 3,
             targetReps: item.repsObjetivo || ej.repsSugeridas || '8-10',
             notaProfesor: item.notas || '',
@@ -740,15 +1040,15 @@
         }
       });
 
-    // Incluir cualquier ejercicio que ya tenga series registradas en esta sesión (si no fue excluido)
     seriesEntreno.forEach(s => {
       if (!idsEnLista.has(s.ejercicioId) && !excluidosSesionMap[s.ejercicioId]) {
         const ej = (state.ejercicios || []).find(e => e.id === s.ejercicioId)
           || Engine.CATALOGO_EJERCICIOS.find(e => e.id === s.ejercicioId);
-        if (ej && ej.grupoMuscular !== 'movilidad') {
+        if (ej && ej.grupoMuscular !== 'movilidad' && ej.grupoMuscular !== 'activacion') {
           idsEnLista.add(ej.id);
           ejerciciosList.push({
             ejercicio: ej,
+            bloque: 'A',
             targetSets: ej.seriesSugeridas || 3,
             targetReps: ej.repsSugeridas || '8-10',
             notaProfesor: '',
@@ -759,36 +1059,314 @@
     });
 
     ejerciciosList = Engine.aplicarOrdenSesion(state, entActivo.id, ejerciciosList);
-    const descanso = Engine.getDescanso(state);
+    const ejerciciosBloqueA = ejerciciosList.filter(x => x.bloque === 'A');
+    const ejerciciosBloqueB = ejerciciosList.filter(x => x.bloque === 'B');
+    const ejerciciosCierre = ejerciciosList.filter(x => x.bloque === 'cierre');
+    const bloqueParaCrear = ['activacion', 'movilidad', 'A', 'B', 'cierre'].includes(cfg.pasoActual) ? cfg.pasoActual : 'A';
+
+    // Contenido dinámico del paso actual
+    let stepBodyHtml = '';
+
+    if (cfg.pasoActual === 'psicofisico') {
+      const estSel = draftReadiness.estadoGeneral || (readinessHoy && readinessHoy.estadoGeneral) || 'Bien';
+      const estresVal = String(draftReadiness.estres || (readinessHoy && readinessHoy.estres) || '1');
+      const suenoVal = String(draftReadiness.sueno || (readinessHoy && readinessHoy.sueno) || '5');
+      const alimVal = String(draftReadiness.alimentacion || (readinessHoy && readinessHoy.alimentacion) || '5');
+
+      stepBodyHtml = `
+        <div class="card">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+            <div>
+              <span class="badge badge-neon">PASO 1 · ESTADO PSICOFÍSICO</span>
+              <h2 class="card-title" style="font-size: 16.5px; margin-top: 4px;">¿Cómo estás hoy?</h2>
+            </div>
+            ${readinessHoy ? '<span class="badge badge-emerald">✓ Guardado hoy</span>' : ''}
+          </div>
+
+          <div class="psico-row">
+            <span class="form-label" style="font-size: 11px;">1. Estado general</span>
+            <div class="psico-chips">
+              ${[
+                { val: 'Bien', label: '😊 Bien' },
+                { val: 'Normal', label: '😐 Normal' },
+                { val: 'Mal', label: '😣 Mal' }
+              ].map(o => `
+                <button type="button" class="psico-chip ${estSel === o.val ? 'selected' : ''}" data-action="set-psico-chip" data-field="estadoGeneral" data-value="${o.val}">
+                  ${o.label}
+                </button>
+              `).join('')}
+            </div>
+          </div>
+
+          <div class="psico-row">
+            <span class="form-label" style="font-size: 11px;">2. ¿Estás estresado?</span>
+            <div class="psico-chips">
+              ${[
+                { val: '1', label: '😌 Poco / No' },
+                { val: '3', label: '🟡 Algo' },
+                { val: '5', label: '🤯 Bastante' }
+              ].map(o => `
+                <button type="button" class="psico-chip ${estresVal === o.val ? 'selected' : ''}" data-action="set-psico-chip" data-field="estres" data-value="${o.val}">
+                  ${o.label}
+                </button>
+              `).join('')}
+            </div>
+          </div>
+
+          <div class="psico-row">
+            <span class="form-label" style="font-size: 11px;">3. ¿Dormiste bien?</span>
+            <div class="psico-chips">
+              ${[
+                { val: '5', label: '😴 Sí, bien' },
+                { val: '3', label: '🌙 Regular' },
+                { val: '1', label: '🥱 Mal' }
+              ].map(o => `
+                <button type="button" class="psico-chip ${suenoVal === o.val ? 'selected' : ''}" data-action="set-psico-chip" data-field="sueno" data-value="${o.val}">
+                  ${o.label}
+                </button>
+              `).join('')}
+            </div>
+          </div>
+
+          <div class="psico-row">
+            <span class="form-label" style="font-size: 11px;">4. ¿Comiste bien?</span>
+            <div class="psico-chips">
+              ${[
+                { val: '5', label: '🥗 Sí, bien' },
+                { val: '3', label: '🥪 Más o menos' },
+                { val: '1', label: '🍽️ Mal / Ayunas' }
+              ].map(o => `
+                <button type="button" class="psico-chip ${alimVal === o.val ? 'selected' : ''}" data-action="set-psico-chip" data-field="alimentacion" data-value="${o.val}">
+                  ${o.label}
+                </button>
+              `).join('')}
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="step-psico-dolor">Molestia física (opcional)</label>
+            <input type="text" id="step-psico-dolor" class="form-input" value="${h(draftReadiness.zonaDolor || '')}" placeholder="Ej: Carga en lumbar, rodilla, ninguna...">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="step-psico-obs">Alguna observación</label>
+            <input type="text" id="step-psico-obs" class="form-input" value="${h(draftReadiness.observacionAlumno || '')}" placeholder="Ej: Vengo cansado del trabajo, con ganas de entrenar...">
+          </div>
+
+          <div style="display: flex; gap: 8px; margin-top: 4px;">
+            <button type="button" class="btn-primary" data-action="submit-step-psicofisico" style="flex: 2;">
+              ✓ Guardar y Seguir: Activación →
+            </button>
+            <button type="button" class="btn-secondary" data-action="set-workout-step" data-step="activacion" style="flex: 0.9;">
+              Saltar →
+            </button>
+          </div>
+        </div>
+      `;
+    } else if (cfg.pasoActual === 'activacion') {
+      stepBodyHtml = `
+        <div class="card">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <div>
+              <span class="badge badge-neon">PASO 2 · ACTIVACIÓN</span>
+              <h2 class="card-title" style="font-size: 16.5px; margin-top: 4px;">Módulo de Activación</h2>
+            </div>
+            <button type="button" class="badge ${cfg.activacionActiva ? 'badge-emerald' : ''}" data-action="toggle-module-enabled" data-module="activacion" style="cursor: pointer; padding: 6px 10px;">
+              ${cfg.activacionActiva ? '🟢 Activo (Tocar p/ omitir)' : '⚪ Omitido (Activar)'}
+            </button>
+          </div>
+
+          ${!cfg.activacionActiva ? `
+            <p style="font-size: 12.5px; color: var(--text-muted); padding: 10px 0;">
+              Omitiste la activación en la sesión de hoy. Podés activarla arriba o pasar directo a Movilidad.
+            </p>
+          ` : `
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+              <button type="button" class="btn-primary btn-sm" data-action="open-catalog-picker" data-mode="workout" data-bloque="activacion" data-filter-group="activacion" style="width: 100% !important;">
+                + Agregar Activación
+              </button>
+              <button type="button" class="btn-create-ej-inline" data-action="open-create-custom-ejercicio" data-bloque="activacion" data-grupo="activacion">
+                + Crear Ejercicio
+              </button>
+            </div>
+
+            ${listaActivacionHoy.length === 0 ? `
+              <p style="font-size: 12.5px; color: var(--text-dim); text-align: center; padding: 12px;">
+                Sin ejercicios de activación cargados. Tocá "+ Agregar Activación".
+              </p>
+            ` : `
+              <div style="display: flex; flex-direction: column; gap: 8px;">
+                ${listaActivacionHoy.map(act => {
+                  const ejRef = (state.ejercicios || []).find(e => e.id === act.id) || (Engine.CATALOGO_EJERCICIOS || []).find(e => e.id === act.id);
+                  const media = ejRef ? Engine.resolveEjercicioMedia(ejRef) : {};
+                  return `
+                    <div class="ej-step-card" style="padding: 10px;">
+                      <div style="display: flex; align-items: center; gap: 10px;">
+                        <button type="button" class="badge ${act.completado ? 'badge-emerald' : ''}" data-action="toggle-act-mov-done" data-ejercicio-id="${h(act.id)}" data-entrenamiento-id="${h(entActivo.id)}" style="cursor: pointer; min-width: 34px; height: 34px; justify-content: center; font-size: 14px;">
+                          ${act.completado ? '✓' : '○'}
+                        </button>
+                        ${media.illustrationUrl ? `
+                          <img src="${h(media.illustrationUrl)}" alt="${h(act.nombre)}" style="width: 40px; height: 40px; border-radius: 8px; object-fit: cover; flex-shrink: 0;">
+                        ` : ''}
+                        <div style="flex: 1; min-width: 0;">
+                          <div style="font-size: 13.5px; font-weight: 800; color: var(--text-main);">${h(act.nombre)}</div>
+                          <div style="font-size: 11px; color: var(--text-dim);">${h(act.prescripcion || '')} · ${h(act.foco || 'Activación')}</div>
+                        </div>
+                        <button type="button" class="btn-eye-icon" data-action="view-ejercicio" data-ejercicio-id="${h(act.id)}" title="Ver técnica">${renderIcon('eye')}</button>
+                        <button type="button" class="btn-icon-action danger" data-action="${act.esPersonalizadoEnSesion ? 'delete-sesion-ej' : 'delete-activacion'}" data-act-id="${h(act.id)}" data-ejercicio-id="${h(act.id)}" data-entrenamiento-id="${h(entActivo.id)}" title="Quitar">✕</button>
+                      </div>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            `}
+          `}
+
+          <div style="display: flex; gap: 8px; margin-top: 4px;">
+            <button type="button" class="btn-secondary" data-action="set-workout-step" data-step="psicofisico" style="flex: 1;">
+              ← Psicofísico
+            </button>
+            <button type="button" class="btn-primary" data-action="set-workout-step" data-step="movilidad" style="flex: 1.4;">
+              Siguiente: Movilidad →
+            </button>
+          </div>
+        </div>
+      `;
+    } else if (cfg.pasoActual === 'movilidad') {
+      stepBodyHtml = `
+        <div class="card">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <div>
+              <span class="badge badge-neon">PASO 3 · MOVILIDAD</span>
+              <h2 class="card-title" style="font-size: 16.5px; margin-top: 4px;">Módulo de Movilidad</h2>
+            </div>
+            <button type="button" class="badge ${cfg.movilidadActiva ? 'badge-emerald' : ''}" data-action="toggle-module-enabled" data-module="movilidad" style="cursor: pointer; padding: 6px 10px;">
+              ${cfg.movilidadActiva ? '🟢 Activo (Tocar p/ omitir)' : '⚪ Omitido (Activar)'}
+            </button>
+          </div>
+
+          ${!cfg.movilidadActiva ? `
+            <p style="font-size: 12.5px; color: var(--text-muted); padding: 10px 0;">
+              Omitiste la movilidad hoy. Podés activarla arriba o pasar directo al Bloque A.
+            </p>
+          ` : `
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+              <button type="button" class="btn-primary btn-sm" data-action="open-catalog-picker" data-mode="workout" data-bloque="movilidad" data-filter-group="movilidad" style="width: 100% !important;">
+                + Agregar Movilidad
+              </button>
+              <button type="button" class="btn-create-ej-inline" data-action="open-create-custom-ejercicio" data-bloque="movilidad" data-grupo="movilidad">
+                + Crear Ejercicio
+              </button>
+            </div>
+
+            ${hayMovilidadPrevia && listaMovilidadHoy.length === 0 ? `
+              <button type="button" class="btn-secondary btn-sm" data-action="repeat-last-movilidad" style="width: 100% !important;">
+                ↻ Repetir movilidad de la última sesión
+              </button>
+            ` : ''}
+
+            ${listaMovilidadHoy.length === 0 ? `
+              <p style="font-size: 12.5px; color: var(--text-dim); text-align: center; padding: 12px;">
+                Agregá los ejercicios de movilidad articular de hoy (cadera, tobillo, tórax, hombros...).
+              </p>
+            ` : `
+              <div style="display: flex; flex-direction: column; gap: 8px;">
+                ${listaMovilidadHoy.map(m => {
+                  const ejRef = (state.ejercicios || []).find(e => e.id === m.ejercicioId) || (Engine.CATALOGO_EJERCICIOS || []).find(e => e.id === m.ejercicioId);
+                  const media = ejRef ? Engine.resolveEjercicioMedia(ejRef) : {};
+                  return `
+                    <div class="ej-step-card" style="padding: 10px;">
+                      <div style="display: flex; align-items: center; gap: 10px;">
+                        <button type="button" class="badge ${m.completado ? 'badge-emerald' : ''}" data-action="toggle-act-mov-done" data-mov-id="${h(m.esSesionItem ? '' : m.id)}" data-ejercicio-id="${h(m.ejercicioId)}" data-entrenamiento-id="${h(entActivo.id)}" style="cursor: pointer; min-width: 34px; height: 34px; justify-content: center; font-size: 14px;">
+                          ${m.completado ? '✓' : '○'}
+                        </button>
+                        ${media.illustrationUrl ? `
+                          <img src="${h(media.illustrationUrl)}" alt="${h(m.nombre)}" style="width: 40px; height: 40px; border-radius: 8px; object-fit: cover; flex-shrink: 0;">
+                        ` : ''}
+                        <div style="flex: 1; min-width: 0;">
+                          <div style="font-size: 13.5px; font-weight: 800; color: var(--text-main);">${h(m.nombre)}</div>
+                          <div style="font-size: 11px; color: var(--text-dim);">${m.series || 2} series × ${h(m.reps || '12')} reps${m.notas ? ' · ' + h(m.notas) : ''}</div>
+                        </div>
+                        <button type="button" class="btn-eye-icon" data-action="view-ejercicio" data-ejercicio-id="${h(m.ejercicioId)}" title="Ver técnica">${renderIcon('eye')}</button>
+                        <button type="button" class="btn-icon-action danger" data-action="${m.esSesionItem ? 'delete-sesion-ej' : 'delete-movilidad'}" data-mov-id="${h(m.id)}" data-ejercicio-id="${h(m.ejercicioId)}" data-entrenamiento-id="${h(entActivo.id)}" title="Quitar">✕</button>
+                      </div>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            `}
+          `}
+
+          <div style="display: flex; gap: 8px; margin-top: 4px;">
+            <button type="button" class="btn-secondary" data-action="set-workout-step" data-step="activacion" style="flex: 1;">
+              ← Activación
+            </button>
+            <button type="button" class="btn-primary" data-action="set-workout-step" data-step="A" style="flex: 1.4;">
+              Siguiente: Bloque A →
+            </button>
+          </div>
+        </div>
+      `;
+    } else if (cfg.pasoActual === 'A') {
+      stepBodyHtml = renderBloqueEntrenamientoStep(state, entActivo, cfg, 'A', ejerciciosBloqueA, seriesEntreno);
+    } else if (cfg.pasoActual === 'B') {
+      stepBodyHtml = renderBloqueEntrenamientoStep(state, entActivo, cfg, 'B', ejerciciosBloqueB, seriesEntreno);
+    } else if (cfg.pasoActual === 'cierre') {
+      stepBodyHtml = renderBloqueEntrenamientoStep(state, entActivo, cfg, 'cierre', ejerciciosCierre, seriesEntreno);
+    }
 
     return `
-      ${checkinCardHtml}
-
-      <!-- Encabezado Compacto de Sesión Activa (One-Page) -->
+      <!-- Barra Superior de Sesión Activa -->
       <div class="card active-session-bar">
         <div class="active-session-top">
           <div style="min-width: 0; flex: 1;">
             <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-              <span class="badge badge-neon">● EN CURSO · ${h(entActivo.inicio)} hs</span>
-              <span class="badge badge-blue" style="font-family: var(--font-mono);">${volumenTotal.toLocaleString()} kg · ${seriesEntreno.length} series</span>
+              ${entActivo.checkinRealizado
+                ? `<span class="badge badge-emerald">✅ Asistencia ${h(entActivo.horaLlegada || entActivo.inicio)} hs</span>`
+                : `<button type="button" class="badge badge-neon" data-action="checkin-gym-hoy" style="cursor: pointer;">📍 Check-in Gym</button>`}
+              <span class="badge badge-blue" style="font-family: var(--font-mono);">${Math.round(volumenTotal).toLocaleString('es-AR')} kg · ${seriesEntreno.length} series</span>
             </div>
             <h2 class="active-session-title">
-              ${h(rutinaAsociada ? rutinaAsociada.nombre : 'Carga tu Rutina de Hoy')}
+              ${h(rutinaAsociada ? rutinaAsociada.nombre : 'Sesión Guiada de Hoy')}
             </h2>
           </div>
           <div class="active-session-actions">
-            <button type="button" class="btn-primary btn-sm" data-action="open-catalog-picker" data-mode="workout" data-filter-group="todos" title="Sumar ejercicio del catálogo">
-              + Ejercicio
+            <button type="button" class="btn-secondary btn-sm" data-action="open-create-custom-ejercicio" data-bloque="${h(bloqueParaCrear)}" title="Crear ejercicio nuevo que no está en el catálogo">
+              + Crear Ej.
             </button>
             <button type="button" class="btn-secondary btn-sm" data-action="save-today-as-routine" title="Guardar los ejercicios de hoy como rutina">
-              💾 Guardar Rutina
+              💾 Rutina
             </button>
-            <button type="button" class="btn-secondary btn-sm" data-action="finish-workout" data-entrenamiento-id="${h(entActivo.id)}" title="Finalizar sesión">
+            <button type="button" class="btn-primary btn-sm" data-action="finish-workout" data-entrenamiento-id="${h(entActivo.id)}" title="Finalizar sesión">
               ✓ Finalizar
             </button>
           </div>
         </div>
+
+        <!-- Selector de Pasos Modulares -->
+        <div class="workout-stepper" role="tablist">
+          <button type="button" class="step-pill ${cfg.pasoActual === 'psicofisico' ? 'active' : ''} ${readinessHoy ? 'done' : ''}" data-action="set-workout-step" data-step="psicofisico">
+            1. Psicofísico ${readinessHoy ? '✓' : ''}
+          </button>
+          <button type="button" class="step-pill ${cfg.pasoActual === 'activacion' ? 'active' : ''} ${!cfg.activacionActiva || actDoneCount > 0 ? 'done' : ''}" data-action="set-workout-step" data-step="activacion">
+            2. Activación ${!cfg.activacionActiva ? '(Off)' : (actDoneCount ? `(${actDoneCount})` : '')}
+          </button>
+          <button type="button" class="step-pill ${cfg.pasoActual === 'movilidad' ? 'active' : ''} ${!cfg.movilidadActiva || listaMovilidadHoy.length > 0 ? 'done' : ''}" data-action="set-workout-step" data-step="movilidad">
+            3. Movilidad ${!cfg.movilidadActiva ? '(Off)' : (listaMovilidadHoy.length ? `(${listaMovilidadHoy.length})` : '')}
+          </button>
+          <button type="button" class="step-pill ${cfg.pasoActual === 'A' ? 'active' : ''} ${ejerciciosBloqueA.some(item => seriesEntreno.some(s => s.ejercicioId === item.ejercicio.id)) ? 'done' : ''}" data-action="set-workout-step" data-step="A">
+            4. Bloque A (${ejerciciosBloqueA.length}) · ${cfg.A.modalidad === 'vertical' ? 'V' : 'H'}
+          </button>
+          <button type="button" class="step-pill ${cfg.pasoActual === 'B' ? 'active' : ''} ${ejerciciosBloqueB.some(item => seriesEntreno.some(s => s.ejercicioId === item.ejercicio.id)) ? 'done' : ''}" data-action="set-workout-step" data-step="B">
+            5. Bloque B (${ejerciciosBloqueB.length}) · ${cfg.B.modalidad === 'vertical' ? 'V' : 'H'}
+          </button>
+          <button type="button" class="step-pill ${cfg.pasoActual === 'cierre' ? 'active' : ''} ${ejerciciosCierre.some(item => seriesEntreno.some(s => s.ejercicioId === item.ejercicio.id)) ? 'done' : ''}" data-action="set-workout-step" data-step="cierre">
+            6. Cierre (${ejerciciosCierre.length})
+          </button>
+        </div>
       </div>
+
+      ${stepBodyHtml}
 
       <!-- Rutinas AMRAP dentro del Día (si las hay) -->
       ${bloquesAmrapHoy.length > 0 ? `
@@ -848,101 +1426,6 @@
           `).join('')}
         </div>
       ` : ''}
-
-      <!-- Tarjetas de Ejecución de cada Ejercicio (Compactas One-Page) -->
-      ${ejerciciosList.length === 0 ? `
-        <div class="card empty-workout-card">
-          <p style="font-size: 13.5px; font-weight: 700; color: var(--text-main);">
-            Tocá <strong>"+ Añadir Ejercicio"</strong> para ir cargando tu rutina de hoy.
-          </p>
-          <div style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 6px;">
-            <button type="button" class="btn-primary" data-action="open-catalog-picker" data-mode="workout" data-filter-group="todos" style="width: auto; min-height: 40px;">
-              + Añadir Ejercicio del Catálogo
-            </button>
-            <button type="button" class="btn-secondary" data-action="open-amrap-builder" style="width: auto; min-height: 40px;">
-              ${renderIcon('clock')} Circuito AMRAP
-            </button>
-          </div>
-        </div>
-      ` : `<div class="onepage-scroll-list" data-drag-list="sesion">` + ejerciciosList.map((item, idx) => {
-        const ej = item.ejercicio;
-        const media = Engine.resolveEjercicioMedia(ej);
-        const seriesDelEj = seriesEntreno.filter(s => s.ejercicioId === ej.id);
-        const prev = Engine.getUltimaSesionEjercicio(state, ej.id, entActivo.id);
-        const sug = Engine.sugerirProgresion(state, ej.id, { excluirEntrenamientoId: entActivo.id, repsObjetivo: item.targetReps, seriesObjetivo: item.targetSets, equipo: ej.equipo });
-        const ultimaHoy = seriesDelEj[seriesDelEj.length - 1];
-        const defaultPeso = ultimaHoy ? ultimaHoy.pesoKg : (sug.pesoKg != null ? sug.pesoKg : (prev ? prev.mejor.pesoKg : 30));
-        const defaultReps = ultimaHoy ? ultimaHoy.reps : (sug.reps || (prev ? prev.mejor.reps : 10));
-        const defaultSeriesCant = seriesDelEj.length > 0 ? seriesDelEj.length : (item.targetSets || ej.seriesSugeridas || 3);
-        const yaGuardado = seriesDelEj.length > 0 && !editingEjercicios.has(ej.id);
-
-        return `
-          <div class="card ej-card ${yaGuardado ? 'completo' : ''}" data-drag-id="${h(ej.id)}">
-            <div class="ej-card-top">
-              <div class="ej-thumb" data-action="view-ejercicio" data-ejercicio-id="${h(ej.id)}" title="Ver técnica de ${h(ej.nombre)}">
-                ${media.illustrationUrl ? `
-                  <img class="ej-thumb-img" src="${h(media.illustrationUrl)}" alt="${h(ej.nombre)}" loading="lazy">
-                ` : `
-                  <div class="ej-thumb-fallback">${h((ej.nombre || 'EJ').slice(0, 2).toUpperCase())}</div>
-                `}
-              </div>
-              <div class="ej-info">
-                <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                  <h3 class="ej-title" style="margin: 0;">${h(ej.nombre)}</h3>
-                  <span class="badge badge-neon" style="font-size: 9.5px; padding: 2px 7px;">${h(ej.grupoMuscular)}</span>
-                </div>
-                <div class="ej-clase-anterior">
-                  ${prev
-                    ? `⏮ Anterior: <strong>${h(prev.texto)}</strong>`
-                    : '<span class="primera-vez">✨ Primera vez</span>'}
-                </div>
-                ${item.notaProfesor ? `<p class="ej-nota" style="margin-top: 2px;">🩺 ${h(item.notaProfesor)}</p>` : ''}
-              </div>
-              <div class="ej-tools">
-                <button type="button" class="btn-eye-icon" data-action="view-ejercicio" data-ejercicio-id="${h(ej.id)}" title="Ver técnica e ilustración">${renderIcon('eye')}</button>
-                <button type="button" class="btn-icon-action danger" data-action="delete-sesion-ej" data-ejercicio-id="${h(ej.id)}" data-entrenamiento-id="${h(entActivo.id)}" title="Quitar ejercicio de hoy">✕</button>
-              </div>
-            </div>
-
-            ${yaGuardado ? `
-              <div class="ej-saved-box">
-                <div class="ej-saved-summary">
-                  <span style="font-size: 14px; color: var(--accent-emerald);">✓</span>
-                  <div class="ej-saved-data">
-                    <span style="color: var(--accent-emerald);">${seriesDelEj.length} series</span>
-                    <span style="color: var(--text-dim); margin: 0 3px;">·</span>
-                    <span>${ultimaHoy.pesoKg} kg × ${ultimaHoy.reps} reps</span>
-                  </div>
-                </div>
-                <div class="ej-saved-actions">
-                  <button type="button" class="btn-sm btn-secondary" data-action="edit-saved-exercise" data-ejercicio-id="${h(ej.id)}" title="Modificar peso o repeticiones">✏️</button>
-                  <button type="button" class="btn-sm btn-secondary danger" data-action="delete-all-series-ej" data-ejercicio-id="${h(ej.id)}" data-entrenamiento-id="${h(entActivo.id)}" title="Borrar series">✕</button>
-                </div>
-              </div>
-            ` : `
-              <div class="ej-input-box">
-                <div class="ej-inputs-inline-row">
-                  <div class="ej-input-col">
-                    <label class="ej-input-label" for="bulk-peso-${h(ej.id)}">KG</label>
-                    <input type="number" step="0.5" id="bulk-peso-${h(ej.id)}" class="ej-val-input" value="${defaultPeso}" inputmode="decimal" placeholder="0">
-                  </div>
-                  <div class="ej-input-col">
-                    <label class="ej-input-label" for="bulk-reps-${h(ej.id)}">REPES</label>
-                    <input type="number" id="bulk-reps-${h(ej.id)}" class="ej-val-input" value="${defaultReps}" inputmode="numeric" placeholder="10">
-                  </div>
-                  <div class="ej-input-col">
-                    <label class="ej-input-label" for="bulk-series-${h(ej.id)}">SERIES</label>
-                    <input type="number" id="bulk-series-${h(ej.id)}" class="ej-val-input" value="${defaultSeriesCant}" inputmode="numeric" min="1" max="10">
-                  </div>
-                  <button type="button" class="btn-primary btn-save-inline" data-action="save-ejercicio-completo" data-ejercicio-id="${h(ej.id)}" data-entrenamiento-id="${h(entActivo.id)}">
-                    ✓ Guardar
-                  </button>
-                </div>
-              </div>
-            `}
-          </div>
-        `;
-      }).join('') + `</div>`}
     `;
   }
 
@@ -1041,8 +1524,8 @@
         ` : `
           <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
             <h3 class="card-title" style="font-size: 15px; color: var(--text-main);">Catálogo de Ejercicios</h3>
-            <button type="button" class="btn-secondary btn-sm" data-action="open-create-custom-ejercicio">
-              + Ejercicio Propio
+            <button type="button" class="btn-create-ej-inline" data-action="open-create-custom-ejercicio">
+              + Crear Ejercicio
             </button>
           </div>
 
@@ -1681,6 +2164,7 @@
           </button>
         </div>
         ${renderThemeSelector()}
+        ${renderBackgroundPatternSelector(aesPref)}
 
         ${isAjustesColorsOpen ? `
           <div style="border-top: 1px dashed var(--border-subtle); padding-top: 8px; margin-top: 4px; display: flex; flex-direction: column; gap: 8px;">
@@ -2287,18 +2771,34 @@
         return matchGrupo && matchTexto;
       });
 
-      const esModoMovilidad = activeModal.mode === 'workout-movilidad' || catalogoFiltroGrupo === 'movilidad';
+      const esModoMovilidad = activeModal.mode === 'workout-movilidad' || activeModal.bloque === 'movilidad' || catalogoFiltroGrupo === 'movilidad';
       const esModoAmrap = activeModal.mode === 'append-to-amrap';
+      const bloqueLabelMap = {
+        activacion: 'Módulo Activación',
+        movilidad: 'Módulo Movilidad',
+        A: 'Bloque A',
+        B: 'Bloque B',
+        cierre: 'Cierre (Optativo)'
+      };
+      const destinoBadge = esModoAmrap
+        ? 'Sumar Ejercicio dentro de tu Rutina AMRAP'
+        : (activeModal.bloque && bloqueLabelMap[activeModal.bloque]
+            ? `Sumando a: ${bloqueLabelMap[activeModal.bloque]}`
+            : 'Catálogo Total (Activación · Movilidad · Fuerza · AMRAP)');
 
       overlay.innerHTML = `
         <div class="modal-card" style="max-width: 680px;">
           <div class="card-header">
             <div>
-              <span class="badge badge-neon">${esModoAmrap ? 'Sumar Ejercicio dentro de tu Rutina AMRAP' : 'Catálogo Total (Activación · Movilidad · Fuerza · AMRAP)'}</span>
+              <span class="badge badge-neon">${h(destinoBadge)}</span>
               <h2 class="card-title" style="margin-top: 4px; color: var(--text-main);">Seleccioná un Ejercicio para Añadir</h2>
             </div>
             <button type="button" class="btn-close-modal" data-action="close-modal" title="Cerrar">✕</button>
           </div>
+
+          <button type="button" class="btn-create-ej-inline" data-action="open-create-custom-ejercicio" data-bloque="${h(activeModal.bloque || '')}" data-grupo="${h(catalogoFiltroGrupo !== 'todos' ? catalogoFiltroGrupo : '')}" data-from-picker="true" style="width: 100%; padding: 11px 12px;">
+            ➕ ¿No está en la lista? Crear Ejercicio Nuevo
+          </button>
 
           <!-- Buscador y Filtros por Segmento -->
           <input type="text" id="catalog-search-input" class="form-input" value="${h(catalogoBusqueda)}" placeholder="Buscar ejercicio (ej: Gato, Puente glúteo, Press Banca, Sentadilla...)" data-action="search-catalog">
@@ -2371,10 +2871,26 @@
 
     // MODAL 4: Crear un Ejercicio Personalizado Nuevo en el Catálogo
     if (activeModal.type === 'create-custom-ejercicio') {
+      const defGrupo = activeModal.defaultGrupo || (activeModal.targetBloque === 'activacion' ? 'activacion' : (activeModal.targetBloque === 'movilidad' ? 'movilidad' : (activeModal.targetBloque === 'cierre' ? 'brazos' : 'pecho')));
+      const tieneDestino = Boolean(activeModal.targetBloque || activeModal.returnContext);
+      const opcionesGrupo = [
+        ['activacion', 'Activación'],
+        ['movilidad', 'Movilidad'],
+        ['pecho', 'Pecho'],
+        ['espalda', 'Espalda'],
+        ['piernas', 'Piernas'],
+        ['hombros', 'Hombros'],
+        ['brazos', 'Brazos'],
+        ['core', 'Core'],
+        ['amrap', 'AMRAP']
+      ];
       overlay.innerHTML = `
         <div class="modal-card">
           <div class="card-header">
-            <h2 class="card-title">+ Sumar Ejercicio Personalizado al Catálogo</h2>
+            <div>
+              ${activeModal.targetBloque ? `<span class="badge badge-neon">Se sumará automático a: ${h(activeModal.targetBloque === 'cierre' ? 'Cierre (Optativo)' : activeModal.targetBloque)}</span>` : ''}
+              <h2 class="card-title" style="margin-top: 4px;">+ Crear Ejercicio Nuevo</h2>
+            </div>
             <button type="button" class="btn-close-modal" data-action="close-modal" title="Cerrar">✕</button>
           </div>
           <form data-action="submit-custom-ejercicio" style="display: flex; flex-direction: column; gap: 12px;">
@@ -2386,15 +2902,7 @@
               <div class="form-group">
                 <label class="form-label">Segmento / Grupo Muscular</label>
                 <select id="custom-ej-grupo" class="form-input">
-                  <option value="activacion">Activación</option>
-                  <option value="movilidad">Movilidad</option>
-                  <option value="pecho" selected>Pecho</option>
-                  <option value="espalda">Espalda</option>
-                  <option value="piernas">Piernas</option>
-                  <option value="hombros">Hombros</option>
-                  <option value="brazos">Brazos</option>
-                  <option value="core">Core</option>
-                  <option value="amrap">AMRAP</option>
+                  ${opcionesGrupo.map(([v, lbl]) => `<option value="${v}" ${defGrupo === v ? 'selected' : ''}>${lbl}</option>`).join('')}
                 </select>
               </div>
               <div class="form-group">
@@ -2402,6 +2910,7 @@
                 <select id="custom-ej-equipo" class="form-input">
                   <option value="barra">Barra</option>
                   <option value="mancuerna">Mancuerna</option>
+                  <option value="kettlebell">Pesa Rusa / Kettlebell</option>
                   <option value="polea">Polea</option>
                   <option value="maquina">Máquina</option>
                   <option value="corporal">Corporal</option>
@@ -2410,10 +2919,10 @@
               </div>
             </div>
             <div class="form-group">
-              <label class="form-label">Notas técnicas</label>
+              <label class="form-label">Notas técnicas (opcional)</label>
               <input type="text" id="custom-ej-notas" class="form-input" placeholder="Indicaciones de postura o recorrido">
             </div>
-            <button type="submit" class="btn-primary">Guardar en el Catálogo</button>
+            <button type="submit" class="btn-primary">${tieneDestino ? '✓ Guardar y Sumar Ahora' : '✓ Guardar en el Catálogo'}</button>
           </form>
         </div>
       `;
@@ -3005,6 +3514,13 @@
       render();
     },
 
+    'set-aesthetic-pattern': el => {
+      const pattern = el.getAttribute('data-pattern') || 'none';
+      Store.setAestheticPreference({ bgPattern: pattern });
+      showToast('✓ Fondo actualizado');
+      render();
+    },
+
     'set-aesthetic-accent': el => {
       const color = el.getAttribute('data-color') || '#3B82F6';
       Store.setAestheticPreference({ accentColor: color });
@@ -3026,12 +3542,13 @@
     'reset-aesthetic-pref': () => {
       Store.setAestheticPreference({
         bgStyle: 'zinc',
+        bgPattern: 'none',
         accentColor: '#3B82F6',
         accentName: 'Azul Eléctrico',
         logoBg: '#18181B',
         logoDumbbell: '#3B82F6'
       });
-      showToast('✓ Colores restablecidos a valores originales');
+      showToast('✓ Colores y fondo restablecidos');
       render();
     },
 
@@ -3252,11 +3769,12 @@
       if (filterGroup) {
         catalogoFiltroGrupo = filterGroup;
       }
+      const bloque = el.getAttribute('data-bloque') || null;
       const rutinaId = el.getAttribute('data-rutina-id') || null;
       const amrapId = el.getAttribute('data-amrap-id') || null;
       const targetUser = el.getAttribute('data-target-username') || null;
       draftRutina.targetUsername = targetUser;
-      activeModal = { type: 'catalog-picker', mode, rutinaId, amrapId, targetUser };
+      activeModal = { type: 'catalog-picker', mode, bloque, rutinaId, amrapId, targetUser };
       renderModals();
     },
 
@@ -3353,25 +3871,32 @@
         return;
       }
 
-      // Caso 3: Agregar a la rutina de hoy
+      // Caso 3: Agregar a la rutina/módulo de hoy
+      const targetBloque = (activeModal && activeModal.bloque)
+        || (ejObj.grupoMuscular === 'activacion' ? 'activacion' : (ejObj.grupoMuscular === 'movilidad' ? 'movilidad' : 'A'));
+      const targetSeg = targetBloque === 'activacion' ? 'activacion' : (targetBloque === 'movilidad' ? 'movilidad' : 'entrenamiento');
+
       Store.commit(s => {
         let next = s;
         if (!next.entrenamientoActivoId) {
           next = Engine.iniciarEntrenamiento(next, null);
         }
 
-        return Engine.agregarEjercicioASesion(next, next.entrenamientoActivoId, {
+        next = Engine.agregarEjercicioASesion(next, next.entrenamientoActivoId, {
           ejercicioId: ejObj.id,
-          segmento: 'entrenamiento',
+          segmento: targetSeg,
+          bloque: targetBloque,
           seriesObjetivo: seriesObj || ejObj.seriesSugeridas || 3,
           repsObjetivo: repsObj || ejObj.repsSugeridas || '8-10',
+          pesoObjetivo: pesoObj || 0,
           notas: ejObj.notas || ''
         });
+        return next;
       });
 
       activeModal = null;
       activeTab = 'hoy';
-      showToast(`✓ "${ejObj.nombre}" añadido a tu rutina de hoy.`);
+      showToast(`✓ "${ejObj.nombre}" añadido.`);
       render();
     },
 
@@ -3435,20 +3960,99 @@
       render();
     },
 
-    'open-create-custom-ejercicio': () => {
-      activeModal = { type: 'create-custom-ejercicio' };
+    'open-create-custom-ejercicio': el => {
+      const targetBloque = (el && el.getAttribute('data-bloque')) || (activeModal && activeModal.bloque) || null;
+      const defaultGrupo = (el && el.getAttribute('data-grupo')) || '';
+      const fromPicker = el && el.getAttribute('data-from-picker') === 'true';
+      const returnContext = (fromPicker && activeModal && activeModal.type === 'catalog-picker')
+        ? { ...activeModal }
+        : null;
+      activeModal = { type: 'create-custom-ejercicio', targetBloque, defaultGrupo, returnContext };
       renderModals();
     },
 
     'submit-custom-ejercicio': () => {
-      const nombre = document.getElementById('custom-ej-nombre').value;
+      const nombre = document.getElementById('custom-ej-nombre').value.trim();
+      if (!nombre) return;
       const grupoMuscular = document.getElementById('custom-ej-grupo').value;
       const equipo = document.getElementById('custom-ej-equipo').value;
       const notas = document.getElementById('custom-ej-notas').value;
 
+      const ctx = activeModal && activeModal.returnContext;
+      const targetBloqueAttr = activeModal && activeModal.targetBloque;
+
       Store.commit(s => Engine.crearEjercicio(s, { nombre, grupoMuscular, equipo, notas }));
+      const stAfter = Store.getState();
+      const newEjId = stAfter.lastCreatedEjercicioId || ((stAfter.ejercicios && stAfter.ejercicios[stAfter.ejercicios.length - 1]) || {}).id;
+
+      // Si veníamos de un constructor, rutina, AMRAP o bloque de entrenamiento, sumarlo automáticamente
+      if (newEjId && ctx && ctx.returnToBuilder) {
+        draftRutina.ejercicios.push({
+          ejercicioId: newEjId,
+          nombre,
+          seriesObjetivo: 3,
+          repsObjetivo: '8-12'
+        });
+        activeModal = { type: 'rutina-builder' };
+        showToast(`✓ "${nombre}" creado y sumado a la rutina.`);
+        renderModals();
+        return;
+      }
+
+      if (newEjId && ctx && ctx.mode === 'append-to-rutina' && ctx.rutinaId) {
+        const mutator = s => Engine.agregarEjercicioARutina(s, ctx.rutinaId, {
+          ejercicioId: newEjId,
+          nombre,
+          seriesObjetivo: 3,
+          repsObjetivo: '8-12'
+        });
+        if (ctx.targetUser) Store.commitForUser(ctx.targetUser, mutator);
+        else Store.commit(mutator);
+        activeModal = null;
+        showToast(`✓ "${nombre}" creado y agregado a la rutina.`);
+        render();
+        return;
+      }
+
+      if (newEjId && ctx && ctx.mode === 'append-to-amrap' && ctx.amrapId) {
+        Store.commit(s => Engine.agregarEjercicioABloqueAmrap(s, ctx.amrapId, {
+          ejercicioId: newEjId,
+          nombre,
+          repsObjetivo: '12 reps'
+        }));
+        activeModal = null;
+        showToast(`✓ "${nombre}" creado y agregado al AMRAP.`);
+        render();
+        return;
+      }
+
+      const bloqueDestino = targetBloqueAttr || (ctx && ctx.bloque);
+      if (newEjId && (bloqueDestino || (ctx && ctx.mode === 'workout'))) {
+        const resolvedB = bloqueDestino || (grupoMuscular === 'activacion' ? 'activacion' : (grupoMuscular === 'movilidad' ? 'movilidad' : 'A'));
+        const resolvedSeg = resolvedB === 'activacion' ? 'activacion' : (resolvedB === 'movilidad' ? 'movilidad' : 'entrenamiento');
+        Store.commit(s => {
+          let next = s;
+          if (!next.entrenamientoActivoId) {
+            next = Engine.iniciarEntrenamiento(next, null);
+          }
+          return Engine.agregarEjercicioASesion(next, next.entrenamientoActivoId, {
+            ejercicioId: newEjId,
+            segmento: resolvedSeg,
+            bloque: resolvedB,
+            seriesObjetivo: resolvedB === 'activacion' || resolvedB === 'movilidad' ? 2 : 3,
+            repsObjetivo: resolvedB === 'activacion' || resolvedB === 'movilidad' ? '12' : '8-12',
+            notas
+          });
+        });
+        activeModal = null;
+        activeTab = 'hoy';
+        showToast(`✓ "${nombre}" creado y sumado.`);
+        render();
+        return;
+      }
+
       activeModal = null;
-      showToast('✓ Ejercicio personalizado sumado al catálogo.');
+      showToast(`✓ "${nombre}" creado en el catálogo.`);
       render();
     },
 
@@ -4023,6 +4627,231 @@
         input.value = Math.max(0, Math.round((curr + amount) * 100) / 100).toString();
         input.dispatchEvent(new Event('input', { bubbles: true }));
       }
+    },
+
+    // --- CHECK-IN DE GIMNASIO Y FLUJO MODULAR PASO A PASO (v3.1.0) ---
+    'checkin-gym-hoy': el => {
+      const rutinaId = (el && el.getAttribute('data-rutina-id')) || null;
+      Store.commit(state => Engine.registrarCheckinGym(state, {
+        rutinaId,
+        pasoInicial: 'psicofisico'
+      }));
+      activeTab = 'hoy';
+      showToast('✓ ¡Asistencia registrada! Completá tu estado psicofísico.');
+      render();
+    },
+
+    'set-workout-step': el => {
+      const step = el.getAttribute('data-step');
+      if (!step) return;
+      const curState = Store.getState();
+      const curEnt = Engine.getEntrenamientoActivo(curState);
+      if (curEnt && curEnt.modulosConfig && curEnt.modulosConfig.pasoActual === 'psicofisico') {
+        captureSaludDraftsFromDOM();
+      }
+      Store.commit(state => {
+        const ent = Engine.getEntrenamientoActivo(state);
+        if (!ent) return state;
+        return Engine.setConfigBloqueSesion(state, ent.id, { pasoActual: step });
+      });
+      render();
+      try {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } catch (_) {}
+    },
+
+    'set-psico-chip': el => {
+      captureSaludDraftsFromDOM();
+      const field = el.getAttribute('data-field');
+      const value = el.getAttribute('data-value');
+      if (!field || value === null) return;
+      draftReadiness[field] = value;
+      if (field === 'estadoGeneral') {
+        draftReadiness.energia = value === 'Bien' ? '5' : (value === 'Normal' ? '4' : '2');
+      }
+      render();
+    },
+
+    'submit-step-psicofisico': () => {
+      captureSaludDraftsFromDOM();
+      const estadoMapEnergia = { Bien: 5, Normal: 4, Mal: 2 };
+      const estGen = draftReadiness.estadoGeneral || 'Bien';
+      const energiaNum = Number(draftReadiness.energia) || estadoMapEnergia[estGen] || 4;
+      const estresNum = Number(draftReadiness.estres) || 1;
+      const suenoNum = Number(draftReadiness.sueno) || 5;
+      const alimNum = Number(draftReadiness.alimentacion) || 5;
+
+      Store.commit(state => {
+        let next = Engine.registrarReadiness(state, {
+          fecha: Engine.todayISO(),
+          estadoGeneral: estGen,
+          energia: energiaNum,
+          estres: estresNum,
+          sueno: suenoNum,
+          alimentacion: alimNum,
+          zonaDolor: draftReadiness.zonaDolor || '',
+          observacionAlumno: draftReadiness.observacionAlumno || estGen
+        });
+        const ent = Engine.getEntrenamientoActivo(next);
+        if (ent) {
+          next = Engine.setConfigBloqueSesion(next, ent.id, { pasoActual: 'activacion' });
+        }
+        return next;
+      });
+      showToast('✓ Psicofísico guardado. Pasamos a Activación.');
+      render();
+    },
+
+    'toggle-module-enabled': el => {
+      const mod = el.getAttribute('data-module');
+      if (mod !== 'activacion' && mod !== 'movilidad') return;
+      Store.commit(state => {
+        const ent = Engine.getEntrenamientoActivo(state);
+        if (!ent) return state;
+        const cfg = ent.modulosConfig || {};
+        const key = mod === 'activacion' ? 'activacionActiva' : 'movilidadActiva';
+        return Engine.setConfigBloqueSesion(state, ent.id, { [key]: cfg[key] === false });
+      });
+      render();
+    },
+
+    'toggle-act-mov-done': el => {
+      const ejId = el.getAttribute('data-ejercicio-id');
+      const entId = el.getAttribute('data-entrenamiento-id');
+      const movId = el.getAttribute('data-mov-id');
+      if (movId) {
+        Store.commit(state => {
+          const mv = (state.movilidad || []).map(x => x.id === movId ? { ...x, completado: !x.completado, updatedAt: Date.now() } : x);
+          return { ...state, movilidad: mv, movilidadSesion: mv, updatedAt: Date.now() };
+        });
+        render();
+        return;
+      }
+      if (!ejId) return;
+      Store.commit(state => Engine.toggleEjercicioActivacionOMovilidad(state, entId, ejId));
+      render();
+    },
+
+    'set-bloque-modalidad': el => {
+      const bloque = el.getAttribute('data-bloque');
+      const modalidad = el.getAttribute('data-modalidad');
+      if (!['A', 'B'].includes(bloque) || !['vertical', 'horizontal'].includes(modalidad)) return;
+      Store.commit(state => {
+        const ent = Engine.getEntrenamientoActivo(state);
+        if (!ent) return state;
+        return Engine.setConfigBloqueSesion(state, ent.id, { [bloque]: { modalidad } });
+      });
+      showToast(modalidad === 'vertical'
+        ? `Bloque ${bloque}: Modulación Vertical (Circuito)`
+        : `Bloque ${bloque}: Modulación Horizontal (Tradicional)`);
+      render();
+    },
+
+    'set-bloque-rondas': el => {
+      const bloque = el.getAttribute('data-bloque');
+      const rondas = Number(el.getAttribute('data-rondas')) || 3;
+      if (!['A', 'B'].includes(bloque)) return;
+      Store.commit(state => {
+        const ent = Engine.getEntrenamientoActivo(state);
+        if (!ent) return state;
+        return Engine.setConfigBloqueSesion(state, ent.id, { [bloque]: { rondasObjetivo: rondas } });
+      });
+      render();
+    },
+
+    'move-ej-bloque': el => {
+      const ejId = el.getAttribute('data-ejercicio-id');
+      const entId = el.getAttribute('data-entrenamiento-id');
+      const targetBloque = el.getAttribute('data-target-bloque');
+      if (!ejId || !entId || !targetBloque) return;
+      Store.commit(state => Engine.moverEjercicioDeBloque(state, entId, ejId, targetBloque));
+      showToast(`✓ Ejercicio movido a Bloque ${targetBloque}`);
+      render();
+    },
+
+    'quick-add-to-bloque': el => {
+      const ejId = el.getAttribute('data-ejercicio-id');
+      const bloque = el.getAttribute('data-bloque') || 'cierre';
+      const st = Store.getState();
+      const ejObj = (st.ejercicios || []).find(e => e.id === ejId)
+        || (Engine.CATALOGO_EJERCICIOS || []).find(e => e.id === ejId);
+      if (!ejObj) return;
+      Store.commit(s => {
+        const ent = Engine.getEntrenamientoActivo(s);
+        if (!ent) return s;
+        return Engine.agregarEjercicioASesion(s, ent.id, {
+          ejercicioId: ejObj.id,
+          segmento: 'entrenamiento',
+          bloque,
+          seriesObjetivo: ejObj.seriesSugeridas || 3,
+          repsObjetivo: ejObj.repsSugeridas || '10-12',
+          notas: ejObj.notas || ''
+        });
+      });
+      showToast(`✓ "${ejObj.nombre}" sumado.`);
+      render();
+    },
+
+    'save-serie-vertical': el => {
+      const bloque = el.getAttribute('data-bloque') || 'A';
+      const ejId = el.getAttribute('data-ejercicio-id');
+      const entId = el.getAttribute('data-entrenamiento-id');
+      const pesoEl = document.getElementById(`vert-peso-${bloque}-${ejId}`);
+      const repsEl = document.getElementById(`vert-reps-${bloque}-${ejId}`);
+      const pesoKg = pesoEl ? parseFloat(pesoEl.value) || 0 : 0;
+      const reps = repsEl ? parseInt(repsEl.value, 10) || 0 : 0;
+      if (reps <= 0) {
+        showToast('Indicá al menos 1 repetición');
+        if (repsEl) repsEl.focus();
+        return;
+      }
+      Store.commit(state => {
+        const previas = (state.series || []).filter(
+          s => s.entrenamientoId === entId && s.ejercicioId === ejId && !s.deleted
+        );
+        return Engine.guardarSerie(state, {
+          entrenamientoId: entId,
+          ejercicioId: ejId,
+          numeroSerie: previas.length + 1,
+          tipo: 'efectiva',
+          pesoKg,
+          reps
+        });
+      });
+      if (navigator.vibrate) {
+        try { navigator.vibrate([45]); } catch (_) {}
+      }
+      showToast(`✓ Serie registrada (${pesoKg} kg × ${reps} reps)`);
+      render();
+    },
+
+    'complete-vuelta-vertical': el => {
+      const bloque = el.getAttribute('data-bloque') || 'A';
+      const entId = el.getAttribute('data-entrenamiento-id');
+      const prefix = `vert-reps-${bloque}-`;
+      const repsInputs = Array.from(document.querySelectorAll(`input[id^="${prefix}"]`));
+      const registros = repsInputs.map(rInput => {
+        const ejId = rInput.id.slice(prefix.length);
+        const pInput = document.getElementById(`vert-peso-${bloque}-${ejId}`);
+        return {
+          ejercicioId: ejId,
+          pesoKg: pInput ? parseFloat(pInput.value) || 0 : 0,
+          reps: parseInt(rInput.value, 10) || 0,
+          tipo: 'efectiva'
+        };
+      }).filter(r => r.reps > 0 || r.pesoKg > 0);
+
+      if (registros.length === 0) {
+        showToast('Cargá al menos 1 repetición en los ejercicios del bloque');
+        return;
+      }
+
+      Store.commit(state => Engine.completarVueltaVerticalBloque(state, entId, bloque, registros));
+      if (navigator.vibrate) {
+        try { navigator.vibrate([60, 40, 60]); } catch (_) {}
+      }
+      showToast(`🔁 Vuelta del Bloque ${bloque} guardada (${registros.length} series)`);
+      render();
     },
 
     // --- CHECK-IN RÁPIDO AL LLEGAR AL GYM ---
