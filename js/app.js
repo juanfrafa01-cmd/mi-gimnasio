@@ -19,7 +19,7 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '3.1.0';
+  const APP_VERSION = '3.2.0';
 
   /** Número válido o valor por defecto (a diferencia de `|| def`, respeta el 0: RIR 0 = serie al fallo). */
   const numOr = (v, def) => (Number.isFinite(v) ? v : def);
@@ -35,7 +35,7 @@
   let layoutMode = getAutoLayoutMode();
   let activeTab = 'hoy'; // 'hoy' | 'rutinas' | 'historico' | 'salud' | 'evolucion' | 'ajustes'
   let activeModal = null; // null | { type, ... }
-  let previousModal = null; // Para volver al modal anterior al cerrar el visor (👁️)
+  let previousModal = null; // Para volver al modal anterior al cerrar el visor de ejercicio
   let lastDeletedSerie = null;
   let lastDeletedBatchIds = null;
   let draftSugerenciaCapturas = [];
@@ -201,13 +201,13 @@
   let selectedAlumnoUsername = null;
 
   const BG_PATTERNS = [
-    { id: 'none', nombre: 'Liso (Sin fondo)', icon: '⬛', preview: 'background: var(--bg-primary);' },
-    { id: 'camo', nombre: 'Camuflaje', icon: '🪖', preview: 'background: linear-gradient(135deg, #1b2417 25%, #24311e 50%, #34442a 75%, #0e130c 100%);' },
-    { id: 'basquet', nombre: 'Básquet', icon: '🏀', preview: 'background: radial-gradient(circle at center, rgba(249,115,22,0.45), #18181b);' },
-    { id: 'pesas', nombre: 'Pesas', icon: '🏋️', preview: 'background: linear-gradient(135deg, #27272a, #09090b);' },
-    { id: 'carbon', nombre: 'Carbono', icon: '🏎️', preview: 'background: repeating-linear-gradient(45deg, #111115, #111115 4px, #1f1f27 4px, #1f1f27 8px);' },
-    { id: 'grid', nombre: 'Cuadrícula', icon: '📐', preview: 'background: linear-gradient(to right, rgba(255,255,255,0.12) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.12) 1px, transparent 1px), #18181b; background-size: 8px 8px;' },
-    { id: 'hex', nombre: 'Malla Gym', icon: '⬡', preview: 'background: radial-gradient(circle, rgba(59,130,246,0.28), #09090b);' }
+    { id: 'none', nombre: 'Liso (Sin fondo)', preview: 'background: var(--bg-primary);' },
+    { id: 'camo', nombre: 'Camuflaje', preview: 'background: linear-gradient(135deg, #1b2417 25%, #24311e 50%, #34442a 75%, #0e130c 100%);' },
+    { id: 'basquet', nombre: 'Básquet', preview: 'background: radial-gradient(circle at center, rgba(249,115,22,0.45), #18181b);' },
+    { id: 'pesas', nombre: 'Pesas', preview: 'background: linear-gradient(135deg, #27272a, #09090b);' },
+    { id: 'carbon', nombre: 'Carbono', preview: 'background: repeating-linear-gradient(45deg, #111115, #111115 4px, #1f1f27 4px, #1f1f27 8px);' },
+    { id: 'grid', nombre: 'Cuadrícula', preview: 'background: linear-gradient(to right, rgba(255,255,255,0.12) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.12) 1px, transparent 1px), #18181b; background-size: 8px 8px;' },
+    { id: 'hex', nombre: 'Malla Gym', preview: 'background: radial-gradient(circle, rgba(59,130,246,0.28), #09090b);' }
   ];
 
   function renderBackgroundPatternSelector(aesPref) {
@@ -217,15 +217,15 @@
     const restPats = BG_PATTERNS.slice(1);
     return `
       <div style="margin-top: 8px; padding-top: 10px; border-top: 1px dashed var(--border-subtle); display: flex; flex-direction: column; gap: 8px;">
-        <span class="theme-selector-label">Tema de Fondo (Personalizable)</span>
+        <span class="theme-selector-label">Tema de Fondo</span>
         <button type="button" class="pattern-chip ${activePat === nonePat.id ? 'active' : ''}" data-action="set-aesthetic-pattern" data-pattern="${nonePat.id}" style="flex-direction: row; justify-content: center; padding: 8px 10px;">
-          <span>${nonePat.icon}</span>
+          <span style="width:14px;height:14px;border-radius:4px;border:1px solid var(--border-subtle);${nonePat.preview};display:inline-block;"></span>
           <span>${nonePat.nombre}</span>
         </button>
         <div class="pattern-chips-grid">
           ${restPats.map(p => `
             <button type="button" class="pattern-chip ${activePat === p.id ? 'active' : ''}" data-action="set-aesthetic-pattern" data-pattern="${p.id}">
-              <div class="pattern-preview" style="${p.preview}">${p.icon}</div>
+              <div class="pattern-preview" style="${p.preview}"></div>
               <span>${h(p.nombre)}</span>
             </button>
           `).join('')}
@@ -242,15 +242,39 @@
   // ==========================================
   function renderIcon(name) {
     const svgs = {
-      bolt: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>',
-      clipboard: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg>',
-      activity: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>',
-      chart: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>',
-      settings: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>',
-      bulb: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"></path><path d="M10 22h4"></path><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"></path></svg>',
-      eye: '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>',
-      clock: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>',
-      copy: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>'
+      bolt: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>',
+      clipboard: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg>',
+      activity: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>',
+      chart: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>',
+      settings: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>',
+      bulb: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"></path><path d="M10 22h4"></path><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"></path></svg>',
+      eye: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>',
+      clock: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>',
+      copy: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>',
+      plus: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>',
+      check: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>',
+      x: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>',
+      edit: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>',
+      trash: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>',
+      arrowLeft: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>',
+      arrowRight: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>',
+      repeat: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>',
+      refresh: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>',
+      download: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>',
+      upload: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>',
+      palette: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5"></circle><circle cx="17.5" cy="10.5" r=".5"></circle><circle cx="8.5" cy="7.5" r=".5"></circle><circle cx="6.5" cy="12.5" r=".5"></circle><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"></path></svg>',
+      search: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>',
+      calendar: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>',
+      dumbbell: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 6.5h11"></path><path d="M6.5 17.5h11"></path><path d="M6 20v-2a6 6 0 1 1 12 0v2"></path><line x1="3" y1="10" x2="3" y2="14"></line><line x1="21" y1="10" x2="21" y2="14"></line><line x1="7" y1="7" x2="7" y2="17"></line><line x1="17" y1="7" x2="17" y2="17"></line></svg>',
+      user: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>',
+      mic: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>',
+      camera: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>',
+      share: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>',
+      sliders: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"></line><line x1="4" y1="10" x2="4" y2="3"></line><line x1="12" y1="21" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="3"></line><line x1="20" y1="21" x2="20" y2="16"></line><line x1="20" y1="12" x2="20" y2="3"></line><line x1="1" y1="14" x2="7" y2="14"></line><line x1="9" y1="8" x2="15" y2="8"></line><line x1="17" y1="16" x2="23" y2="16"></line></svg>',
+      chevronDown: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>',
+      chevronUp: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>',
+      play: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>',
+      shield: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>'
     };
     return `<span class="ui-icon">${svgs[name] || svgs.bolt}</span>`;
   }
@@ -323,7 +347,7 @@
         // Sello cian metálico CER con Fecha + Peso
         ctx.fillStyle = '#38bdf8';
         ctx.font = `bold ${Math.max(14, Math.round(bandH * 0.36))}px monospace`;
-        const stamp = `📅 ${fechaTexto}  •  ⚖️ ${pesoKg ? pesoKg + ' kg' : 'S/P'}  •  ${autorTexto}`;
+        const stamp = `${fechaTexto}  •  ${pesoKg ? pesoKg + ' kg' : 'S/P'}  •  ${autorTexto}`;
         ctx.fillText(stamp, 16, canvas.height - Math.round(bandH * 0.34));
 
         callback(canvas.toDataURL('image/jpeg', 0.82));
@@ -375,8 +399,8 @@
 
     if (puntos.length === 0) {
       return `
-        <div style="padding: 24px; text-align: center; border: 1px dashed var(--border-subtle); border-radius: var(--radius-md); color: var(--text-dim); font-size: 13px;">
-          📊 Todavía no hay registros históricos.<br>
+        <div style="padding: 20px; text-align: center; border: 1px dashed var(--border-subtle); border-radius: var(--radius-md); color: var(--text-dim); font-size: 13px;">
+          Todavía no hay registros históricos.<br>
           A medida que guardes tus series o tu estado psicofísico diario, acá vas a ver la curva evolutiva de Fuerza (1RM) y Bienestar.
         </div>
       `;
@@ -483,8 +507,8 @@
                 Ingresar con mi Usuario y Contraseña
               </button>
 
-              <button type="button" class="btn-secondary" data-action="login-biometrics">
-                ⚡ Ingresar con Face ID / Huella Digital
+              <button type="button" class="btn-secondary" data-action="login-biometrics" style="display:inline-flex;align-items:center;justify-content:center;gap:6px;">
+                ${renderIcon('bolt')} Ingresar con Face ID / Huella Digital
               </button>
             </form>
 
@@ -508,11 +532,11 @@
 
               <div style="display: flex; flex-direction: column; gap: 10px; font-size: 13px; color: var(--text-muted); line-height: 1.5;">
                 <div style="background: var(--bg-elevated); padding: 12px; border-radius: var(--radius-md); border: 1px solid var(--border-subtle);">
-                  <strong style="color: var(--text-main); display: block; margin-bottom: 4px;">🏃 Modo Alumno / Atleta (Móvil y PC)</strong>
-                  Cada alumno tiene su sesión privada aislada y un <strong>Código Único (ej. GYM-1024)</strong>. Podés armar tu rutina del día con los 49 ejercicios ilustrados (Posición Inicial y Final), editar o quitar cualquier ejercicio, cargar series y registrar tu estado psicofísico.
+                  <strong style="color: var(--text-main); display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">${renderIcon('user')} Modo Alumno / Atleta (Móvil y PC)</strong>
+                  Cada alumno tiene su sesión privada aislada y un <strong>Código Único (ej. GYM-1024)</strong>. Podés armar tu rutina del día con los ejercicios ilustrados (Posición Inicial y Final), editar o quitar cualquier ejercicio, cargar series y registrar tu estado psicofísico.
                 </div>
                 <div style="background: var(--bg-elevated); padding: 12px; border-radius: var(--radius-md); border: 1px solid var(--border-subtle);">
-                  <strong style="color: var(--text-main); display: block; margin-bottom: 4px;">📋 Modo Docente / Profesor (Panel Clínico)</strong>
+                  <strong style="color: var(--text-main); display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">${renderIcon('clipboard')} Modo Docente / Profesor (Panel Clínico)</strong>
                   Vinculá a tus alumnos con su código único, supervisá su carga semanal, prescribí o editá sus rutinas y registrá observaciones clínicas.
                 </div>
               </div>
@@ -524,10 +548,10 @@
               </span>
               <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
                 <button type="button" class="btn-secondary" data-action="quick-demo-login" data-username="juan" data-mode="phone-alumno">
-                  🏃 Demo Alumno (Juan)
+                  Demo Alumno (Juan)
                 </button>
                 <button type="button" class="btn-secondary" data-action="quick-demo-login" data-username="profe" data-mode="pc-profesor">
-                  📋 Demo Docente (Profe)
+                  Demo Docente (Profe)
                 </button>
               </div>
               ${renderJFCopyrightSeal()}
@@ -543,7 +567,7 @@
   // 6. SUB-VISTAS DEL ALUMNO (FUNCIONAN EN MÓVIL Y EN PC)
   // ==========================================
 
-  // Helper para renderizar Bloque A, Bloque B o Cierre dentro de la sesión guiada
+  // Helper para renderizar Bloque A, Bloque B o Cierre dentro de la sesión single-page
   function renderBloqueEntrenamientoStep(state, entActivo, cfg, bloqueKey, listaEjercicios, seriesEntreno) {
     const esBloqueCierre = bloqueKey === 'cierre';
     const bloqueCfg = esBloqueCierre
@@ -561,107 +585,88 @@
       : null;
     const martilloYaAgregado = martilloEj && listaEjercicios.some(item => item.ejercicio.id === martilloEj.id);
 
-    const prevStep = bloqueKey === 'A' ? 'movilidad' : (bloqueKey === 'B' ? 'A' : 'B');
+    const prevStep = bloqueKey === 'A' ? 'rutina' : (bloqueKey === 'B' ? 'A' : 'B');
     const nextStep = bloqueKey === 'A' ? 'B' : (bloqueKey === 'B' ? 'cierre' : null);
-    const prevLabel = bloqueKey === 'A' ? '← Movilidad' : (bloqueKey === 'B' ? '← Bloque A' : '← Bloque B');
-    const nextLabel = bloqueKey === 'A' ? 'Siguiente: Bloque B →' : 'Siguiente: Cierre (Opt.) →';
+    const prevLabel = bloqueKey === 'A' ? 'Previa' : (bloqueKey === 'B' ? 'Bloque A' : 'Bloque B');
+    const nextLabel = bloqueKey === 'A' ? 'Bloque B' : 'Cierre';
 
     return `
-      <div class="card">
-        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; flex-wrap: wrap;">
-          <div>
-            <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-              <span class="badge ${esBloqueCierre ? 'badge-blue' : 'badge-neon'}">${esBloqueCierre ? 'OPCIONAL · FIN DE CLASE' : (bloqueKey === 'A' ? 'MÓDULO PRINCIPAL A' : 'MÓDULO PRINCIPAL B')}</span>
-              <span class="badge" style="font-family: var(--font-mono);">${listaEjercicios.length} ejercicio${listaEjercicios.length === 1 ? '' : 's'}</span>
-            </div>
-            <h2 class="card-title" style="font-size: 16.5px; margin-top: 4px;">
-              ${esBloqueCierre ? 'Ejercicio de Cierre (Optativo)' : `Bloque ${bloqueKey}`}
+      <div class="card" style="padding: 10px 12px; gap: 6px; flex-shrink: 0;">
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px;">
+          <div style="display: flex; align-items: center; gap: 6px; min-width: 0;">
+            <h2 class="card-title" style="font-size: 14.5px; margin: 0;">
+              ${esBloqueCierre ? 'Cierre (opcional)' : `Bloque ${bloqueKey}`}
             </h2>
-            ${esBloqueCierre ? `
-              <p style="font-size: 11.5px; color: var(--text-dim); margin-top: 2px;">
-                Ej: Bíceps martillo, abdominales o accesorio final después de Bloque A y B.
-              </p>
-            ` : ''}
+            <span class="badge" style="font-family: var(--font-mono); font-size: 10px;">${listaEjercicios.length} ej.</span>
+          </div>
+          <div style="display: flex; gap: 6px; flex-shrink: 0;">
+            <button type="button" class="btn-primary btn-sm" data-action="open-catalog-picker" data-mode="workout" data-bloque="${bloqueKey}" data-filter-group="${esBloqueCierre ? 'brazos' : 'todos'}" style="min-height: 32px; padding: 4px 10px; font-size: 11.5px !important;">
+              ${renderIcon('plus')} Catálogo
+            </button>
+            <button type="button" class="btn-create-ej-inline" data-action="open-create-custom-ejercicio" data-bloque="${bloqueKey}" data-grupo="${esBloqueCierre ? 'brazos' : 'pecho'}" style="min-height: 32px; padding: 4px 10px; font-size: 11.5px;">
+              ${renderIcon('plus')} Crear
+            </button>
           </div>
         </div>
 
         ${!esBloqueCierre ? `
-          <div class="modulation-bar">
-            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
-              <span style="font-size: 11px; font-weight: 800; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em;">
-                Modulación del Bloque ${bloqueKey}
-              </span>
-              <span class="badge badge-blue" style="font-size: 10px;">
-                ${esVertical ? '🔁 En Circuito' : '➡️ Serie por Serie'}
-              </span>
-            </div>
-            <div class="modulation-toggle">
-              <button type="button" class="mod-btn ${esVertical ? 'active' : ''}" data-action="set-bloque-modalidad" data-bloque="${bloqueKey}" data-modalidad="vertical">
-                <strong>⬇️ Vertical (Circuito)</strong>
-                <span>1 serie de cada ejercicio y seguís la vuelta</span>
-              </button>
-              <button type="button" class="mod-btn ${!esVertical ? 'active' : ''}" data-action="set-bloque-modalidad" data-bloque="${bloqueKey}" data-modalidad="horizontal">
-                <strong>➡️ Horizontal (Tradicional)</strong>
-                <span>Todas las series seguidas de 1 ejercicio</span>
-              </button>
-            </div>
-
-            ${esVertical ? `
-              <div class="vertical-round-bar">
-                <div style="display: flex; flex-direction: column;">
-                  <strong style="font-size: 12.5px; color: var(--accent-emerald);">
-                    🔁 Vuelta ${progreso.rondaActual} de ${progreso.rondasObjetivo}
-                  </strong>
-                  <span style="font-size: 11px; color: var(--text-muted);">
-                    Completadas: ${progreso.vueltasCompletadas} vuelta${progreso.vueltasCompletadas === 1 ? '' : 's'} · ${progreso.totalSeries} series en total
-                  </span>
-                </div>
-                <div style="display: flex; align-items: center; gap: 4px;">
-                  ${[2, 3, 4, 5].map(r => `
-                    <button type="button" class="badge ${rondasObj === r ? 'badge-emerald' : ''}" data-action="set-bloque-rondas" data-bloque="${bloqueKey}" data-rondas="${r}" style="cursor: pointer; padding: 5px 8px;">
-                      ${r}v
-                    </button>
-                  `).join('')}
-                </div>
-              </div>
-            ` : ''}
+          <div class="modulation-toggle">
+            <button type="button" class="mod-btn ${!esVertical ? 'active' : ''}" data-action="set-bloque-modalidad" data-bloque="${bloqueKey}" data-modalidad="horizontal">
+              <strong>Horizontal</strong>
+              <span>Todas las series de 1 ejercicio</span>
+            </button>
+            <button type="button" class="mod-btn ${esVertical ? 'active' : ''}" data-action="set-bloque-modalidad" data-bloque="${bloqueKey}" data-modalidad="vertical">
+              <strong>Vertical (Circuito)</strong>
+              <span>1 serie de cada ejercicio por vuelta</span>
+            </button>
           </div>
+
+          ${esVertical ? `
+            <div class="vertical-round-bar">
+              <div style="display: flex; flex-direction: column;">
+                <strong style="font-size: 12px; color: var(--accent-emerald);">
+                  Vuelta ${progreso.rondaActual} de ${progreso.rondasObjetivo}
+                </strong>
+                <span style="font-size: 10.5px; color: var(--text-muted);">
+                  ${progreso.vueltasCompletadas} completada${progreso.vueltasCompletadas === 1 ? '' : 's'}
+                </span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 4px;">
+                ${[2, 3, 4, 5].map(r => `
+                  <button type="button" class="badge ${rondasObj === r ? 'badge-emerald' : ''}" data-action="set-bloque-rondas" data-bloque="${bloqueKey}" data-rondas="${r}" style="cursor: pointer; padding: 4px 8px;">
+                    ${r}v
+                  </button>
+                `).join('')}
+              </div>
+            </div>
+          ` : ''}
         ` : ''}
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-          <button type="button" class="btn-primary btn-sm" data-action="open-catalog-picker" data-mode="workout" data-bloque="${bloqueKey}" data-filter-group="${esBloqueCierre ? 'brazos' : 'todos'}" style="width: 100% !important;">
-            + Elegir del Catálogo
-          </button>
-          <button type="button" class="btn-create-ej-inline" data-action="open-create-custom-ejercicio" data-bloque="${bloqueKey}" data-grupo="${esBloqueCierre ? 'brazos' : 'pecho'}">
-            + Crear Ejercicio
-          </button>
-        </div>
-
         ${martilloEj && !martilloYaAgregado ? `
-          <button type="button" class="btn-secondary btn-sm" data-action="quick-add-to-bloque" data-bloque="cierre" data-ejercicio-id="${h(martilloEj.id)}" style="width: 100% !important;">
-            ⚡ Sumar rápido: ${h(martilloEj.nombre)}
+          <button type="button" class="btn-secondary btn-sm" data-action="quick-add-to-bloque" data-bloque="cierre" data-ejercicio-id="${h(martilloEj.id)}" style="width: 100% !important; min-height: 34px; font-size: 12px !important;">
+            ${renderIcon('plus')} Sumar ${h(martilloEj.nombre)}
           </button>
         ` : ''}
       </div>
 
-      ${listaEjercicios.length === 0 ? `
-        <div class="card" style="text-align: center; padding: 20px 14px;">
-          <p style="font-size: 13px; font-weight: 700; color: var(--text-main);">
-            Todavía no sumaste ejercicios en ${esBloqueCierre ? 'Cierre' : `Bloque ${bloqueKey}`}.
-          </p>
-          <p style="font-size: 11.5px; color: var(--text-dim); margin-top: 2px;">
-            ${esBloqueCierre
-              ? 'Podés sumar bíceps martillo, abdomen o pasar directo a Finalizar.'
-              : 'Elegí un ejercicio del catálogo o creá uno nuevo si no estaba en la lista.'}
-          </p>
-        </div>
-      ` : `
-        <div style="display: flex; flex-direction: column; gap: 10px;" data-drag-list="sesion">
-          ${listaEjercicios.map((item, idx) => {
+      <div class="onepage-scroll-list" data-drag-list="sesion">
+        ${listaEjercicios.length === 0 ? `
+          <div class="card" style="text-align: center; padding: 18px 14px;">
+            <p style="font-size: 13px; font-weight: 700; color: var(--text-main);">
+              Sin ejercicios en ${esBloqueCierre ? 'Cierre' : `Bloque ${bloqueKey}`}.
+            </p>
+            <p style="font-size: 11.5px; color: var(--text-dim); margin-top: 2px;">
+              ${esBloqueCierre
+                ? 'Podés sumar un accesorio final o tocar Terminar.'
+                : 'Usá Catálogo o Crear para sumar ejercicios acá.'}
+            </p>
+          </div>
+        ` : listaEjercicios.map((item, idx) => {
             const ej = item.ejercicio;
             const media = Engine.resolveEjercicioMedia(ej);
             const seriesDelEj = seriesEntreno.filter(s => s.ejercicioId === ej.id);
             const prev = Engine.getUltimaSesionEjercicio(state, ej.id, entActivo.id);
+            const prevFechaDM = prev && prev.fecha ? `${prev.fecha.slice(8, 10)}/${prev.fecha.slice(5, 7)}` : '';
             const sug = Engine.sugerirProgresion(state, ej.id, { excluirEntrenamientoId: entActivo.id, repsObjetivo: item.targetReps, seriesObjetivo: item.targetSets, equipo: ej.equipo });
             const ultimaHoy = seriesDelEj[seriesDelEj.length - 1];
             const defaultPeso = ultimaHoy ? ultimaHoy.pesoKg : (sug.pesoKg != null ? sug.pesoKg : (prev ? prev.mejor.pesoKg : 20));
@@ -680,16 +685,16 @@
                     `}
                   </div>
                   <div class="ej-info">
-                    <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                    <div style="display: flex; align-items: center; gap: 5px; flex-wrap: wrap;">
                       <h3 class="ej-title" style="margin: 0;">${idx + 1}. ${h(ej.nombre)}</h3>
-                      <span class="badge badge-neon" style="font-size: 9.5px; padding: 2px 7px;">${h(ej.grupoMuscular)}</span>
+                      <span class="badge badge-neon" style="font-size: 9px; padding: 2px 6px;">${h(ej.grupoMuscular)}</span>
                     </div>
                     <div class="ej-clase-anterior">
                       ${prev
-                        ? `⏮ Anterior: <strong>${h(prev.texto)}</strong>`
-                        : '<span class="primera-vez">✨ Primera vez</span>'}
+                        ? `Última vez (${h(prevFechaDM)}): <strong>${h(prev.texto)}</strong>`
+                        : '<span class="primera-vez">Sin registros previos</span>'}
                     </div>
-                    ${item.notaProfesor ? `<p class="ej-nota" style="margin-top: 2px;">🩺 ${h(item.notaProfesor)}</p>` : ''}
+                    ${item.notaProfesor ? `<p class="ej-nota" style="margin-top: 2px;">Nota profe: ${h(item.notaProfesor)}</p>` : ''}
                   </div>
                   <div class="ej-tools">
                     ${!esBloqueCierre ? `
@@ -698,26 +703,26 @@
                       </button>
                     ` : ''}
                     <button type="button" class="btn-eye-icon" data-action="view-ejercicio" data-ejercicio-id="${h(ej.id)}" title="Ver técnica">${renderIcon('eye')}</button>
-                    <button type="button" class="btn-icon-action danger" data-action="delete-sesion-ej" data-ejercicio-id="${h(ej.id)}" data-entrenamiento-id="${h(entActivo.id)}" title="Quitar de hoy">✕</button>
+                    <button type="button" class="btn-icon-action danger" data-action="delete-sesion-ej" data-ejercicio-id="${h(ej.id)}" data-entrenamiento-id="${h(entActivo.id)}" title="Quitar de hoy">${renderIcon('x')}</button>
                   </div>
                 </div>
 
                 ${esVertical ? `
-                  <div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center;">
+                  <div style="display: flex; gap: 4px; flex-wrap: wrap; align-items: center;">
                     ${Array.from({ length: Math.max(rondasObj, seriesDelEj.length) }, (_, rIdx) => {
                       const sDone = seriesDelEj[rIdx];
                       return sDone
-                        ? `<span class="badge badge-emerald" style="font-size: 10.5px; font-family: var(--font-mono);">V${rIdx + 1}: ${sDone.pesoKg}×${sDone.reps} ✓</span>`
-                        : `<span class="badge" style="font-size: 10.5px; opacity: 0.65;">V${rIdx + 1}: pend.</span>`;
+                        ? `<span class="badge badge-emerald" style="font-size: 10px; font-family: var(--font-mono);">V${rIdx + 1}: ${sDone.pesoKg}x${sDone.reps}</span>`
+                        : `<span class="badge" style="font-size: 10px; opacity: 0.65;">V${rIdx + 1}: pend.</span>`;
                     }).join('')}
                     ${seriesDelEj.length > 0 ? `
-                      <button type="button" class="btn-link" data-action="delete-all-series-ej" data-ejercicio-id="${h(ej.id)}" data-entrenamiento-id="${h(entActivo.id)}" style="font-size: 10.5px; color: var(--accent-rose); padding: 0 4px;">
-                        Borrar series
+                      <button type="button" class="btn-link" data-action="delete-all-series-ej" data-ejercicio-id="${h(ej.id)}" data-entrenamiento-id="${h(entActivo.id)}" style="font-size: 10px; color: var(--accent-rose); padding: 0 4px;">
+                        Borrar
                       </button>
                     ` : ''}
                   </div>
 
-                  <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: end;">
+                  <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 6px; align-items: end;">
                     <div class="ej-input-col">
                       <label class="ej-input-label" for="vert-peso-${bloqueKey}-${h(ej.id)}">KG</label>
                       <input type="number" step="0.5" id="vert-peso-${bloqueKey}-${h(ej.id)}" class="ej-val-input" value="${defaultPeso}" inputmode="decimal">
@@ -726,24 +731,24 @@
                       <label class="ej-input-label" for="vert-reps-${bloqueKey}-${h(ej.id)}">REPES</label>
                       <input type="number" id="vert-reps-${bloqueKey}-${h(ej.id)}" class="ej-val-input" value="${defaultReps}" inputmode="numeric">
                     </div>
-                    <button type="button" class="btn-primary" data-action="save-serie-vertical" data-bloque="${bloqueKey}" data-ejercicio-id="${h(ej.id)}" data-entrenamiento-id="${h(entActivo.id)}" style="height: 42px; min-height: 42px; padding: 0 12px; width: auto; font-size: 12.5px !important;">
-                      + Serie V${seriesDelEj.length + 1}
+                    <button type="button" class="btn-primary" data-action="save-serie-vertical" data-bloque="${bloqueKey}" data-ejercicio-id="${h(ej.id)}" data-entrenamiento-id="${h(entActivo.id)}" style="height: 40px; min-height: 40px; padding: 0 12px; width: auto; font-size: 12px !important;">
+                      + V${seriesDelEj.length + 1}
                     </button>
                   </div>
                 ` : `
                   ${yaGuardado ? `
                     <div class="ej-saved-box">
                       <div class="ej-saved-summary">
-                        <span style="font-size: 14px; color: var(--accent-emerald);">✓</span>
+                        <span style="color: var(--accent-emerald);">${renderIcon('check')}</span>
                         <div class="ej-saved-data">
-                          <span style="color: var(--accent-emerald);">${seriesDelEj.length} series</span>
+                          <span style="color: var(--accent-emerald);">Hoy: ${seriesDelEj.length} × ${ultimaHoy.pesoKg} kg</span>
                           <span style="color: var(--text-dim); margin: 0 3px;">·</span>
-                          <span>${ultimaHoy.pesoKg} kg × ${ultimaHoy.reps} reps</span>
+                          <span>${ultimaHoy.reps} reps</span>
                         </div>
                       </div>
                       <div class="ej-saved-actions">
-                        <button type="button" class="btn-sm btn-secondary" data-action="edit-saved-exercise" data-ejercicio-id="${h(ej.id)}" title="Editar">✏️</button>
-                        <button type="button" class="btn-sm btn-secondary danger" data-action="delete-all-series-ej" data-ejercicio-id="${h(ej.id)}" data-entrenamiento-id="${h(entActivo.id)}" title="Borrar series">✕</button>
+                        <button type="button" class="btn-sm btn-secondary" data-action="edit-saved-exercise" data-ejercicio-id="${h(ej.id)}" title="Editar">${renderIcon('edit')}</button>
+                        <button type="button" class="btn-sm btn-secondary danger" data-action="delete-all-series-ej" data-ejercicio-id="${h(ej.id)}" data-entrenamiento-id="${h(entActivo.id)}" title="Borrar series">${renderIcon('x')}</button>
                       </div>
                     </div>
                   ` : `
@@ -763,7 +768,7 @@
                         </div>
                       </div>
                       <button type="button" class="btn-primary btn-save-bulk" data-action="save-ejercicio-completo" data-ejercicio-id="${h(ej.id)}" data-entrenamiento-id="${h(entActivo.id)}">
-                        ✓ Guardar series juntas
+                        ${renderIcon('check')} Guardar series
                       </button>
                     </div>
                   `}
@@ -771,27 +776,25 @@
               </div>
             `;
           }).join('')}
-        </div>
+      </div>
 
+      <div style="display: flex; flex-direction: column; gap: 6px; flex-shrink: 0;">
         ${esVertical && listaEjercicios.length > 0 ? `
-          <button type="button" class="btn-primary" data-action="complete-vuelta-vertical" data-bloque="${bloqueKey}" data-entrenamiento-id="${h(entActivo.id)}" style="background: linear-gradient(135deg, #10B981, #2563EB); min-height: 52px;">
-            🔁 Completar Vuelta #${progreso.vueltasCompletadas + 1} Completa (1 serie c/u)
+          <button type="button" class="btn-primary" data-action="complete-vuelta-vertical" data-bloque="${bloqueKey}" data-entrenamiento-id="${h(entActivo.id)}" style="background: var(--accent-emerald); min-height: 40px; font-size: 13px !important;">
+            ${renderIcon('repeat')} Completar Vuelta #${progreso.vueltasCompletadas + 1} (1 serie c/u)
           </button>
         ` : ''}
-      `}
-
-      <div class="card" style="padding: 10px 12px;">
         <div style="display: flex; gap: 8px;">
-          <button type="button" class="btn-secondary" data-action="set-workout-step" data-step="${prevStep}" style="flex: 1;">
-            ${prevLabel}
+          <button type="button" class="btn-secondary" data-action="set-workout-step" data-step="${prevStep}" style="flex: 1; min-height: 40px;">
+            ${renderIcon('arrowLeft')} ${prevLabel}
           </button>
           ${nextStep ? `
-            <button type="button" class="btn-primary" data-action="set-workout-step" data-step="${nextStep}" style="flex: 1.4;">
-              ${nextLabel}
+            <button type="button" class="btn-primary" data-action="set-workout-step" data-step="${nextStep}" style="flex: 1.4; min-height: 40px;">
+              ${nextLabel} ${renderIcon('arrowRight')}
             </button>
           ` : `
-            <button type="button" class="btn-primary" data-action="finish-workout" data-entrenamiento-id="${h(entActivo.id)}" style="flex: 1.4; background: var(--accent-emerald);">
-              ✓ Finalizar Entrenamiento
+            <button type="button" class="btn-primary" data-action="finish-workout" data-entrenamiento-id="${h(entActivo.id)}" style="flex: 1.4; min-height: 40px; background: var(--accent-emerald);">
+              ${renderIcon('check')} Terminar sesión
             </button>
           `}
         </div>
@@ -799,126 +802,124 @@
     `;
   }
 
-  // 6.1 Pestaña HOY / ENTRENAR (Check-in Hero + Flujo Modular Guiado)
+  // 6.1 Pestaña HOY / ENTRENAR (Check-in Minimalista + Flujo Single-Page)
   function renderAlumnoHoySection(state, user) {
     const activoId = state.entrenamientoActivoId;
     const entActivo = activoId
       ? (state.entrenamientos || []).find(t => t.id === activoId && !t.deleted)
       : null;
     const rutinasActivas = (state.rutinas || []).filter(r => !r.deleted);
-    const observacionesRecientes = (state.observaciones || []).filter(o => !o.deleted).slice(0, 2);
+    const observacionesRecientes = (state.observaciones || []).filter(o => !o.deleted).slice(0, 1);
     const hoyISO = Engine.todayISO();
     const readinessHoy = (state.readinessLogs || []).find(r => r.fecha === hoyISO && !r.deleted);
     const checkinHoy = Engine.getCheckinGymHoy ? Engine.getCheckinGymHoy(state, hoyISO) : null;
 
-    // PANTALLA INICIAL (SIN ENTRENAMIENTO ABIERTO): BOTÓN GRANDE DE CHECK-IN AL GIMNASIO
+    // SIN SESIÓN ABIERTA: VISTA SINGLE-PAGE CON CHECK-IN LIMPIO + RUTINAS
     if (!entActivo) {
       const hoyInfo = Engine.rutinaParaHoy(state);
-      const ultimo = Engine.ultimoEntrenamiento(state);
       const tieneFicha = Boolean(state.perfil && state.perfil.diasSemana && state.perfil.diasSemana.length > 0);
       const rutinaHoy = hoyInfo.rutina;
 
       return `
-        <div class="hero-checkin-card">
-          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center;">
-            <span class="badge badge-neon">${h(hoyInfo.dia)} · ${hoyInfo.esDiaDeGym ? 'Día de gym' : 'Día libre'}</span>
-            ${checkinHoy ? `<span class="badge badge-emerald">✅ Asistencia hoy ${h(checkinHoy.horaLlegada || '')} hs</span>` : ''}
-          </div>
-          <div>
-            <h2 style="font-size: 20px; font-weight: 900; margin: 0;">¡Hola, ${h(user.displayName)}!</h2>
-            <p style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">
+        <div class="onepage-view">
+          <div class="hero-checkin-card">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+              <span style="font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim);">
+                ${h(hoyInfo.dia)} · ${hoyInfo.esDiaDeGym ? 'Día de entrenamiento' : 'Día libre'}
+              </span>
               ${checkinHoy
-                ? 'Ya registraste tu asistencia de hoy. ¿Querés abrir otra sesión?'
-                : '¿Llegaste al gimnasio? Tocá abajo para registrar asistencia y empezar paso a paso.'}
-            </p>
-          </div>
-
-          <button type="button" class="hero-checkin-btn" data-action="checkin-gym-hoy" ${rutinaHoy ? `data-rutina-id="${h(rutinaHoy.id)}"` : ''}>
-            <span>🏋️</span>
-            <span>${checkinHoy ? 'INICIAR NUEVA SESIÓN GUIADA' : '¡HOY FUI AL GIMNASIO! — Registrar'}</span>
-          </button>
-
-          <p style="font-size: 11.5px; color: var(--text-dim);">
-            ${ultimo
-              ? `Última clase (${h(ultimo.haceTexto)}): <strong>${h(ultimo.nombre)}</strong> · ${ultimo.series} series · ${Math.round(ultimo.volumen).toLocaleString('es-AR')} kg`
-              : 'Paso siguiente: Psicofísico → Activación → Movilidad → Bloque A → Bloque B → Cierre'}
-          </p>
-
-          ${!tieneFicha ? `
-            <button type="button" class="badge badge-blue" data-action="switch-tab" data-tab="salud" style="cursor: pointer;">Completar Ficha Salud →</button>
-          ` : ''}
-        </div>
-
-        <div class="card">
-          <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
-            <span style="font-size: 13px; font-weight: 800;">⚡ Accesos Rápidos y Rutinas (${rutinasActivas.length})</span>
-            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-              <button type="button" class="btn-create-ej-inline" data-action="open-create-custom-ejercicio" style="padding: 6px 10px; font-size: 11.5px;">
-                + Crear Ejercicio
-              </button>
-              <button type="button" class="btn-sm btn-secondary" data-action="open-rutina-builder">
-                + Nueva Rutina
-              </button>
+                ? `<span class="badge badge-emerald" style="font-size: 10px;">Ingresado ${h(checkinHoy.horaLlegada || '')} hs</span>`
+                : (!tieneFicha ? `<button type="button" class="badge badge-blue" data-action="switch-tab" data-tab="salud" style="cursor: pointer; font-size: 10px;">Ficha de salud</button>` : '')}
             </div>
+
+            <div>
+              <h2 style="font-size: 18px; font-weight: 800; margin: 0; letter-spacing: -0.02em;">Hola, ${h(user.displayName)}</h2>
+              <p style="font-size: 12.5px; color: var(--text-muted); margin-top: 2px;">
+                ${checkinHoy
+                  ? 'Ya registraste tu ingreso hoy. Podés abrir una nueva sesión abajo.'
+                  : 'Registrá tu llegada al gimnasio para empezar la sesión de hoy.'}
+              </p>
+            </div>
+
+            <button type="button" class="hero-checkin-btn" data-action="checkin-gym-hoy" ${rutinaHoy ? `data-rutina-id="${h(rutinaHoy.id)}"` : ''}>
+              ${renderIcon('play')}
+              <span>${checkinHoy ? 'Nueva sesión de entrenamiento' : 'Llegué al gimnasio — Empezar sesión'}</span>
+            </button>
           </div>
 
-          ${rutinaHoy ? `
-            <div class="rutina-row hoy" style="padding: 10px 12px;">
-              <div style="min-width: 0; flex: 1;">
-                <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                  <span class="badge badge-blue">Te toca hoy</span>
-                  <h3 style="font-size: 14px; font-weight: 800;">${h(rutinaHoy.nombre)}</h3>
-                </div>
-                <div style="font-size: 11.5px; color: var(--text-dim); margin-top: 2px;">
-                  ${(rutinaHoy.ejercicios || []).length} ejercicios · ${h(rutinaHoy.horario || '19:00')} hs
-                </div>
+          ${observacionesRecientes.length > 0 ? `
+            <div class="card" style="border-left: 3px solid var(--accent-blue); padding: 8px 12px; flex-shrink: 0;">
+              <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; gap: 8px;">
+                <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><strong>Nota del profe:</strong> ${h(observacionesRecientes[0].texto)}</span>
+                <button type="button" class="badge badge-blue" data-action="switch-tab" data-tab="salud" style="flex-shrink: 0;">Ver</button>
               </div>
-              <button type="button" class="btn-primary btn-sm" data-action="start-workout" data-rutina-id="${h(rutinaHoy.id)}">
-                ▶ Iniciar
-              </button>
             </div>
           ` : ''}
 
-          ${rutinasActivas.length > 0 ? `
-            <div style="display: flex; flex-direction: column; gap: 6px;">
-              ${rutinasActivas.filter(r => !rutinaHoy || r.id !== rutinaHoy.id).map(r => `
+          <div class="card" style="flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; padding: 10px 12px; gap: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-shrink: 0;">
+              <span style="font-size: 12.5px; font-weight: 800;">Rutinas (${rutinasActivas.length})</span>
+              <div style="display: flex; gap: 6px;">
+                <button type="button" class="btn-create-ej-inline" data-action="open-create-custom-ejercicio" style="padding: 5px 9px; font-size: 11px;">
+                  ${renderIcon('plus')} Crear ej.
+                </button>
+                <button type="button" class="btn-sm btn-secondary" data-action="open-rutina-builder" style="min-height: 30px; padding: 4px 9px; font-size: 11px !important;">
+                  ${renderIcon('plus')} Rutina
+                </button>
+              </div>
+            </div>
+
+            <div class="onepage-scroll-list">
+              ${rutinaHoy ? `
+                <div class="rutina-row hoy" style="padding: 9px 10px;">
+                  <div style="min-width: 0; flex: 1;">
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                      <span class="badge badge-blue" style="font-size: 9.5px;">Hoy</span>
+                      <h3 style="font-size: 13.5px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${h(rutinaHoy.nombre)}</h3>
+                    </div>
+                    <div style="font-size: 11px; color: var(--text-dim); margin-top: 2px;">
+                      ${(rutinaHoy.ejercicios || []).length} ejercicios · ${h(rutinaHoy.horario || '19:00')} hs
+                    </div>
+                  </div>
+                  <button type="button" class="btn-primary btn-sm" data-action="start-workout" data-rutina-id="${h(rutinaHoy.id)}" style="min-height: 34px; padding: 4px 12px;">
+                    Iniciar
+                  </button>
+                </div>
+              ` : ''}
+
+              ${rutinasActivas.length > 0 ? rutinasActivas.filter(r => !rutinaHoy || r.id !== rutinaHoy.id).map(r => `
                 <div class="rutina-row" style="padding: 8px 10px;">
                   <div style="min-width: 0; flex: 1;">
-                    <h3 style="font-size: 13.5px; font-weight: 800;">${h(r.nombre)}</h3>
+                    <h3 style="font-size: 13px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${h(r.nombre)}</h3>
                     <div style="font-size: 11px; color: var(--text-dim);">
                       ${(r.dias || []).map(d => h(d.slice(0, 3))).join(' · ')} · ${(r.ejercicios || []).length} ej.
                     </div>
                   </div>
-                  <div style="display: flex; gap: 5px;">
-                    <button type="button" class="btn-icon-action" data-action="edit-rutina" data-rutina-id="${h(r.id)}" title="Editar">✏️</button>
-                    <button type="button" class="btn-primary btn-sm" data-action="start-workout" data-rutina-id="${h(r.id)}">▶</button>
+                  <div style="display: flex; gap: 5px; flex-shrink: 0;">
+                    <button type="button" class="btn-icon-action" data-action="edit-rutina" data-rutina-id="${h(r.id)}" title="Editar">${renderIcon('edit')}</button>
+                    <button type="button" class="btn-primary btn-sm" data-action="start-workout" data-rutina-id="${h(r.id)}" style="min-height: 32px; padding: 4px 10px;">Iniciar</button>
                   </div>
                 </div>
-              `).join('')}
-            </div>
-          ` : `
-            <div style="padding: 12px; text-align: center; border: 1px dashed var(--border-subtle); border-radius: var(--radius-md); font-size: 12px; color: var(--text-muted);">
-              Tocá <strong>"¡HOY FUI AL GIMNASIO!"</strong> arriba para registrar tu día y entrenar paso a paso.
-            </div>
-          `}
-        </div>
-
-        ${observacionesRecientes.length > 0 ? `
-          <div class="card" style="border-left: 3px solid var(--accent-blue); padding: 10px 12px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; gap: 8px;">
-              <strong>🩺 Nota del Profe: ${h(observacionesRecientes[0].texto)}</strong>
-              <button type="button" class="badge badge-blue" data-action="switch-tab" data-tab="salud">Ver</button>
+              `).join('') : `
+                <div style="padding: 14px; text-align: center; border: 1px dashed var(--border-subtle); border-radius: var(--radius-md); font-size: 12px; color: var(--text-muted);">
+                  Tocá "Llegué al gimnasio" arriba para armar tu sesión paso a paso.
+                </div>
+              `}
             </div>
           </div>
-        ` : ''}
+        </div>
       `;
     }
 
-    // ENTRENAMIENTO ACTIVO: FLUJO MODULAR PASO A PASO
+    // SESIÓN ACTIVA: PSICOFÍSICO (1 PANTALLA SIN SCROLL) -> RUTINA DE HOY (PREVIA / A / B / CIERRE)
     const rawCfg = entActivo.modulosConfig || {};
-    const pasosValidos = ['psicofisico', 'activacion', 'movilidad', 'A', 'B', 'cierre'];
+    let pasoActual = rawCfg.pasoActual || 'psicofisico';
+    if (pasoActual === 'activacion' || pasoActual === 'movilidad') pasoActual = 'rutina';
+    const pasosValidos = ['psicofisico', 'rutina', 'A', 'B', 'cierre'];
+    if (!pasosValidos.includes(pasoActual)) pasoActual = 'psicofisico';
+
     const cfg = {
-      pasoActual: pasosValidos.includes(rawCfg.pasoActual) ? rawCfg.pasoActual : 'psicofisico',
+      pasoActual,
       activacionActiva: rawCfg.activacionActiva !== false,
       movilidadActiva: rawCfg.movilidadActiva !== false,
       A: {
@@ -934,13 +935,112 @@
       cierreActivo: rawCfg.cierreActivo !== false
     };
 
+    // PASO 1 DEDICADO: PSICOFÍSICO ULTRA COMPACTO (ZERO SCROLL)
+    if (cfg.pasoActual === 'psicofisico') {
+      const estSel = draftReadiness.estadoGeneral || (readinessHoy && readinessHoy.estadoGeneral) || 'Bien';
+      const estresVal = String(draftReadiness.estres || (readinessHoy && readinessHoy.estres) || '1');
+      const suenoVal = String(draftReadiness.sueno || (readinessHoy && readinessHoy.sueno) || '5');
+      const alimVal = String(draftReadiness.alimentacion || (readinessHoy && readinessHoy.alimentacion) || '5');
+
+      return `
+        <div class="onepage-view">
+          <div class="card active-session-bar" style="padding: 10px 12px; flex-shrink: 0;">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+              <div>
+                <span style="font-size: 10.5px; font-weight: 800; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em;">Estado psicofísico</span>
+                <h2 style="font-size: 16px; font-weight: 800; margin: 1px 0 0 0;">¿Cómo estás hoy?</h2>
+              </div>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                ${readinessHoy ? '<span class="badge badge-emerald" style="font-size: 10px;">Guardado</span>' : ''}
+                <button type="button" class="btn-secondary btn-sm" data-action="set-workout-step" data-step="rutina" style="min-height: 32px; padding: 4px 10px;">
+                  Ir a rutina
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="card" style="flex: 0 0 auto; display: flex; flex-direction: column; padding: 12px; gap: 12px;">
+            <div style="display: flex; flex-direction: column; gap: 9px;">
+              <div class="psico-compact-row">
+                <span class="psico-compact-label">Estado</span>
+                <div class="psico-chips">
+                  ${[
+                    { val: 'Bien', label: 'Bien' },
+                    { val: 'Normal', label: 'Normal' },
+                    { val: 'Mal', label: 'Mal' }
+                  ].map(o => `
+                    <button type="button" class="psico-chip ${estSel === o.val ? 'selected' : ''}" data-action="set-psico-chip" data-field="estadoGeneral" data-value="${o.val}">
+                      ${o.label}
+                    </button>
+                  `).join('')}
+                </div>
+              </div>
+
+              <div class="psico-compact-row">
+                <span class="psico-compact-label">Estrés</span>
+                <div class="psico-chips">
+                  ${[
+                    { val: '1', label: 'Bajo' },
+                    { val: '3', label: 'Medio' },
+                    { val: '5', label: 'Alto' }
+                  ].map(o => `
+                    <button type="button" class="psico-chip ${estresVal === o.val ? 'selected' : ''}" data-action="set-psico-chip" data-field="estres" data-value="${o.val}">
+                      ${o.label}
+                    </button>
+                  `).join('')}
+                </div>
+              </div>
+
+              <div class="psico-compact-row">
+                <span class="psico-compact-label">Sueño</span>
+                <div class="psico-chips">
+                  ${[
+                    { val: '5', label: 'Bien' },
+                    { val: '3', label: 'Regular' },
+                    { val: '1', label: 'Mal' }
+                  ].map(o => `
+                    <button type="button" class="psico-chip ${suenoVal === o.val ? 'selected' : ''}" data-action="set-psico-chip" data-field="sueno" data-value="${o.val}">
+                      ${o.label}
+                    </button>
+                  `).join('')}
+                </div>
+              </div>
+
+              <div class="psico-compact-row">
+                <span class="psico-compact-label">Comida</span>
+                <div class="psico-chips">
+                  ${[
+                    { val: '5', label: 'Bien' },
+                    { val: '3', label: 'Regular' },
+                    { val: '1', label: 'Mal' }
+                  ].map(o => `
+                    <button type="button" class="psico-chip ${alimVal === o.val ? 'selected' : ''}" data-action="set-psico-chip" data-field="alimentacion" data-value="${o.val}">
+                      ${o.label}
+                    </button>
+                  `).join('')}
+                </div>
+              </div>
+
+              <div class="psico-dual-inputs" style="margin-top: 2px;">
+                <input type="text" id="step-psico-dolor" class="form-input" value="${h(draftReadiness.zonaDolor || '')}" placeholder="Molestia (opc.)">
+                <input type="text" id="step-psico-obs" class="form-input" value="${h(draftReadiness.observacionAlumno || '')}" placeholder="Observación (opc.)">
+              </div>
+            </div>
+
+            <button type="button" class="btn-primary" data-action="submit-step-psicofisico" style="min-height: 46px;">
+              Continuar a la rutina ${renderIcon('arrowRight')}
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
     const rutinaAsociada = entActivo.rutinaId
       ? (state.rutinas || []).find(r => r.id === entActivo.rutinaId)
       : null;
     const seriesEntreno = (state.series || []).filter(
       s => s.entrenamientoId === entActivo.id && !s.deleted
     );
-    const volumenTotal = Engine.computeVolumenEntrenamiento(state.series, entActivo.id);
     const excluidosSesionMap = (state.ejerciciosExcluidosHoy && state.ejerciciosExcluidosHoy[entActivo.id]) || {};
 
     // 1. Módulo Activación
@@ -1062,249 +1162,148 @@
     const ejerciciosBloqueA = ejerciciosList.filter(x => x.bloque === 'A');
     const ejerciciosBloqueB = ejerciciosList.filter(x => x.bloque === 'B');
     const ejerciciosCierre = ejerciciosList.filter(x => x.bloque === 'cierre');
-    const bloqueParaCrear = ['activacion', 'movilidad', 'A', 'B', 'cierre'].includes(cfg.pasoActual) ? cfg.pasoActual : 'A';
+    const bloqueParaCrear = ['A', 'B', 'cierre'].includes(cfg.pasoActual) ? cfg.pasoActual : 'A';
+    const estadoLabel = (readinessHoy && readinessHoy.estadoGeneral) || draftReadiness.estadoGeneral || 'Registrar';
 
-    // Contenido dinámico del paso actual
+    // Contenido de Rutina / Bloque A / Bloque B / Cierre
     let stepBodyHtml = '';
-
-    if (cfg.pasoActual === 'psicofisico') {
-      const estSel = draftReadiness.estadoGeneral || (readinessHoy && readinessHoy.estadoGeneral) || 'Bien';
-      const estresVal = String(draftReadiness.estres || (readinessHoy && readinessHoy.estres) || '1');
-      const suenoVal = String(draftReadiness.sueno || (readinessHoy && readinessHoy.sueno) || '5');
-      const alimVal = String(draftReadiness.alimentacion || (readinessHoy && readinessHoy.alimentacion) || '5');
-
+    if (cfg.pasoActual === 'rutina') {
       stepBodyHtml = `
-        <div class="card">
-          <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+        <div style="display: flex; flex-direction: column; gap: 6px; flex-shrink: 0;">
+          <div class="toggle-pill-row">
             <div>
-              <span class="badge badge-neon">PASO 1 · ESTADO PSICOFÍSICO</span>
-              <h2 class="card-title" style="font-size: 16.5px; margin-top: 4px;">¿Cómo estás hoy?</h2>
+              <strong style="font-size: 13px;">Activación</strong>
+              <div style="font-size: 11px; color: var(--text-dim);">Entrada en calor previa</div>
             </div>
-            ${readinessHoy ? '<span class="badge badge-emerald">✓ Guardado hoy</span>' : ''}
-          </div>
-
-          <div class="psico-row">
-            <span class="form-label" style="font-size: 11px;">1. Estado general</span>
-            <div class="psico-chips">
-              ${[
-                { val: 'Bien', label: '😊 Bien' },
-                { val: 'Normal', label: '😐 Normal' },
-                { val: 'Mal', label: '😣 Mal' }
-              ].map(o => `
-                <button type="button" class="psico-chip ${estSel === o.val ? 'selected' : ''}" data-action="set-psico-chip" data-field="estadoGeneral" data-value="${o.val}">
-                  ${o.label}
-                </button>
-              `).join('')}
+            <div class="toggle-seg">
+              <button type="button" class="toggle-seg-btn ${!cfg.activacionActiva ? 'active' : ''}" data-action="set-module-active" data-module="activacion" data-active="0">No</button>
+              <button type="button" class="toggle-seg-btn ${cfg.activacionActiva ? 'active' : ''}" data-action="set-module-active" data-module="activacion" data-active="1">Sí</button>
             </div>
           </div>
 
-          <div class="psico-row">
-            <span class="form-label" style="font-size: 11px;">2. ¿Estás estresado?</span>
-            <div class="psico-chips">
-              ${[
-                { val: '1', label: '😌 Poco / No' },
-                { val: '3', label: '🟡 Algo' },
-                { val: '5', label: '🤯 Bastante' }
-              ].map(o => `
-                <button type="button" class="psico-chip ${estresVal === o.val ? 'selected' : ''}" data-action="set-psico-chip" data-field="estres" data-value="${o.val}">
-                  ${o.label}
-                </button>
-              `).join('')}
+          <div class="toggle-pill-row">
+            <div>
+              <strong style="font-size: 13px;">Movilidad</strong>
+              <div style="font-size: 11px; color: var(--text-dim);">Movilidad articular inicial</div>
             </div>
-          </div>
-
-          <div class="psico-row">
-            <span class="form-label" style="font-size: 11px;">3. ¿Dormiste bien?</span>
-            <div class="psico-chips">
-              ${[
-                { val: '5', label: '😴 Sí, bien' },
-                { val: '3', label: '🌙 Regular' },
-                { val: '1', label: '🥱 Mal' }
-              ].map(o => `
-                <button type="button" class="psico-chip ${suenoVal === o.val ? 'selected' : ''}" data-action="set-psico-chip" data-field="sueno" data-value="${o.val}">
-                  ${o.label}
-                </button>
-              `).join('')}
+            <div class="toggle-seg">
+              <button type="button" class="toggle-seg-btn ${!cfg.movilidadActiva ? 'active' : ''}" data-action="set-module-active" data-module="movilidad" data-active="0">No</button>
+              <button type="button" class="toggle-seg-btn ${cfg.movilidadActiva ? 'active' : ''}" data-action="set-module-active" data-module="movilidad" data-active="1">Sí</button>
             </div>
-          </div>
-
-          <div class="psico-row">
-            <span class="form-label" style="font-size: 11px;">4. ¿Comiste bien?</span>
-            <div class="psico-chips">
-              ${[
-                { val: '5', label: '🥗 Sí, bien' },
-                { val: '3', label: '🥪 Más o menos' },
-                { val: '1', label: '🍽️ Mal / Ayunas' }
-              ].map(o => `
-                <button type="button" class="psico-chip ${alimVal === o.val ? 'selected' : ''}" data-action="set-psico-chip" data-field="alimentacion" data-value="${o.val}">
-                  ${o.label}
-                </button>
-              `).join('')}
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label" for="step-psico-dolor">Molestia física (opcional)</label>
-            <input type="text" id="step-psico-dolor" class="form-input" value="${h(draftReadiness.zonaDolor || '')}" placeholder="Ej: Carga en lumbar, rodilla, ninguna...">
-          </div>
-
-          <div class="form-group">
-            <label class="form-label" for="step-psico-obs">Alguna observación</label>
-            <input type="text" id="step-psico-obs" class="form-input" value="${h(draftReadiness.observacionAlumno || '')}" placeholder="Ej: Vengo cansado del trabajo, con ganas de entrenar...">
-          </div>
-
-          <div style="display: flex; gap: 8px; margin-top: 4px;">
-            <button type="button" class="btn-primary" data-action="submit-step-psicofisico" style="flex: 2;">
-              ✓ Guardar y Seguir: Activación →
-            </button>
-            <button type="button" class="btn-secondary" data-action="set-workout-step" data-step="activacion" style="flex: 0.9;">
-              Saltar →
-            </button>
           </div>
         </div>
-      `;
-    } else if (cfg.pasoActual === 'activacion') {
-      stepBodyHtml = `
-        <div class="card">
-          <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
-            <div>
-              <span class="badge badge-neon">PASO 2 · ACTIVACIÓN</span>
-              <h2 class="card-title" style="font-size: 16.5px; margin-top: 4px;">Módulo de Activación</h2>
-            </div>
-            <button type="button" class="badge ${cfg.activacionActiva ? 'badge-emerald' : ''}" data-action="toggle-module-enabled" data-module="activacion" style="cursor: pointer; padding: 6px 10px;">
-              ${cfg.activacionActiva ? '🟢 Activo (Tocar p/ omitir)' : '⚪ Omitido (Activar)'}
-            </button>
-          </div>
 
-          ${!cfg.activacionActiva ? `
-            <p style="font-size: 12.5px; color: var(--text-muted); padding: 10px 0;">
-              Omitiste la activación en la sesión de hoy. Podés activarla arriba o pasar directo a Movilidad.
-            </p>
-          ` : `
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-              <button type="button" class="btn-primary btn-sm" data-action="open-catalog-picker" data-mode="workout" data-bloque="activacion" data-filter-group="activacion" style="width: 100% !important;">
-                + Agregar Activación
-              </button>
-              <button type="button" class="btn-create-ej-inline" data-action="open-create-custom-ejercicio" data-bloque="activacion" data-grupo="activacion">
-                + Crear Ejercicio
-              </button>
+        <div class="onepage-scroll-list">
+          ${!cfg.activacionActiva && !cfg.movilidadActiva ? `
+            <div class="card" style="text-align: center; padding: 18px 14px;">
+              <p style="font-size: 13px; font-weight: 700; color: var(--text-main);">Sin activación ni movilidad previa.</p>
+              <p style="font-size: 11.5px; color: var(--text-dim); margin-top: 2px;">Podés pasar directo al Bloque A o activar alguno arriba.</p>
             </div>
+          ` : ''}
 
-            ${listaActivacionHoy.length === 0 ? `
-              <p style="font-size: 12.5px; color: var(--text-dim); text-align: center; padding: 12px;">
-                Sin ejercicios de activación cargados. Tocá "+ Agregar Activación".
-              </p>
-            ` : `
-              <div style="display: flex; flex-direction: column; gap: 8px;">
-                ${listaActivacionHoy.map(act => {
-                  const ejRef = (state.ejercicios || []).find(e => e.id === act.id) || (Engine.CATALOGO_EJERCICIOS || []).find(e => e.id === act.id);
-                  const media = ejRef ? Engine.resolveEjercicioMedia(ejRef) : {};
-                  return `
-                    <div class="ej-step-card" style="padding: 10px;">
-                      <div style="display: flex; align-items: center; gap: 10px;">
-                        <button type="button" class="badge ${act.completado ? 'badge-emerald' : ''}" data-action="toggle-act-mov-done" data-ejercicio-id="${h(act.id)}" data-entrenamiento-id="${h(entActivo.id)}" style="cursor: pointer; min-width: 34px; height: 34px; justify-content: center; font-size: 14px;">
-                          ${act.completado ? '✓' : '○'}
-                        </button>
-                        ${media.illustrationUrl ? `
-                          <img src="${h(media.illustrationUrl)}" alt="${h(act.nombre)}" style="width: 40px; height: 40px; border-radius: 8px; object-fit: cover; flex-shrink: 0;">
-                        ` : ''}
-                        <div style="flex: 1; min-width: 0;">
-                          <div style="font-size: 13.5px; font-weight: 800; color: var(--text-main);">${h(act.nombre)}</div>
-                          <div style="font-size: 11px; color: var(--text-dim);">${h(act.prescripcion || '')} · ${h(act.foco || 'Activación')}</div>
-                        </div>
-                        <button type="button" class="btn-eye-icon" data-action="view-ejercicio" data-ejercicio-id="${h(act.id)}" title="Ver técnica">${renderIcon('eye')}</button>
-                        <button type="button" class="btn-icon-action danger" data-action="${act.esPersonalizadoEnSesion ? 'delete-sesion-ej' : 'delete-activacion'}" data-act-id="${h(act.id)}" data-ejercicio-id="${h(act.id)}" data-entrenamiento-id="${h(entActivo.id)}" title="Quitar">✕</button>
-                      </div>
-                    </div>
-                  `;
-                }).join('')}
+          ${cfg.activacionActiva ? `
+            <div class="card" style="padding: 10px 12px; gap: 6px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px;">
+                <strong style="font-size: 12.5px;">Activación (${actDoneCount}/${listaActivacionHoy.length})</strong>
+                <div style="display: flex; gap: 5px;">
+                  <button type="button" class="btn-primary btn-sm" data-action="open-catalog-picker" data-mode="workout" data-bloque="activacion" data-filter-group="activacion" style="min-height: 28px; padding: 3px 8px; font-size: 11px !important;">
+                    ${renderIcon('plus')} Agregar
+                  </button>
+                  <button type="button" class="btn-create-ej-inline" data-action="open-create-custom-ejercicio" data-bloque="activacion" data-grupo="activacion" style="min-height: 28px; padding: 3px 8px; font-size: 11px;">
+                    ${renderIcon('plus')} Crear
+                  </button>
+                </div>
               </div>
-            `}
-          `}
+              ${listaActivacionHoy.length === 0 ? `
+                <p style="font-size: 11.5px; color: var(--text-dim); margin: 4px 0;">Sin ejercicios de activación cargados.</p>
+              ` : listaActivacionHoy.map(act => {
+                const ejRef = (state.ejercicios || []).find(e => e.id === act.id) || (Engine.CATALOGO_EJERCICIOS || []).find(e => e.id === act.id);
+                const media = ejRef ? Engine.resolveEjercicioMedia(ejRef) : {};
+                return `
+                  <div class="ej-step-card" style="padding: 7px 9px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                      <button type="button" class="badge ${act.completado ? 'badge-emerald' : ''}" data-action="toggle-act-mov-done" data-ejercicio-id="${h(act.id)}" data-entrenamiento-id="${h(entActivo.id)}" style="cursor: pointer; min-width: 28px; height: 28px; justify-content: center;">
+                        ${act.completado ? renderIcon('check') : ''}
+                      </button>
+                      ${media.illustrationUrl ? `<img src="${h(media.illustrationUrl)}" alt="${h(act.nombre)}" style="width: 32px; height: 32px; border-radius: 6px; object-fit: cover; flex-shrink: 0;">` : ''}
+                      <div style="flex: 1; min-width: 0;">
+                        <div style="font-size: 12.5px; font-weight: 700; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${h(act.nombre)}</div>
+                        <div style="font-size: 10.5px; color: var(--text-dim);">${h(act.prescripcion || '')}</div>
+                      </div>
+                      <button type="button" class="btn-eye-icon" data-action="view-ejercicio" data-ejercicio-id="${h(act.id)}" title="Ver técnica">${renderIcon('eye')}</button>
+                      <button type="button" class="btn-icon-action danger" data-action="${act.esPersonalizadoEnSesion ? 'delete-sesion-ej' : 'delete-activacion'}" data-act-id="${h(act.id)}" data-ejercicio-id="${h(act.id)}" data-entrenamiento-id="${h(entActivo.id)}" title="Quitar">${renderIcon('x')}</button>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          ` : ''}
 
-          <div style="display: flex; gap: 8px; margin-top: 4px;">
-            <button type="button" class="btn-secondary" data-action="set-workout-step" data-step="psicofisico" style="flex: 1;">
-              ← Psicofísico
-            </button>
-            <button type="button" class="btn-primary" data-action="set-workout-step" data-step="movilidad" style="flex: 1.4;">
-              Siguiente: Movilidad →
-            </button>
-          </div>
+          ${cfg.movilidadActiva ? `
+            <div class="card" style="padding: 10px 12px; gap: 6px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px;">
+                <strong style="font-size: 12.5px;">Movilidad (${listaMovilidadHoy.length})</strong>
+                <div style="display: flex; gap: 5px;">
+                  <button type="button" class="btn-primary btn-sm" data-action="open-catalog-picker" data-mode="workout" data-bloque="movilidad" data-filter-group="movilidad" style="min-height: 28px; padding: 3px 8px; font-size: 11px !important;">
+                    ${renderIcon('plus')} Agregar
+                  </button>
+                  <button type="button" class="btn-create-ej-inline" data-action="open-create-custom-ejercicio" data-bloque="movilidad" data-grupo="movilidad" style="min-height: 28px; padding: 3px 8px; font-size: 11px;">
+                    ${renderIcon('plus')} Crear
+                  </button>
+                </div>
+              </div>
+              ${hayMovilidadPrevia && listaMovilidadHoy.length === 0 ? `
+                <button type="button" class="btn-secondary btn-sm" data-action="repeat-last-movilidad" style="width: 100% !important; min-height: 30px; font-size: 11.5px !important;">
+                  ${renderIcon('refresh')} Repetir movilidad de la última sesión
+                </button>
+              ` : ''}
+              ${listaMovilidadHoy.length === 0 ? `
+                <p style="font-size: 11.5px; color: var(--text-dim); margin: 4px 0;">Sin ejercicios de movilidad cargados.</p>
+              ` : listaMovilidadHoy.map(m => {
+                const ejRef = (state.ejercicios || []).find(e => e.id === m.ejercicioId) || (Engine.CATALOGO_EJERCICIOS || []).find(e => e.id === m.ejercicioId);
+                const media = ejRef ? Engine.resolveEjercicioMedia(ejRef) : {};
+                return `
+                  <div class="ej-step-card" style="padding: 7px 9px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                      <button type="button" class="badge ${m.completado ? 'badge-emerald' : ''}" data-action="toggle-act-mov-done" data-mov-id="${h(m.esSesionItem ? '' : m.id)}" data-ejercicio-id="${h(m.ejercicioId)}" data-entrenamiento-id="${h(entActivo.id)}" style="cursor: pointer; min-width: 28px; height: 28px; justify-content: center;">
+                        ${m.completado ? renderIcon('check') : ''}
+                      </button>
+                      ${media.illustrationUrl ? `<img src="${h(media.illustrationUrl)}" alt="${h(m.nombre)}" style="width: 32px; height: 32px; border-radius: 6px; object-fit: cover; flex-shrink: 0;">` : ''}
+                      <div style="flex: 1; min-width: 0;">
+                        <div style="font-size: 12.5px; font-weight: 700; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${h(m.nombre)}</div>
+                        <div style="font-size: 10.5px; color: var(--text-dim);">${m.series || 2} series × ${h(m.reps || '12')} reps</div>
+                      </div>
+                      <button type="button" class="btn-eye-icon" data-action="view-ejercicio" data-ejercicio-id="${h(m.ejercicioId)}" title="Ver técnica">${renderIcon('eye')}</button>
+                      <button type="button" class="btn-icon-action danger" data-action="${m.esSesionItem ? 'delete-sesion-ej' : 'delete-movilidad'}" data-mov-id="${h(m.id)}" data-ejercicio-id="${h(m.ejercicioId)}" data-entrenamiento-id="${h(entActivo.id)}" title="Quitar">${renderIcon('x')}</button>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          ` : ''}
+
+          ${bloquesAmrapHoy.map(b => `
+            <div class="amrap-card" style="padding: 10px 12px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px;">
+                <div>
+                  <span class="badge badge-neon" style="font-size: 10px;">AMRAP</span>
+                  <strong style="font-size: 13px; margin-left: 6px;">${h(b.nombre)} (${b.rondasCompletadas || 0}/${b.rondasObjetivo || 4})</strong>
+                </div>
+                <button type="button" class="btn-serie-completa btn-sm" data-action="complete-amrap-round" data-amrap-id="${h(b.id)}" style="min-height: 28px; padding: 3px 9px; font-size: 11px !important;">
+                  +1 Ronda
+                </button>
+              </div>
+            </div>
+          `).join('')}
         </div>
-      `;
-    } else if (cfg.pasoActual === 'movilidad') {
-      stepBodyHtml = `
-        <div class="card">
-          <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
-            <div>
-              <span class="badge badge-neon">PASO 3 · MOVILIDAD</span>
-              <h2 class="card-title" style="font-size: 16.5px; margin-top: 4px;">Módulo de Movilidad</h2>
-            </div>
-            <button type="button" class="badge ${cfg.movilidadActiva ? 'badge-emerald' : ''}" data-action="toggle-module-enabled" data-module="movilidad" style="cursor: pointer; padding: 6px 10px;">
-              ${cfg.movilidadActiva ? '🟢 Activo (Tocar p/ omitir)' : '⚪ Omitido (Activar)'}
-            </button>
-          </div>
 
-          ${!cfg.movilidadActiva ? `
-            <p style="font-size: 12.5px; color: var(--text-muted); padding: 10px 0;">
-              Omitiste la movilidad hoy. Podés activarla arriba o pasar directo al Bloque A.
-            </p>
-          ` : `
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-              <button type="button" class="btn-primary btn-sm" data-action="open-catalog-picker" data-mode="workout" data-bloque="movilidad" data-filter-group="movilidad" style="width: 100% !important;">
-                + Agregar Movilidad
-              </button>
-              <button type="button" class="btn-create-ej-inline" data-action="open-create-custom-ejercicio" data-bloque="movilidad" data-grupo="movilidad">
-                + Crear Ejercicio
-              </button>
-            </div>
-
-            ${hayMovilidadPrevia && listaMovilidadHoy.length === 0 ? `
-              <button type="button" class="btn-secondary btn-sm" data-action="repeat-last-movilidad" style="width: 100% !important;">
-                ↻ Repetir movilidad de la última sesión
-              </button>
-            ` : ''}
-
-            ${listaMovilidadHoy.length === 0 ? `
-              <p style="font-size: 12.5px; color: var(--text-dim); text-align: center; padding: 12px;">
-                Agregá los ejercicios de movilidad articular de hoy (cadera, tobillo, tórax, hombros...).
-              </p>
-            ` : `
-              <div style="display: flex; flex-direction: column; gap: 8px;">
-                ${listaMovilidadHoy.map(m => {
-                  const ejRef = (state.ejercicios || []).find(e => e.id === m.ejercicioId) || (Engine.CATALOGO_EJERCICIOS || []).find(e => e.id === m.ejercicioId);
-                  const media = ejRef ? Engine.resolveEjercicioMedia(ejRef) : {};
-                  return `
-                    <div class="ej-step-card" style="padding: 10px;">
-                      <div style="display: flex; align-items: center; gap: 10px;">
-                        <button type="button" class="badge ${m.completado ? 'badge-emerald' : ''}" data-action="toggle-act-mov-done" data-mov-id="${h(m.esSesionItem ? '' : m.id)}" data-ejercicio-id="${h(m.ejercicioId)}" data-entrenamiento-id="${h(entActivo.id)}" style="cursor: pointer; min-width: 34px; height: 34px; justify-content: center; font-size: 14px;">
-                          ${m.completado ? '✓' : '○'}
-                        </button>
-                        ${media.illustrationUrl ? `
-                          <img src="${h(media.illustrationUrl)}" alt="${h(m.nombre)}" style="width: 40px; height: 40px; border-radius: 8px; object-fit: cover; flex-shrink: 0;">
-                        ` : ''}
-                        <div style="flex: 1; min-width: 0;">
-                          <div style="font-size: 13.5px; font-weight: 800; color: var(--text-main);">${h(m.nombre)}</div>
-                          <div style="font-size: 11px; color: var(--text-dim);">${m.series || 2} series × ${h(m.reps || '12')} reps${m.notas ? ' · ' + h(m.notas) : ''}</div>
-                        </div>
-                        <button type="button" class="btn-eye-icon" data-action="view-ejercicio" data-ejercicio-id="${h(m.ejercicioId)}" title="Ver técnica">${renderIcon('eye')}</button>
-                        <button type="button" class="btn-icon-action danger" data-action="${m.esSesionItem ? 'delete-sesion-ej' : 'delete-movilidad'}" data-mov-id="${h(m.id)}" data-ejercicio-id="${h(m.ejercicioId)}" data-entrenamiento-id="${h(entActivo.id)}" title="Quitar">✕</button>
-                      </div>
-                    </div>
-                  `;
-                }).join('')}
-              </div>
-            `}
-          `}
-
-          <div style="display: flex; gap: 8px; margin-top: 4px;">
-            <button type="button" class="btn-secondary" data-action="set-workout-step" data-step="activacion" style="flex: 1;">
-              ← Activación
-            </button>
-            <button type="button" class="btn-primary" data-action="set-workout-step" data-step="A" style="flex: 1.4;">
-              Siguiente: Bloque A →
-            </button>
-          </div>
+        <div style="display: flex; gap: 8px; flex-shrink: 0;">
+          <button type="button" class="btn-secondary" data-action="set-workout-step" data-step="psicofisico" style="flex: 1; min-height: 42px;">
+            ${renderIcon('arrowLeft')} Psicofísico
+          </button>
+          <button type="button" class="btn-primary" data-action="set-workout-step" data-step="A" style="flex: 1.5; min-height: 42px;">
+            Ir a Bloque A ${renderIcon('arrowRight')}
+          </button>
         </div>
       `;
     } else if (cfg.pasoActual === 'A') {
@@ -1316,116 +1315,51 @@
     }
 
     return `
-      <!-- Barra Superior de Sesión Activa -->
-      <div class="card active-session-bar">
-        <div class="active-session-top">
-          <div style="min-width: 0; flex: 1;">
-            <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-              ${entActivo.checkinRealizado
-                ? `<span class="badge badge-emerald">✅ Asistencia ${h(entActivo.horaLlegada || entActivo.inicio)} hs</span>`
-                : `<button type="button" class="badge badge-neon" data-action="checkin-gym-hoy" style="cursor: pointer;">📍 Check-in Gym</button>`}
-              <span class="badge badge-blue" style="font-family: var(--font-mono);">${Math.round(volumenTotal).toLocaleString('es-AR')} kg · ${seriesEntreno.length} series</span>
-            </div>
-            <h2 class="active-session-title">
-              ${h(rutinaAsociada ? rutinaAsociada.nombre : 'Sesión Guiada de Hoy')}
+      <div class="onepage-view">
+        <div class="card active-session-bar" style="padding: 9px 10px; gap: 8px; flex-shrink: 0;">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+            <h2 class="active-session-title" style="margin: 0; font-size: 15px; font-weight: 800; min-width: 0; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+              ${h(rutinaAsociada ? rutinaAsociada.nombre : 'Rutina de hoy')}
             </h2>
+            <button type="button" class="badge ${readinessHoy ? 'badge-emerald' : 'badge-neon'}" data-action="set-workout-step" data-step="psicofisico" style="cursor: pointer; font-size: 10.5px; flex-shrink: 0;">
+              Estado: ${h(estadoLabel)}
+            </button>
           </div>
-          <div class="active-session-actions">
-            <button type="button" class="btn-secondary btn-sm" data-action="open-create-custom-ejercicio" data-bloque="${h(bloqueParaCrear)}" title="Crear ejercicio nuevo que no está en el catálogo">
-              + Crear Ej.
+
+          <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px;">
+            <button type="button" class="btn-secondary btn-sm" data-action="open-create-custom-ejercicio" data-bloque="${h(bloqueParaCrear)}" title="Crear ejercicio nuevo" style="min-height: 32px; padding: 4px 6px; font-size: 11.5px !important; gap: 4px;">
+              ${renderIcon('plus')} Crear ej.
             </button>
-            <button type="button" class="btn-secondary btn-sm" data-action="save-today-as-routine" title="Guardar los ejercicios de hoy como rutina">
-              💾 Rutina
+            <button type="button" class="btn-secondary btn-sm" data-action="save-today-as-routine" title="Guardar rutina" style="min-height: 32px; padding: 4px 6px; font-size: 11.5px !important;">
+              Guardar rutina
             </button>
-            <button type="button" class="btn-primary btn-sm" data-action="finish-workout" data-entrenamiento-id="${h(entActivo.id)}" title="Finalizar sesión">
-              ✓ Finalizar
+            <button type="button" class="btn-primary btn-sm" data-action="finish-workout" data-entrenamiento-id="${h(entActivo.id)}" style="min-height: 32px; padding: 4px 6px; font-size: 11.5px !important;">
+              Terminar
+            </button>
+          </div>
+
+          <div class="workout-stepper" role="tablist">
+            <button type="button" class="step-pill ${cfg.pasoActual === 'rutina' ? 'active' : ''}" data-action="set-workout-step" data-step="rutina">
+              <span class="step-pill-label">Previa</span>
+              <span class="step-pill-sub">Inicio</span>
+            </button>
+            <button type="button" class="step-pill ${cfg.pasoActual === 'A' ? 'active' : ''} ${ejerciciosBloqueA.some(item => seriesEntreno.some(s => s.ejercicioId === item.ejercicio.id)) ? 'done' : ''}" data-action="set-workout-step" data-step="A">
+              <span class="step-pill-label">Bloque A</span>
+              <span class="step-pill-sub">${ejerciciosBloqueA.length} ej.</span>
+            </button>
+            <button type="button" class="step-pill ${cfg.pasoActual === 'B' ? 'active' : ''} ${ejerciciosBloqueB.some(item => seriesEntreno.some(s => s.ejercicioId === item.ejercicio.id)) ? 'done' : ''}" data-action="set-workout-step" data-step="B">
+              <span class="step-pill-label">Bloque B</span>
+              <span class="step-pill-sub">${ejerciciosBloqueB.length} ej.</span>
+            </button>
+            <button type="button" class="step-pill ${cfg.pasoActual === 'cierre' ? 'active' : ''} ${ejerciciosCierre.some(item => seriesEntreno.some(s => s.ejercicioId === item.ejercicio.id)) ? 'done' : ''}" data-action="set-workout-step" data-step="cierre">
+              <span class="step-pill-label">Cierre</span>
+              <span class="step-pill-sub">${ejerciciosCierre.length} ej.</span>
             </button>
           </div>
         </div>
 
-        <!-- Selector de Pasos Modulares -->
-        <div class="workout-stepper" role="tablist">
-          <button type="button" class="step-pill ${cfg.pasoActual === 'psicofisico' ? 'active' : ''} ${readinessHoy ? 'done' : ''}" data-action="set-workout-step" data-step="psicofisico">
-            1. Psicofísico ${readinessHoy ? '✓' : ''}
-          </button>
-          <button type="button" class="step-pill ${cfg.pasoActual === 'activacion' ? 'active' : ''} ${!cfg.activacionActiva || actDoneCount > 0 ? 'done' : ''}" data-action="set-workout-step" data-step="activacion">
-            2. Activación ${!cfg.activacionActiva ? '(Off)' : (actDoneCount ? `(${actDoneCount})` : '')}
-          </button>
-          <button type="button" class="step-pill ${cfg.pasoActual === 'movilidad' ? 'active' : ''} ${!cfg.movilidadActiva || listaMovilidadHoy.length > 0 ? 'done' : ''}" data-action="set-workout-step" data-step="movilidad">
-            3. Movilidad ${!cfg.movilidadActiva ? '(Off)' : (listaMovilidadHoy.length ? `(${listaMovilidadHoy.length})` : '')}
-          </button>
-          <button type="button" class="step-pill ${cfg.pasoActual === 'A' ? 'active' : ''} ${ejerciciosBloqueA.some(item => seriesEntreno.some(s => s.ejercicioId === item.ejercicio.id)) ? 'done' : ''}" data-action="set-workout-step" data-step="A">
-            4. Bloque A (${ejerciciosBloqueA.length}) · ${cfg.A.modalidad === 'vertical' ? 'V' : 'H'}
-          </button>
-          <button type="button" class="step-pill ${cfg.pasoActual === 'B' ? 'active' : ''} ${ejerciciosBloqueB.some(item => seriesEntreno.some(s => s.ejercicioId === item.ejercicio.id)) ? 'done' : ''}" data-action="set-workout-step" data-step="B">
-            5. Bloque B (${ejerciciosBloqueB.length}) · ${cfg.B.modalidad === 'vertical' ? 'V' : 'H'}
-          </button>
-          <button type="button" class="step-pill ${cfg.pasoActual === 'cierre' ? 'active' : ''} ${ejerciciosCierre.some(item => seriesEntreno.some(s => s.ejercicioId === item.ejercicio.id)) ? 'done' : ''}" data-action="set-workout-step" data-step="cierre">
-            6. Cierre (${ejerciciosCierre.length})
-          </button>
-        </div>
+        ${stepBodyHtml}
       </div>
-
-      ${stepBodyHtml}
-
-      <!-- Rutinas AMRAP dentro del Día (si las hay) -->
-      ${bloquesAmrapHoy.length > 0 ? `
-        <div style="display: flex; flex-direction: column; gap: 8px;">
-          ${bloquesAmrapHoy.map(b => `
-            <div class="amrap-card">
-              <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; flex-wrap: wrap;">
-                <div>
-                  <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                    <span class="badge badge-neon">AMRAP</span>
-                    <span class="badge badge-amber">${b.tiempoTrabajoSeg}s / ${b.tiempoDescansoSeg}s</span>
-                    <span class="badge badge-blue">Rondas: ${b.rondasCompletadas || 0}/${b.rondasObjetivo || 4}</span>
-                  </div>
-                  <h3 style="font-size: 15px; font-weight: 800; margin-top: 4px; color: var(--text-main);">${h(b.nombre)}</h3>
-                </div>
-                <div style="display: flex; align-items: center; gap: 6px;">
-                  <button type="button" class="btn-secondary btn-sm" data-action="open-catalog-picker" data-mode="append-to-amrap" data-amrap-id="${h(b.id)}" data-filter-group="todos">
-                    + Ejercicio
-                  </button>
-                  <button type="button" data-action="delete-amrap" data-amrap-id="${h(b.id)}" style="color: var(--text-dim); font-weight: 800; padding: 4px 8px;" title="Quitar rutina AMRAP">✕</button>
-                </div>
-              </div>
-
-              <div style="display: flex; flex-direction: column; gap: 4px;">
-                ${(b.ejercicios || []).map((ae, aIdx) => `
-                  <div style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-card); padding: 6px 10px; border-radius: var(--radius-sm); font-size: 12.5px;">
-                    <div>
-                      <strong style="color: var(--text-main);">${aIdx + 1}. ${h(ae.nombre)}</strong>
-                      <span style="font-size: 11px; color: var(--text-dim); font-family: var(--font-mono); margin-left: 6px;">
-                        ${h(ae.repsObjetivo || 'Máx reps')}
-                      </span>
-                    </div>
-                    <div style="display: flex; align-items: center; gap: 4px;">
-                      <button type="button" class="btn-eye-icon" data-action="view-ejercicio" data-ejercicio-id="${h(ae.ejercicioId)}" title="Ver técnica">
-                        ${renderIcon('eye')}
-                      </button>
-                      <button type="button" data-action="remove-ej-from-live-amrap" data-amrap-id="${h(b.id)}" data-index="${aIdx}" style="color: var(--text-dim); font-weight: 800; padding: 2px 6px;">
-                        ✕
-                      </button>
-                    </div>
-                  </div>
-                `).join('')}
-              </div>
-
-              <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-                <button type="button" class="btn-primary btn-sm" data-action="start-amrap-timer" data-seconds="${b.tiempoTrabajoSeg}" data-label="Trabajo AMRAP (${b.tiempoTrabajoSeg}s)" style="flex: 1;">
-                  ▶ Trabajo (${b.tiempoTrabajoSeg}s)
-                </button>
-                <button type="button" class="btn-secondary btn-sm" data-action="start-amrap-timer" data-seconds="${b.tiempoDescansoSeg}" data-label="Descanso AMRAP (${b.tiempoDescansoSeg}s)" style="flex: 1;">
-                  ⏸ Descanso (${b.tiempoDescansoSeg}s)
-                </button>
-                <button type="button" class="btn-serie-completa btn-sm" data-action="complete-amrap-round" data-amrap-id="${h(b.id)}" style="flex: 1;">
-                  ✓ +1 Ronda (${(b.rondasCompletadas || 0) + 1}/${b.rondasObjetivo || 4})
-                </button>
-              </div>
-            </div>
-          `).join('')}
-        </div>
-      ` : ''}
     `;
   }
 
@@ -1435,99 +1369,100 @@
     const catalogo = (state.ejercicios || []).filter(e => !e.deleted);
 
     return `
-      <div class="card onepage-card">
-        <div class="onepage-tabs-bar">
-          <button type="button" class="onepage-tab-btn ${rutinasSubTab === 'rutinas' ? 'active' : ''}" data-action="set-rutinas-subtab" data-subtab="rutinas">
-            📋 Mis Rutinas (${rutinas.length})
-          </button>
-          <button type="button" class="onepage-tab-btn ${rutinasSubTab === 'catalogo' ? 'active' : ''}" data-action="set-rutinas-subtab" data-subtab="catalogo">
-            📚 Catálogo (${catalogo.length})
-          </button>
-        </div>
-
-        ${rutinasSubTab === 'rutinas' ? `
-          <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
-            <div>
-              <h2 class="card-title" style="font-size: 16px; color: var(--text-main);">Mis Rutinas de Gimnasio</h2>
-              <p style="font-size: 11.5px; color: var(--text-dim);">Elegí tus días, horario y ejercicios.</p>
-            </div>
-            <div style="display: flex; gap: 6px;">
-              <button type="button" class="btn-secondary btn-sm" data-action="open-amrap-builder">
-                ${renderIcon('clock')} + AMRAP
-              </button>
-              <button type="button" class="btn-primary btn-sm" data-action="open-rutina-builder">
-                + Nueva Rutina
-              </button>
-            </div>
-          </div>
-
-          ${rutinas.length === 0 ? `
-            <div style="padding: 18px; text-align: center; background: var(--bg-elevated); border-radius: var(--radius-md); color: var(--text-dim); font-size: 12.5px;">
-              Todavía no tenés rutinas creadas. Tocá <strong>"+ Nueva Rutina"</strong> para armar tu plan.
-            </div>
-          ` : `
-            <div class="onepage-scroll-list">
-              ${rutinas.map(r => `
-                <div style="background: var(--bg-elevated); border-radius: var(--radius-md); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px;">
-                  <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 6px;">
-                    <div>
-                      <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                        <h3 style="font-size: 15px; font-weight: 800; color: var(--text-main);">${h(r.nombre)}</h3>
-                        <span class="badge badge-neon">${h(r.horario || '19:00')} hs</span>
-                      </div>
-                      <div style="display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px;">
-                        ${(r.dias || []).map(d => `<span class="badge" style="background: var(--bg-card); color: var(--text-muted); font-size: 9.5px; padding: 2px 6px;">${h(d.slice(0, 3))}</span>`).join('')}
-                      </div>
-                    </div>
-                    <div style="display: flex; gap: 4px;">
-                      <button type="button" class="btn-secondary btn-sm" data-action="open-catalog-picker" data-mode="append-to-rutina" data-rutina-id="${h(r.id)}">
-                        + Ej.
-                      </button>
-                      <button type="button" class="btn-secondary btn-sm" data-action="edit-rutina" data-rutina-id="${h(r.id)}">
-                        ✏️
-                      </button>
-                      <button type="button" class="btn-secondary btn-sm" data-action="delete-rutina" data-rutina-id="${h(r.id)}">
-                        ✕
-                      </button>
-                    </div>
-                  </div>
-
-                  ${(r.ejercicios || []).length === 0 ? `
-                    <p style="font-size: 11.5px; color: var(--text-dim);">Sin ejercicios todavía. Tocá "+ Ej." para elegir del catálogo.</p>
-                  ` : `
-                    <div style="display: flex; flex-direction: column; gap: 4px;">
-                      ${r.ejercicios.map((re, idx) => {
-                        const ej = (state.ejercicios || []).find(e => e.id === re.ejercicioId)
-                          || Engine.CATALOGO_EJERCICIOS.find(e => e.id === re.ejercicioId)
-                          || { nombre: re.nombre || re.ejercicioId, grupoMuscular: '', equipo: '' };
-                        return `
-                          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; background: var(--bg-card); padding: 6px 10px; border-radius: var(--radius-sm);">
-                            <div style="min-width: 0; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                              <strong style="color: var(--text-main);">${idx + 1}. ${h(ej ? ej.nombre : re.ejercicioId)}</strong>
-                            </div>
-                            <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
-                              <span style="font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); font-weight: 700;">
-                                ${re.seriesObjetivo}×${h(re.repsObjetivo)}
-                              </span>
-                              <button type="button" class="btn-eye-icon" data-action="view-ejercicio" data-ejercicio-id="${h(re.ejercicioId)}" title="Ver técnica">${renderIcon('eye')}</button>
-                              <button type="button" data-action="remove-ej-from-rutina" data-rutina-id="${h(r.id)}" data-index="${idx}" style="color: var(--text-dim); font-weight: 800; padding: 0 4px;">✕</button>
-                            </div>
-                          </div>
-                        `;
-                      }).join('')}
-                    </div>
-                  `}
-                </div>
-              `).join('')}
-            </div>
-          `}
-        ` : `
-          <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
-            <h3 class="card-title" style="font-size: 15px; color: var(--text-main);">Catálogo de Ejercicios</h3>
-            <button type="button" class="btn-create-ej-inline" data-action="open-create-custom-ejercicio">
-              + Crear Ejercicio
+      <div class="onepage-view">
+        <div class="card onepage-card" style="flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden;">
+          <div class="onepage-tabs-bar" style="flex-shrink: 0;">
+            <button type="button" class="onepage-tab-btn ${rutinasSubTab === 'rutinas' ? 'active' : ''}" data-action="set-rutinas-subtab" data-subtab="rutinas">
+              Mis Rutinas (${rutinas.length})
+            </button>
+            <button type="button" class="onepage-tab-btn ${rutinasSubTab === 'catalogo' ? 'active' : ''}" data-action="set-rutinas-subtab" data-subtab="catalogo">
+              Catálogo (${catalogo.length})
             </button>
           </div>
+
+          ${rutinasSubTab === 'rutinas' ? `
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; flex-shrink: 0;">
+              <div>
+                <h2 class="card-title" style="font-size: 15px; color: var(--text-main);">Mis Rutinas</h2>
+                <p style="font-size: 11px; color: var(--text-dim);">Elegí días, horario y ejercicios.</p>
+              </div>
+              <div style="display: flex; gap: 6px;">
+                <button type="button" class="btn-secondary btn-sm" data-action="open-amrap-builder">
+                  + AMRAP
+                </button>
+                <button type="button" class="btn-primary btn-sm" data-action="open-rutina-builder">
+                  ${renderIcon('plus')} Nueva Rutina
+                </button>
+              </div>
+            </div>
+
+            ${rutinas.length === 0 ? `
+              <div style="padding: 18px; text-align: center; background: var(--bg-elevated); border-radius: var(--radius-md); color: var(--text-dim); font-size: 12.5px;">
+                Todavía no tenés rutinas creadas. Tocá <strong>"Nueva Rutina"</strong> para armar tu plan.
+              </div>
+            ` : `
+              <div class="onepage-scroll-list">
+                ${rutinas.map(r => `
+                  <div style="background: var(--bg-elevated); border-radius: var(--radius-md); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 6px;">
+                      <div>
+                        <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                          <h3 style="font-size: 14.5px; font-weight: 800; color: var(--text-main);">${h(r.nombre)}</h3>
+                          <span class="badge badge-neon">${h(r.horario || '19:00')} hs</span>
+                        </div>
+                        <div style="display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px;">
+                          ${(r.dias || []).map(d => `<span class="badge" style="background: var(--bg-card); color: var(--text-muted); font-size: 9.5px; padding: 2px 6px;">${h(d.slice(0, 3))}</span>`).join('')}
+                        </div>
+                      </div>
+                      <div style="display: flex; gap: 4px;">
+                        <button type="button" class="btn-secondary btn-sm" data-action="open-catalog-picker" data-mode="append-to-rutina" data-rutina-id="${h(r.id)}">
+                          + Ej.
+                        </button>
+                        <button type="button" class="btn-secondary btn-sm" data-action="edit-rutina" data-rutina-id="${h(r.id)}" title="Editar">
+                          ${renderIcon('edit')}
+                        </button>
+                        <button type="button" class="btn-secondary btn-sm" data-action="delete-rutina" data-rutina-id="${h(r.id)}" title="Borrar">
+                          ${renderIcon('x')}
+                        </button>
+                      </div>
+                    </div>
+
+                    ${(r.ejercicios || []).length === 0 ? `
+                      <p style="font-size: 11.5px; color: var(--text-dim);">Sin ejercicios todavía. Tocá "+ Ej." para elegir del catálogo.</p>
+                    ` : `
+                      <div style="display: flex; flex-direction: column; gap: 4px;">
+                        ${r.ejercicios.map((re, idx) => {
+                          const ej = (state.ejercicios || []).find(e => e.id === re.ejercicioId)
+                            || Engine.CATALOGO_EJERCICIOS.find(e => e.id === re.ejercicioId)
+                            || { nombre: re.nombre || re.ejercicioId, grupoMuscular: '', equipo: '' };
+                          return `
+                            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; background: var(--bg-card); padding: 6px 10px; border-radius: var(--radius-sm);">
+                              <div style="min-width: 0; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                <strong style="color: var(--text-main);">${idx + 1}. ${h(ej ? ej.nombre : re.ejercicioId)}</strong>
+                              </div>
+                              <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+                                <span style="font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); font-weight: 700;">
+                                  ${re.seriesObjetivo}×${h(re.repsObjetivo)}
+                                </span>
+                                <button type="button" class="btn-eye-icon" data-action="view-ejercicio" data-ejercicio-id="${h(re.ejercicioId)}" title="Ver técnica">${renderIcon('eye')}</button>
+                                <button type="button" data-action="remove-ej-from-rutina" data-rutina-id="${h(r.id)}" data-index="${idx}" style="color: var(--text-dim); padding: 0 4px;" title="Quitar">${renderIcon('x')}</button>
+                              </div>
+                            </div>
+                          `;
+                        }).join('')}
+                      </div>
+                    `}
+                  </div>
+                `).join('')}
+              </div>
+            `}
+          ` : `
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; flex-shrink: 0;">
+              <h3 class="card-title" style="font-size: 15px; color: var(--text-main);">Catálogo de Ejercicios</h3>
+              <button type="button" class="btn-create-ej-inline" data-action="open-create-custom-ejercicio">
+                ${renderIcon('plus')} Crear Ejercicio
+              </button>
+            </div>
 
           <div class="day-chips" style="overflow-x: auto; flex-wrap: nowrap; padding-bottom: 2px;">
             ${GRUPOS_CATALOGO.map(g => `
@@ -1562,6 +1497,7 @@
               }).join('')}
           </div>
         `}
+        </div>
       </div>
     `;
   }
@@ -1681,34 +1617,35 @@
     });
 
     return `
-      <div class="card onepage-card">
-        <!-- Cabecera Compacta con KPIs en línea -->
-        <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
-          <div>
-            <h2 class="card-title" style="font-size: 17px; color: var(--text-main);">Mi Histórico</h2>
-            <p style="font-size: 11.5px; color: var(--text-dim);">Solo tus clases y ejercicios realizados.</p>
+      <div class="onepage-view">
+        <div class="card onepage-card" style="flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden;">
+          <!-- Cabecera Compacta con KPIs en línea -->
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; flex-shrink: 0;">
+            <div>
+              <h2 class="card-title" style="font-size: 16px; color: var(--text-main);">Mi Histórico</h2>
+              <p style="font-size: 11px; color: var(--text-dim);">Solo tus clases y ejercicios realizados.</p>
+            </div>
+            <div style="display: flex; gap: 6px; align-items: center;">
+              <span class="badge badge-neon">${clasesRealizadas.length} clases</span>
+              <span class="badge badge-blue" style="font-family: var(--font-mono);">${Math.round(volumenTotal).toLocaleString()} kg</span>
+            </div>
           </div>
-          <div style="display: flex; gap: 6px; align-items: center;">
-            <span class="badge badge-neon">${clasesRealizadas.length} clases</span>
-            <span class="badge badge-blue" style="font-family: var(--font-mono);">${Math.round(volumenTotal).toLocaleString()} kg</span>
-          </div>
-        </div>
 
         <!-- Selector Organizar por Clase vs Ver por Ejercicio -->
-        <div class="onepage-tabs-bar">
+        <div class="onepage-tabs-bar" style="flex-shrink: 0;">
           <button type="button" class="onepage-tab-btn ${historicoModo === 'clases' ? 'active' : ''}" data-action="set-historico-modo" data-modo="clases">
-            📅 Por Clase (${clasesRealizadas.length})
+            Por Clase (${clasesRealizadas.length})
           </button>
           <button type="button" class="onepage-tab-btn ${historicoModo === 'ejercicios' ? 'active' : ''}" data-action="set-historico-modo" data-modo="ejercicios">
-            🏋️ Por Ejercicio (${ejerciciosRealizados.length})
+            Por Ejercicio (${ejerciciosRealizados.length})
           </button>
         </div>
 
         <!-- Buscador instantáneo -->
-        <div style="position: relative;">
-          <input type="text" id="historial-search-input" class="form-input" placeholder="${historicoModo === 'clases' ? '🔍 Filtrar clase o ejercicio...' : '🔍 Buscar entre tus ejercicios hechos...'}" value="${h(historialBusqueda)}" data-action="search-historial" style="min-height: 36px; font-size: 13px; padding: 6px 32px 6px 10px;">
+        <div style="position: relative; flex-shrink: 0;">
+          <input type="text" id="historial-search-input" class="form-input" placeholder="${historicoModo === 'clases' ? 'Filtrar clase o ejercicio...' : 'Buscar ejercicio realizado...'}" value="${h(historialBusqueda)}" data-action="search-historial" style="min-height: 36px; font-size: 16px; padding: 6px 32px 6px 10px;">
           ${historialBusqueda ? `
-            <button type="button" data-action="clear-historial-search" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-dim); font-size: 13px; cursor: pointer; padding: 2px 6px;">✕</button>
+            <button type="button" data-action="clear-historial-search" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-dim); cursor: pointer; padding: 2px 6px;">${renderIcon('x')}</button>
           ` : ''}
         </div>
 
@@ -1728,7 +1665,7 @@
                   <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
                     <div>
                       <div style="display: flex; align-items: center; gap: 6px;">
-                        <strong style="font-size: 14px; color: var(--text-main);">🗓 ${h(fechaFmt)}</strong>
+                        <strong style="font-size: 13.5px; color: var(--text-main);">${h(fechaFmt)}</strong>
                         <span class="badge badge-neon">${cl.ejercicios.length} ej. · ${cl.totalSeries} series</span>
                       </div>
                       <div style="font-size: 12px; color: var(--text-muted); font-weight: 600; margin-top: 2px;">
@@ -1785,17 +1722,17 @@
                     </div>
                     <div class="ej-info">
                       <div style="display: flex; align-items: center; gap: 5px; flex-wrap: wrap;">
-                        <span class="badge badge-blue">🔥 ${totalClases} ${totalClases === 1 ? 'clase' : 'clases'} · ${totalSeries} series</span>
+                        <span class="badge badge-blue">${totalClases} ${totalClases === 1 ? 'clase' : 'clases'} · ${totalSeries} series</span>
                         <span class="badge badge-neon" style="font-size: 9.5px; padding: 2px 6px;">${h(ej.grupoMuscular)}</span>
                       </div>
-                      <h3 class="ej-title" style="font-size: 14.5px; margin: 2px 0 1px 0;">${h(ej.nombre)}</h3>
+                      <h3 class="ej-title" style="font-size: 14px; margin: 2px 0 1px 0;">${h(ej.nombre)}</h3>
                       <div class="ej-clase-anterior" style="font-size: 11.5px;">
-                        ${prev ? `⏮ Última (${h(prev.fecha.slice(5).split('-').reverse().join('/'))}): <strong>${h(prev.texto)}</strong> · 🏆 Mejor: <strong>${mejorPeso}kg×${mejorReps}</strong>` : ''}
+                        ${prev ? `Última (${h(prev.fecha.slice(5).split('-').reverse().join('/'))}): <strong>${h(prev.texto)}</strong> · Mejor: <strong>${mejorPeso}kg×${mejorReps}</strong>` : ''}
                       </div>
                     </div>
                     <div class="ej-tools">
                       <button type="button" class="btn-sm btn-secondary" data-action="toggle-expand-historial-ej" data-ejercicio-id="${h(ej.id)}" title="Ver detalle por clase">
-                        ${isExpanded ? '▴' : '▾ Clases'}
+                        ${isExpanded ? 'Ocultar' : 'Clases'}
                       </button>
                     </div>
                   </div>
@@ -1805,7 +1742,7 @@
                       ${historial.map(sesion => `
                         <div class="historico-clase-item" style="padding: 6px 8px; font-size: 11.5px;">
                           <div>
-                            <strong>🗓 ${h(sesion.fecha ? sesion.fecha.split('-').reverse().join('/') : 'Clase')}</strong>
+                            <strong>${h(sesion.fecha ? sesion.fecha.split('-').reverse().join('/') : 'Clase')}</strong>
                             <span style="color: var(--text-dim); margin-left: 6px;">
                               ${sesion.series.length} series · <strong>${sesion.mejorSerie.pesoKg} kg × ${sesion.mejorSerie.reps} reps</strong>
                             </span>
@@ -1821,6 +1758,7 @@
               `;
             }).join('')
           )}
+          </div>
         </div>
       </div>
     `;
@@ -1848,170 +1786,166 @@
     const fechaDisplay = selFecha === hoyISO ? 'Hoy' : (selFecha === ayerISO ? 'Ayer' : selFecha.split('-').reverse().join('/'));
 
     return `
-      <!-- Tarjeta Principal: Registro Psicofísico Rápido (One-Page) -->
-      <div class="card">
-        <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
-          <div>
-            <h2 class="card-title" style="font-size: 16.5px; color: var(--text-main);">Estado Psicofísico</h2>
-            <p style="font-size: 11px; color: var(--text-dim);">Registrá cómo estás el día que quieras.</p>
+      <div class="onepage-view">
+        <!-- Tarjeta Principal: Registro Psicofísico Rápido (One-Page, sin scroll) -->
+        <div class="card" style="padding: 10px 12px; gap: 8px; flex-shrink: 0;">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px; flex-wrap: wrap;">
+            <div>
+              <h2 class="card-title" style="font-size: 15px; color: var(--text-main);">Estado Psicofísico</h2>
+              <p style="font-size: 11px; color: var(--text-dim);">Registrá cómo estás el día que quieras.</p>
+            </div>
+            <div style="display: flex; align-items: center; gap: 4px;">
+              ${logDeEstaFecha ? `<span class="badge badge-blue" style="font-size: 10px;">Guardado</span>` : ''}
+              <button type="button" class="btn-sm btn-secondary ${selFecha === hoyISO ? 'btn-primary' : ''}" data-action="set-readiness-date" data-date="${hoyISO}" style="min-height: 30px; padding: 3px 8px;">
+                Hoy
+              </button>
+              <button type="button" class="btn-sm btn-secondary ${selFecha === ayerISO ? 'btn-primary' : ''}" data-action="set-readiness-date" data-date="${ayerISO}" style="min-height: 30px; padding: 3px 8px;">
+                Ayer
+              </button>
+              <input type="date" id="rd-fecha" class="form-input" value="${h(selFecha)}" data-action="change-readiness-date" style="width: 154px; min-height: 32px; padding: 2px 6px; font-size: 16px; font-family: var(--font-mono); flex-shrink: 0;">
+            </div>
           </div>
-          <!-- Selector Rápido de Fecha en la misma línea -->
-          <div style="display: flex; align-items: center; gap: 4px; flex-wrap: wrap;">
-            ${logDeEstaFecha ? `<span class="badge badge-blue">✓ Guardado</span>` : ''}
-            <button type="button" class="btn-sm btn-secondary ${selFecha === hoyISO ? 'btn-primary' : ''}" data-action="set-readiness-date" data-date="${hoyISO}">
-              Hoy
+
+          <!-- 1. Sensación General en 1 Fila -->
+          <div class="salud-status-grid">
+            <button type="button" class="salud-chip ${selEstado === 'Excelente' ? 'selected' : ''}" data-action="pick-salud-estado" data-estado="Excelente" data-energia="5" data-estres="1" data-sueno="5">
+              <strong>Excelente</strong>
             </button>
-            <button type="button" class="btn-sm btn-secondary ${selFecha === ayerISO ? 'btn-primary' : ''}" data-action="set-readiness-date" data-date="${ayerISO}">
-              Ayer
+            <button type="button" class="salud-chip ${selEstado === 'Con energía' ? 'selected' : ''}" data-action="pick-salud-estado" data-estado="Con energía" data-energia="4" data-estres="1" data-sueno="4">
+              <strong>Energía</strong>
             </button>
-            <input type="date" id="rd-fecha" class="form-input" value="${h(selFecha)}" data-action="change-readiness-date" style="width: 122px; min-height: 30px; padding: 2px 6px; font-size: 11px; font-family: var(--font-mono);">
+            <button type="button" class="salud-chip ${selEstado === 'Normal' ? 'selected' : ''}" data-action="pick-salud-estado" data-estado="Normal" data-energia="3" data-estres="2" data-sueno="3">
+              <strong>Normal</strong>
+            </button>
+            <button type="button" class="salud-chip ${selEstado === 'Cansado' ? 'selected' : ''}" data-action="pick-salud-estado" data-estado="Cansado" data-energia="2" data-estres="3" data-sueno="2">
+              <strong>Cansado</strong>
+            </button>
+            <button type="button" class="salud-chip ${selEstado === 'Con molestia' ? 'selected' : ''}" data-action="pick-salud-estado" data-estado="Con molestia" data-energia="2" data-estres="4" data-sueno="3">
+              <strong>Molestia</strong>
+            </button>
           </div>
+
+          <!-- 2. Ajuste Fino Compacto -->
+          <div class="salud-submetrics">
+            <div class="salud-submetric-inline">
+              <span class="salud-metric-label">Energía</span>
+              <div class="salud-metric-chips">
+                ${[1, 2, 3, 4, 5].map(v => `
+                  <button type="button" class="salud-m-chip ${Number(selEnergia) === v ? 'selected' : ''}" data-action="set-salud-metric" data-metric="energia" data-val="${v}">
+                    ${v}
+                  </button>
+                `).join('')}
+              </div>
+            </div>
+
+            <div class="salud-submetric-inline">
+              <span class="salud-metric-label">Estrés</span>
+              <div class="salud-metric-chips">
+                <button type="button" class="salud-m-chip ${Number(selEstres) <= 1 ? 'selected' : ''}" data-action="set-salud-metric" data-metric="estres" data-val="1">Bajo</button>
+                <button type="button" class="salud-m-chip ${Number(selEstres) === 2 || Number(selEstres) === 3 ? 'selected' : ''}" data-action="set-salud-metric" data-metric="estres" data-val="2">Normal</button>
+                <button type="button" class="salud-m-chip ${Number(selEstres) >= 4 ? 'selected' : ''}" data-action="set-salud-metric" data-metric="estres" data-val="4">Alto</button>
+              </div>
+            </div>
+
+            <div class="salud-submetric-inline">
+              <span class="salud-metric-label">Sueño</span>
+              <div class="salud-metric-chips">
+                <button type="button" class="salud-m-chip ${Number(selSueno) >= 4 ? 'selected' : ''}" data-action="set-salud-metric" data-metric="sueno" data-val="5">+7h</button>
+                <button type="button" class="salud-m-chip ${Number(selSueno) === 3 ? 'selected' : ''}" data-action="set-salud-metric" data-metric="sueno" data-val="3">6h</button>
+                <button type="button" class="salud-m-chip ${Number(selSueno) <= 2 ? 'selected' : ''}" data-action="set-salud-metric" data-metric="sueno" data-val="2">&lt;5h</button>
+              </div>
+            </div>
+
+            <div class="psico-dual-inputs">
+              <input type="text" id="rd-dolor" class="form-input" value="${h(draftReadiness.zonaDolor || '')}" placeholder="Molestia (opc.)">
+              <input type="text" id="rd-obs" class="form-input" value="${h(draftReadiness.observacionAlumno || '')}" placeholder="Nota (opc.)">
+            </div>
+          </div>
+
+          <button type="button" class="btn-primary" data-action="submit-readiness" style="min-height: 40px;">
+            ${renderIcon('check')} Guardar Estado (${fechaDisplay})
+          </button>
         </div>
 
-        <!-- 1. Sensación General en 1 Fila (5 botones compactos) -->
-        <div class="salud-status-grid">
-          <button type="button" class="salud-chip ${selEstado === 'Excelente' ? 'selected' : ''}" data-action="pick-salud-estado" data-estado="Excelente" data-energia="5" data-estres="1" data-sueno="5">
-            <span class="salud-emoji">⚡</span>
-            <strong>Excelente</strong>
+        <!-- Barra inferior de desplegables -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; flex-shrink: 0;">
+          <button type="button" class="btn-secondary btn-sm" data-action="toggle-salud-logs" style="width: 100% !important; min-height: 34px !important;">
+            Bitácora (${logs.length}) ${isSaludLogsOpen ? renderIcon('chevronUp') : renderIcon('chevronDown')}
           </button>
-          <button type="button" class="salud-chip ${selEstado === 'Con energía' ? 'selected' : ''}" data-action="pick-salud-estado" data-estado="Con energía" data-energia="4" data-estres="1" data-sueno="4">
-            <span class="salud-emoji">🔥</span>
-            <strong>Energía</strong>
-          </button>
-          <button type="button" class="salud-chip ${selEstado === 'Normal' ? 'selected' : ''}" data-action="pick-salud-estado" data-estado="Normal" data-energia="3" data-estres="2" data-sueno="3">
-            <span class="salud-emoji">😊</span>
-            <strong>Normal</strong>
-          </button>
-          <button type="button" class="salud-chip ${selEstado === 'Cansado' ? 'selected' : ''}" data-action="pick-salud-estado" data-estado="Cansado" data-energia="2" data-estres="3" data-sueno="2">
-            <span class="salud-emoji">😴</span>
-            <strong>Cansado</strong>
-          </button>
-          <button type="button" class="salud-chip ${selEstado === 'Con molestia' ? 'selected' : ''}" data-action="pick-salud-estado" data-estado="Con molestia" data-energia="2" data-estres="4" data-sueno="3">
-            <span class="salud-emoji">⚠️</span>
-            <strong>Molestia</strong>
+          <button type="button" class="btn-secondary btn-sm" data-action="toggle-perfil-collapse" style="width: 100% !important; min-height: 34px !important;">
+            Ficha Física ${isPerfilOpen ? renderIcon('chevronUp') : renderIcon('chevronDown')}
           </button>
         </div>
 
-        <!-- 2. Ajuste Fino Compacto -->
-        <div class="salud-submetrics">
-          <div class="salud-submetric-inline">
-            <span class="salud-metric-label">Energía</span>
-            <div class="salud-metric-chips">
-              ${[1, 2, 3, 4, 5].map(v => `
-                <button type="button" class="salud-m-chip ${Number(selEnergia) === v ? 'selected' : ''}" data-action="set-salud-metric" data-metric="energia" data-val="${v}">
-                  ${v}
-                </button>
+        <div class="onepage-scroll-list">
+          ${isSaludLogsOpen ? `
+            <div class="card" style="padding: 10px 12px; gap: 6px;">
+              ${logs.length === 0 ? `
+                <div style="padding: 8px; text-align: center; color: var(--text-dim); font-size: 12px;">
+                  Sin registros todavía.
+                </div>
+              ` : logs.map(l => `
+                <div style="background: var(--bg-elevated); padding: 6px 10px; border-radius: var(--radius-sm); font-size: 12px; display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+                  <div style="flex: 1; min-width: 0;">
+                    <strong>${h(l.fecha.split('-').reverse().join('/'))}</strong>
+                    <span class="badge badge-blue" style="margin-left: 4px;">E:${l.energia}/5</span>
+                    ${l.zonaDolor ? `<span class="badge badge-amber">${h(l.zonaDolor)}</span>` : ''}
+                    ${l.observacionAlumno ? `<span style="color: var(--text-muted); margin-left: 4px;">· ${h(l.observacionAlumno)}</span>` : ''}
+                  </div>
+                  <div style="display: flex; gap: 4px; flex-shrink: 0;">
+                    <button type="button" class="btn-sm btn-secondary" data-action="set-readiness-date" data-date="${h(l.fecha)}" title="Editar">${renderIcon('edit')}</button>
+                    <button type="button" class="btn-sm btn-secondary danger" data-action="delete-readiness-log" data-log-id="${h(l.id)}" title="Borrar">${renderIcon('x')}</button>
+                  </div>
+                </div>
               `).join('')}
             </div>
-          </div>
+          ` : ''}
 
-          <div class="salud-submetric-inline">
-            <span class="salud-metric-label">Estrés</span>
-            <div class="salud-metric-chips">
-              <button type="button" class="salud-m-chip ${Number(selEstres) <= 1 ? 'selected' : ''}" data-action="set-salud-metric" data-metric="estres" data-val="1">🧘 Bajo</button>
-              <button type="button" class="salud-m-chip ${Number(selEstres) === 2 || Number(selEstres) === 3 ? 'selected' : ''}" data-action="set-salud-metric" data-metric="estres" data-val="2">😐 Normal</button>
-              <button type="button" class="salud-m-chip ${Number(selEstres) >= 4 ? 'selected' : ''}" data-action="set-salud-metric" data-metric="estres" data-val="4">🤯 Alto</button>
-            </div>
-          </div>
-
-          <div class="salud-submetric-inline">
-            <span class="salud-metric-label">Sueño</span>
-            <div class="salud-metric-chips">
-              <button type="button" class="salud-m-chip ${Number(selSueno) >= 4 ? 'selected' : ''}" data-action="set-salud-metric" data-metric="sueno" data-val="5">😴 +7h</button>
-              <button type="button" class="salud-m-chip ${Number(selSueno) === 3 ? 'selected' : ''}" data-action="set-salud-metric" data-metric="sueno" data-val="3">🛌 6h</button>
-              <button type="button" class="salud-m-chip ${Number(selSueno) <= 2 ? 'selected' : ''}" data-action="set-salud-metric" data-metric="sueno" data-val="2">🥱 &lt;5h</button>
-            </div>
-          </div>
-
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
-            <input type="text" id="rd-dolor" class="form-input" value="${h(draftReadiness.zonaDolor || '')}" placeholder="⚠️ Dolor/molestia (opc.)" style="min-height: 34px; font-size: 12px; padding: 4px 8px;">
-            <input type="text" id="rd-obs" class="form-input" value="${h(draftReadiness.observacionAlumno || '')}" placeholder="📝 Nota personal (opc.)" style="min-height: 34px; font-size: 12px; padding: 4px 8px;">
-          </div>
-        </div>
-
-        <button type="button" class="btn-primary" data-action="submit-readiness" style="min-height: 40px;">
-          ✓ Guardar Estado Psicofísico (${fechaDisplay})
-        </button>
-      </div>
-
-      <!-- Barra inferior de desplegables: Historial de Estados y Ficha Física -->
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-        <button type="button" class="btn-secondary btn-sm" data-action="toggle-salud-logs" style="width: 100% !important; min-height: 36px !important;">
-          🗓 Bitácora (${logs.length}) ${isSaludLogsOpen ? '▲' : '▼'}
-        </button>
-        <button type="button" class="btn-secondary btn-sm" data-action="toggle-perfil-collapse" style="width: 100% !important; min-height: 36px !important;">
-          📋 Ficha Física y Días ${isPerfilOpen ? '▲' : '▼'}
-        </button>
-      </div>
-
-      ${isSaludLogsOpen ? `
-        <div class="card" style="padding: 10px 12px;">
-          <div style="display: flex; flex-direction: column; gap: 6px; max-height: 170px; overflow-y: auto;">
-            ${logs.length === 0 ? `
-              <div style="padding: 10px; text-align: center; color: var(--text-dim); font-size: 12px;">
-                Sin registros todavía.
-              </div>
-            ` : logs.map(l => `
-              <div style="background: var(--bg-elevated); padding: 6px 10px; border-radius: var(--radius-sm); font-size: 12px; display: flex; justify-content: space-between; align-items: center; gap: 8px;">
-                <div style="flex: 1; min-width: 0;">
-                  <strong>🗓 ${h(l.fecha.split('-').reverse().join('/'))}</strong>
-                  <span class="badge badge-blue" style="margin-left: 4px;">E:${l.energia}/5</span>
-                  ${l.zonaDolor ? `<span class="badge badge-amber">⚠️ ${h(l.zonaDolor)}</span>` : ''}
-                  ${l.observacionAlumno ? `<span style="color: var(--text-muted); margin-left: 4px;">· ${h(l.observacionAlumno)}</span>` : ''}
+          ${isPerfilOpen ? `
+            <div class="card" style="padding: 10px 12px;">
+              <form data-action="save-perfil-fisico" style="display: flex; flex-direction: column; gap: 8px;">
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;">
+                  <div>
+                    <label class="form-label" style="font-size: 10px;">Edad</label>
+                    <input type="number" id="pf-edad" class="form-input" value="${h(draftPerfil.edad || '')}" placeholder="28" style="min-height: 36px;">
+                  </div>
+                  <div>
+                    <label class="form-label" style="font-size: 10px;">Peso (kg)</label>
+                    <input type="number" step="0.1" id="pf-peso" class="form-input" value="${h(draftPerfil.pesoKg || '')}" placeholder="78.5" style="min-height: 36px;">
+                  </div>
+                  <div>
+                    <label class="form-label" style="font-size: 10px;">Altura (cm)</label>
+                    <input type="number" id="pf-altura" class="form-input" value="${h(draftPerfil.alturaCm || '')}" placeholder="176" style="min-height: 36px;">
+                  </div>
                 </div>
-                <div style="display: flex; gap: 4px; flex-shrink: 0;">
-                  <button type="button" class="btn-sm btn-secondary" data-action="set-readiness-date" data-date="${h(l.fecha)}" title="Editar">✏️</button>
-                  <button type="button" class="btn-sm btn-secondary danger" data-action="delete-readiness-log" data-log-id="${h(l.id)}" title="Borrar">✕</button>
+
+                <div class="day-chips" id="pf-dias-container">
+                  ${DIAS_SEMANA.map(d => `
+                    <button type="button" class="day-chip ${diasSeleccionados.includes(d) ? 'selected' : ''}" data-action="toggle-perfil-dia" data-dia="${d}" style="padding: 5px 8px; font-size: 11px !important;">
+                      ${d.slice(0, 3)}
+                    </button>
+                  `).join('')}
                 </div>
-              </div>
-            `).join('')}
-          </div>
-        </div>
-      ` : ''}
 
-      ${isPerfilOpen ? `
-        <div class="card" style="padding: 10px 12px;">
-          <form data-action="save-perfil-fisico" style="display: flex; flex-direction: column; gap: 8px;">
-            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;">
-              <div>
-                <label class="form-label" style="font-size: 10px;">Edad</label>
-                <input type="number" id="pf-edad" class="form-input" value="${h(draftPerfil.edad || '')}" placeholder="28" style="min-height: 34px;">
-              </div>
-              <div>
-                <label class="form-label" style="font-size: 10px;">Peso (kg)</label>
-                <input type="number" step="0.1" id="pf-peso" class="form-input" value="${h(draftPerfil.pesoKg || '')}" placeholder="78.5" style="min-height: 34px;">
-              </div>
-              <div>
-                <label class="form-label" style="font-size: 10px;">Altura (cm)</label>
-                <input type="number" id="pf-altura" class="form-input" value="${h(draftPerfil.alturaCm || '')}" placeholder="176" style="min-height: 34px;">
-              </div>
-            </div>
+                <div style="display: grid; grid-template-columns: 110px 1fr; gap: 6px;">
+                  <input type="time" id="pf-horario" class="form-input" value="${h(draftPerfil.horarioHabitual || '19:00')}" style="min-height: 36px;">
+                  <input type="text" id="pf-lesiones" class="form-input" value="${h(draftPerfil.lesiones || '')}" placeholder="Lesiones / Antecedentes" style="min-height: 36px;">
+                </div>
 
-            <div class="day-chips" id="pf-dias-container">
-              ${DIAS_SEMANA.map(d => `
-                <button type="button" class="day-chip ${diasSeleccionados.includes(d) ? 'selected' : ''}" data-action="toggle-perfil-dia" data-dia="${d}" style="padding: 5px 8px; font-size: 11px !important;">
-                  ${d.slice(0, 3)}
+                <button type="button" class="btn-primary btn-sm" data-action="save-perfil-fisico" style="width: 100% !important; min-height: 38px !important;">
+                  ${renderIcon('check')} Guardar Ficha Física
                 </button>
-              `).join('')}
+              </form>
             </div>
+          ` : ''}
 
-            <div style="display: grid; grid-template-columns: 110px 1fr; gap: 6px;">
-              <input type="time" id="pf-horario" class="form-input" value="${h(draftPerfil.horarioHabitual || '19:00')}" style="min-height: 34px;">
-              <input type="text" id="pf-lesiones" class="form-input" value="${h(draftPerfil.lesiones || '')}" placeholder="Lesiones / Antecedentes" style="min-height: 34px;">
+          ${observaciones.length > 0 ? `
+            <div class="card" style="padding: 8px 12px;">
+              <strong style="font-size: 12px; color: var(--text-main);">Nota Profesor: ${h(observaciones[0].texto)}</strong>
             </div>
-
-            <button type="button" class="btn-primary btn-sm" data-action="save-perfil-fisico" style="width: 100% !important; min-height: 36px !important;">
-              ✓ Guardar Ficha Física
-            </button>
-          </form>
+          ` : ''}
         </div>
-      ` : ''}
-
-      ${observaciones.length > 0 ? `
-        <div class="card" style="padding: 8px 12px;">
-          <strong style="font-size: 12px; color: var(--text-main);">🩺 Nota Profesor: ${h(observaciones[0].texto)}</strong>
-        </div>
-      ` : ''}
+      </div>
     `;
   }
 
@@ -2104,89 +2038,86 @@
             `).join('')}
           </div>
         `}
+        </div>
       </div>
     `;
   }
 
-  // 6.5 Pestaña AJUSTES Y BACKUP (Compacta One-Page)
+  // 6.5 Pestaña CUENTA Y AJUSTES (Compacta One-Page, sin descanso entre series, estilo colapsado)
   function renderAlumnoAjustesSection(state, user) {
     const aesPref = Store.getAestheticPreference ? Store.getAestheticPreference() : {};
-    const d = Engine.getDescanso(state);
     return `
-      <div class="card">
-        <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
-          <div>
-            <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-              <h2 class="card-title" style="font-size: 16.5px; color: var(--text-main);">${h(user.displayName)} (@${h(user.username)})</h2>
-              <span class="badge badge-emerald">v${APP_VERSION}</span>
+      <div class="onepage-view">
+        <div class="card" style="flex-shrink: 0;">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <div>
+              <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                <h2 class="card-title" style="font-size: 16px; color: var(--text-main);">${h(user.displayName)} (@${h(user.username)})</h2>
+                <span class="badge badge-emerald">v${APP_VERSION}</span>
+              </div>
+              <p style="font-size: 11.5px; color: var(--text-dim); font-family: var(--font-mono); margin-top: 2px;">
+                Código alumno: <strong style="color: var(--text-main);">${h(state.codigoAlumno)}</strong>
+              </p>
             </div>
-            <p style="font-size: 11.5px; color: var(--text-dim); font-family: var(--font-mono); margin-top: 2px;">
-              Código alumno: <strong style="color: var(--text-main);">${h(state.codigoAlumno)}</strong>
-            </p>
+            <button type="button" class="btn-logout" data-action="logout">
+              Cerrar Sesión
+            </button>
           </div>
-          <button type="button" class="btn-logout" data-action="logout">
-            Cerrar Sesión
-          </button>
-        </div>
 
-        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px;">
-          <button type="button" class="btn-secondary btn-sm" data-action="open-sugerencias-modal" style="width: 100% !important;">
-            ${renderIcon('bulb')} Sugerencias
-          </button>
-          <button type="button" class="btn-secondary btn-sm" data-action="check-app-update" style="width: 100% !important;">
-            🔄 Actualizar App
-          </button>
-          <button type="button" class="btn-secondary btn-sm" data-action="export-backup" style="width: 100% !important;">
-            📥 Exportar JSON
-          </button>
-          <label class="btn-secondary btn-sm" style="cursor: pointer; width: 100% !important;">
-            📤 Importar JSON
-            <input type="file" accept=".json" style="display: none;" data-action="import-backup">
-          </label>
-        </div>
-      </div>
-
-      <div class="card">
-        <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
-          <span style="font-size: 13px; font-weight: 800; color: var(--text-main);">⏱ Descanso entre series</span>
-          <button type="button" class="badge ${d.automatico ? 'badge-emerald' : ''}" data-action="toggle-descanso-auto" style="cursor: pointer;">${d.automatico ? 'Automático ✓' : 'Manual'}</button>
-        </div>
-        <div class="desc-opts" style="margin-top: 4px;">
-          ${[60, 90, 120, 150, 180, 240].map(v => `<button type="button" class="${d.segundos === v ? 'on' : ''}" data-action="set-descanso" data-seconds="${v}" style="height: 32px; font-size: 11.5px;">${v < 120 ? v + 's' : (v / 60).toString().replace('.5', '½') + 'm'}</button>`).join('')}
-        </div>
-      </div>
-
-      <div class="card">
-        <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
-          <span style="font-size: 13px; font-weight: 800; color: var(--text-main);">🌗 Tema de Interfaz</span>
-          <button type="button" class="btn-sm btn-secondary" data-action="toggle-ajustes-colors">
-            🎨 Colores ${isAjustesColorsOpen ? '▲' : '▼'}
-          </button>
-        </div>
-        ${renderThemeSelector()}
-        ${renderBackgroundPatternSelector(aesPref)}
-
-        ${isAjustesColorsOpen ? `
-          <div style="border-top: 1px dashed var(--border-subtle); padding-top: 8px; margin-top: 4px; display: flex; flex-direction: column; gap: 8px;">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-              <span class="form-label" style="font-size: 10px;">Fondo y Color Principal</span>
-              <button type="button" class="btn-link" data-action="reset-aesthetic-pref" style="font-size: 11px; padding: 0;">Restablecer</button>
-            </div>
-            <div style="display: flex; gap: 4px; flex-wrap: wrap;">
-              <button type="button" class="theme-chip ${aesPref.bgStyle === 'zinc' ? 'active' : ''}" data-action="set-aesthetic-bg" data-bg="zinc">⚫ Zinc</button>
-              <button type="button" class="theme-chip ${aesPref.bgStyle === 'oled' ? 'active' : ''}" data-action="set-aesthetic-bg" data-bg="oled">⬛ OLED</button>
-              <button type="button" class="theme-chip ${aesPref.bgStyle === 'navy' ? 'active' : ''}" data-action="set-aesthetic-bg" data-bg="navy">🌌 Navy</button>
-              <button type="button" class="theme-chip ${aesPref.bgStyle === 'steel' ? 'active' : ''}" data-action="set-aesthetic-bg" data-bg="steel">🔘 Acero</button>
-            </div>
-            <div style="display: flex; gap: 4px; flex-wrap: wrap;">
-              <button type="button" class="theme-chip ${aesPref.accentColor === '#3B82F6' ? 'active' : ''}" data-action="set-aesthetic-accent" data-color="#3B82F6">🔵 Azul</button>
-              <button type="button" class="theme-chip ${aesPref.accentColor === '#22C55E' ? 'active' : ''}" data-action="set-aesthetic-accent" data-color="#22C55E">🟢 Verde</button>
-              <button type="button" class="theme-chip ${aesPref.accentColor === '#F97316' ? 'active' : ''}" data-action="set-aesthetic-accent" data-color="#F97316">🟠 Naranja</button>
-              <button type="button" class="theme-chip ${aesPref.accentColor === '#8B5CF6' ? 'active' : ''}" data-action="set-aesthetic-accent" data-color="#8B5CF6">🟣 Violeta</button>
-              <button type="button" class="theme-chip ${aesPref.accentColor === '#EF4444' ? 'active' : ''}" data-action="set-aesthetic-accent" data-color="#EF4444">🔴 Rojo</button>
-            </div>
+          <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px;">
+            <button type="button" class="btn-secondary btn-sm" data-action="open-sugerencias-modal" style="width: 100% !important;">
+              ${renderIcon('bulb')} Sugerencias
+            </button>
+            <button type="button" class="btn-secondary btn-sm" data-action="check-app-update" style="width: 100% !important;">
+              ${renderIcon('refresh')} Actualizar App
+            </button>
+            <button type="button" class="btn-secondary btn-sm" data-action="export-backup" style="width: 100% !important;">
+              ${renderIcon('download')} Exportar JSON
+            </button>
+            <label class="btn-secondary btn-sm" style="cursor: pointer; width: 100% !important;">
+              ${renderIcon('upload')} Importar JSON
+              <input type="file" accept=".json" style="display: none;" data-action="import-backup">
+            </label>
           </div>
-        ` : ''}
+        </div>
+
+        <div class="card" style="flex: ${isAjustesColorsOpen ? '1' : '0 0 auto'}; min-height: 0; display: flex; flex-direction: column; overflow: hidden; padding: 10px 12px; gap: 8px;">
+          <button type="button" data-action="toggle-ajustes-colors" style="display: flex; justify-content: space-between; align-items: center; width: 100%; background: none; border: none; padding: 2px 0; cursor: pointer; color: var(--text-main); flex-shrink: 0;">
+            <span style="display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 800;">
+              ${renderIcon('palette')} Estilo visual y tema
+            </span>
+            <span class="badge" style="font-size: 10.5px;">
+              ${isAjustesColorsOpen ? 'Ocultar' : 'Personalizar'} ${isAjustesColorsOpen ? renderIcon('chevronUp') : renderIcon('chevronDown')}
+            </span>
+          </button>
+
+          ${isAjustesColorsOpen ? `
+            <div class="onepage-scroll-list" style="border-top: 1px dashed var(--border-subtle); padding-top: 8px; gap: 10px;">
+              ${renderThemeSelector()}
+              ${renderBackgroundPatternSelector(aesPref)}
+
+              <div style="border-top: 1px dashed var(--border-subtle); padding-top: 8px; display: flex; flex-direction: column; gap: 8px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <span class="form-label" style="font-size: 10px;">Superficie y Color de Acento</span>
+                  <button type="button" class="btn-link" data-action="reset-aesthetic-pref" style="font-size: 11px; padding: 0;">Restablecer</button>
+                </div>
+                <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+                  <button type="button" class="theme-chip ${aesPref.bgStyle === 'zinc' ? 'active' : ''}" data-action="set-aesthetic-bg" data-bg="zinc">Zinc</button>
+                  <button type="button" class="theme-chip ${aesPref.bgStyle === 'oled' ? 'active' : ''}" data-action="set-aesthetic-bg" data-bg="oled">OLED</button>
+                  <button type="button" class="theme-chip ${aesPref.bgStyle === 'navy' ? 'active' : ''}" data-action="set-aesthetic-bg" data-bg="navy">Navy</button>
+                  <button type="button" class="theme-chip ${aesPref.bgStyle === 'steel' ? 'active' : ''}" data-action="set-aesthetic-bg" data-bg="steel">Acero</button>
+                </div>
+                <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+                  <button type="button" class="theme-chip ${aesPref.accentColor === '#3B82F6' ? 'active' : ''}" data-action="set-aesthetic-accent" data-color="#3B82F6"><span style="width:9px;height:9px;border-radius:99px;background:#3B82F6;display:inline-block;"></span> Azul</button>
+                  <button type="button" class="theme-chip ${aesPref.accentColor === '#22C55E' ? 'active' : ''}" data-action="set-aesthetic-accent" data-color="#22C55E"><span style="width:9px;height:9px;border-radius:99px;background:#22C55E;display:inline-block;"></span> Verde</button>
+                  <button type="button" class="theme-chip ${aesPref.accentColor === '#F97316' ? 'active' : ''}" data-action="set-aesthetic-accent" data-color="#F97316"><span style="width:9px;height:9px;border-radius:99px;background:#F97316;display:inline-block;"></span> Naranja</button>
+                  <button type="button" class="theme-chip ${aesPref.accentColor === '#8B5CF6' ? 'active' : ''}" data-action="set-aesthetic-accent" data-color="#8B5CF6"><span style="width:9px;height:9px;border-radius:99px;background:#8B5CF6;display:inline-block;"></span> Violeta</button>
+                  <button type="button" class="theme-chip ${aesPref.accentColor === '#EF4444' ? 'active' : ''}" data-action="set-aesthetic-accent" data-color="#EF4444"><span style="width:9px;height:9px;border-radius:99px;background:#EF4444;display:inline-block;"></span> Rojo</button>
+                </div>
+              </div>
+            </div>
+          ` : ''}
+        </div>
       </div>
     `;
   }
@@ -2230,7 +2161,7 @@
                 <input type="text" id="trainer-code-input" class="form-input" placeholder="Código ej: GYM-1024" required style="font-family: var(--font-mono); font-weight: 800;">
                 <input type="text" id="trainer-name-input" class="form-input" placeholder="Nombre (si es código nuevo)">
                 <button type="submit" class="btn-primary" style="min-height: 38px;">
-                  🔗 Vincular Cuenta de Alumno
+                  Vincular Cuenta de Alumno
                 </button>
               </form>
             </div>
@@ -2247,9 +2178,9 @@
                     <button type="button" class="pc-nav-btn ${isSel ? 'active' : ''}" data-action="trainer-select-alumno" data-username="${h(al.username)}" style="justify-content: space-between;">
                       <div>
                         <div style="font-weight: 800; font-size: 13px;">${h(al.displayName)}</div>
-                        <div style="font-size: 11px; font-family: var(--font-mono); opacity: 0.8;">🔑 ${h(al.codigoAlumno)}</div>
+                        <div style="font-size: 11px; font-family: var(--font-mono); opacity: 0.8;">${h(al.codigoAlumno)}</div>
                       </div>
-                      ${tieneAlerta ? `<span class="badge badge-rose">⚠️ Alerta</span>` : `<span class="badge badge-emerald">Activo</span>`}
+                      ${tieneAlerta ? `<span class="badge badge-rose">Alerta</span>` : `<span class="badge badge-emerald">Activo</span>`}
                     </button>
                   `;
                 }).join('')}
@@ -2257,7 +2188,7 @@
             </div>
 
             <button type="button" class="pc-nav-btn" data-action="open-sugerencias-modal">
-              <span>💡</span><span>Sugerencias</span>
+              ${renderIcon('bulb')}<span>Sugerencias</span>
             </button>
 
             ${renderThemeSelector()}
@@ -2285,7 +2216,7 @@
                 <div class="card-header">
                   <div>
                     <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                      <span class="badge badge-blue" style="font-family: var(--font-mono); font-size: 12px;">🔑 CÓDIGO: ${h(stAlumno.codigoAlumno)}</span>
+                      <span class="badge badge-blue" style="font-family: var(--font-mono); font-size: 12px;">CÓDIGO: ${h(stAlumno.codigoAlumno)}</span>
                       <h2 style="font-size: 20px; font-weight: 800; color: var(--text-main);">Ficha Clínica de ${h(alumnoActivo.displayName)}</h2>
                     </div>
                     <p style="font-size: 13px; color: var(--text-muted); margin-top: 6px; line-height: 1.6;">
@@ -2294,7 +2225,7 @@
                       Días que asiste: <strong>${(stAlumno.perfil.diasSemana || []).length > 0 ? stAlumno.perfil.diasSemana.join(', ') : 'A definir'}</strong> ·
                       Horario: <strong>${h(stAlumno.perfil.horarioHabitual || '19:00')} hs</strong>
                     </p>
-                    ${stAlumno.perfil.lesiones ? `<p style="font-size: 12px; color: var(--accent-rose); font-weight: 700; margin-top: 2px;">⚠️ Lesiones/Antecedentes: ${h(stAlumno.perfil.lesiones)}</p>` : ''}
+                    ${stAlumno.perfil.lesiones ? `<p style="font-size: 12px; color: var(--accent-rose); font-weight: 700; margin-top: 2px;">Lesiones/Antecedentes: ${h(stAlumno.perfil.lesiones)}</p>` : ''}
                   </div>
 
                   <div style="display: flex; gap: 8px; flex-wrap: wrap;">
@@ -2312,7 +2243,7 @@
                   <div class="card-header">
                     <div>
                       <span class="badge badge-blue">Sincronización Directa</span>
-                      <h3 class="card-title" style="margin-top: 4px;">📋 Rutinas del Alumno (${(stAlumno.rutinas || []).filter(r => !r.deleted).length})</h3>
+                      <h3 class="card-title" style="margin-top: 4px;">Rutinas del Alumno (${(stAlumno.rutinas || []).filter(r => !r.deleted).length})</h3>
                     </div>
                     <button type="button" class="btn-secondary" data-action="open-rutina-builder" data-target-username="${h(alumnoActivo.username)}" style="width: auto;">
                       + Nueva Rutina
@@ -2332,7 +2263,7 @@
                             <div>
                               <h4 style="font-size: 15px; font-weight: 800; color: var(--text-main);">${h(r.nombre)}</h4>
                               <p style="font-size: 12px; color: var(--text-muted);">
-                                📅 ${(r.dias || []).join(', ')} · ⏰ Turno ${h(r.horario || '19:00')} hs
+                                ${(r.dias || []).join(', ')} · Turno ${h(r.horario || '19:00')} hs
                               </p>
                             </div>
                             <div style="display: flex; gap: 6px;">
@@ -2340,10 +2271,10 @@
                                 + Sumar Ejercicio
                               </button>
                               <button type="button" class="btn-secondary" data-action="edit-rutina" data-rutina-id="${h(r.id)}" data-target-username="${h(alumnoActivo.username)}" style="width: auto; min-height: 32px; padding: 0 10px;">
-                                ✏️ Editar
+                                ${renderIcon('edit')} Editar
                               </button>
                               <button type="button" class="btn-secondary" data-action="delete-rutina" data-rutina-id="${h(r.id)}" data-target-username="${h(alumnoActivo.username)}" style="width: auto; min-height: 32px; padding: 0 10px; color: var(--accent-rose);">
-                                🗑️
+                                ${renderIcon('trash')}
                               </button>
                             </div>
                           </div>
@@ -2358,8 +2289,8 @@
                                   <span><strong style="color: var(--text-main);">${idx + 1}. ${h(ej ? ej.nombre : re.ejercicioId)}</strong></span>
                                   <div style="display: flex; align-items: center; gap: 8px;">
                                     <span style="font-family: var(--font-mono); font-weight: 700; color: var(--steel-blue);">${re.seriesObjetivo}×${h(re.repsObjetivo)}</span>
-                                    <button type="button" class="btn-eye-icon" data-action="view-ejercicio" data-ejercicio-id="${h(re.ejercicioId)}" title="Ver ejercicio">👁️</button>
-                                    <button type="button" data-action="remove-ej-from-rutina" data-rutina-id="${h(r.id)}" data-index="${idx}" data-target-username="${h(alumnoActivo.username)}" style="color: var(--accent-rose); font-weight: 800;">✕</button>
+                                    <button type="button" class="btn-eye-icon" data-action="view-ejercicio" data-ejercicio-id="${h(re.ejercicioId)}" title="Ver ejercicio">${renderIcon('eye')}</button>
+                                    <button type="button" data-action="remove-ej-from-rutina" data-rutina-id="${h(r.id)}" data-index="${idx}" data-target-username="${h(alumnoActivo.username)}" style="color: var(--accent-rose); font-weight: 800;">${renderIcon('x')}</button>
                                   </div>
                                 </div>
                               `;
@@ -2375,7 +2306,7 @@
                 <div style="display: flex; flex-direction: column; gap: 18px;">
                   <div class="card">
                     <span class="badge badge-amber">Seguimiento Clínico y Biomecánico</span>
-                    <h3 class="card-title">🩺 Establecer Observación para ${h(alumnoActivo.displayName)}</h3>
+                    <h3 class="card-title">Establecer Observación para ${h(alumnoActivo.displayName)}</h3>
                     <form data-action="trainer-add-observacion" data-target-username="${h(alumnoActivo.username)}" style="display: flex; flex-direction: column; gap: 10px;">
                       <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 8px;">
                         <select id="trainer-obs-cat" class="form-input">
@@ -2408,18 +2339,18 @@
 
                   <!-- Estado de Salud Física y Psicológica reportado por el Alumno -->
                   <div class="card">
-                    <h3 class="card-title">🧠 Reportes de Salud Física y Psicológica (Readiness)</h3>
+                    <h3 class="card-title">Reportes de Salud Física y Psicológica</h3>
                     ${(stAlumno.readinessLogs || []).filter(r => !r.deleted).length === 0 ? `
-                      <p style="font-size: 12px; color: var(--text-dim);">El alumno aún no cargó su check-in psicofísico diario.</p>
+                      <p style="font-size: 12px; color: var(--text-dim);">El alumno aún no cargó su registro psicofísico diario.</p>
                     ` : `
                       <div style="display: flex; flex-direction: column; gap: 8px; max-height: 190px; overflow-y: auto;">
                         ${(stAlumno.readinessLogs || []).filter(r => !r.deleted).map(l => `
                           <div style="background: var(--bg-elevated); border-left: 4px solid ${l.estres >= 4 || l.dolorArticular ? 'var(--accent-rose)' : 'var(--accent-emerald)'}; padding: 10px 12px; border-radius: var(--radius-sm); font-size: 12px;">
                             <div style="display: flex; justify-content: space-between; font-weight: 800;">
-                              <span>📅 ${h(l.fecha)} (${h(l.hora)})</span>
-                              <span>⚡ Energía ${l.energia}/5 · 🧠 Estrés ${l.estres}/5 · 😴 Sueño ${l.sueno || 4}/5</span>
+                              <span>${h(l.fecha)} (${h(l.hora)})</span>
+                              <span>Energía ${l.energia}/5 · Estrés ${l.estres}/5 · Sueño ${l.sueno || 4}/5</span>
                             </div>
-                            ${l.zonaDolor ? `<p style="color: var(--accent-rose); font-weight: 700; margin-top: 2px;">⚠️ Dolor reportado: ${h(l.zonaDolor)}</p>` : ''}
+                            ${l.zonaDolor ? `<p style="color: var(--accent-rose); font-weight: 700; margin-top: 2px;">Dolor reportado: ${h(l.zonaDolor)}</p>` : ''}
                             ${l.observacionAlumno ? `<p style="color: var(--text-muted); margin-top: 2px;">Nota del alumno: "${h(l.observacionAlumno)}"</p>` : ''}
                           </div>
                         `).join('')}
@@ -2432,14 +2363,14 @@
               <!-- Fila Inferior: Curva Histórica del Alumno + Bitácora de Fotos (el Profesor también puede adjuntar fotos) -->
               <div class="pc-grid-2">
                 <div class="card">
-                  <h3 class="card-title">📈 Evolución Histórica del Alumno (Fuerza 1RM vs. Estrés)</h3>
+                  <h3 class="card-title">Evolución Histórica del Alumno (Fuerza 1RM vs. Estrés)</h3>
                   ${renderGraficoEvolucionSVG(stAlumno)}
                 </div>
 
                 <div class="card">
                   <div class="card-header">
                     <div>
-                      <h3 class="card-title">📷 Fotos Evolutivas y Posturales del Alumno</h3>
+                      <h3 class="card-title">Fotos Evolutivas y Posturales del Alumno</h3>
                       <p style="font-size: 12px; color: var(--text-muted);">
                         Podés ver las fotos subidas por el alumno o adjuntar fotos de evaluación postural con sello de fecha automático.
                       </p>
@@ -2449,7 +2380,7 @@
                   <div style="display: flex; gap: 8px; align-items: center; background: var(--bg-elevated); padding: 10px; border-radius: var(--radius-md); flex-wrap: wrap;">
                     <input type="text" id="trainer-foto-nota" class="form-input" placeholder="Nota clínica de la foto (ej: Control postural sentadilla)" style="flex: 1; min-width: 180px;">
                     <label class="btn-primary" style="width: auto; cursor: pointer;">
-                      📷 Adjuntar Foto con Fecha
+                      ${renderIcon('camera')} Adjuntar Foto con Fecha
                       <input type="file" accept="image/*" style="display: none;" data-action="upload-watermarked-photo" data-target-user="${h(alumnoActivo.username)}">
                     </label>
                   </div>
@@ -2654,8 +2585,8 @@
             <div class="form-group">
               <label class="form-label">¿Sos Alumno o Docente / Profesor?</label>
               <select id="reg-role" class="form-input">
-                <option value="alumno" selected>🏃 Soy Alumno / Atleta (Recibe Código Único GYM-XXXX)</option>
-                <option value="profesor">📋 Soy Docente / Profesor (Panel Clínico de Alumnos)</option>
+                <option value="alumno" selected>Soy Alumno / Atleta (Recibe Código Único GYM-XXXX)</option>
+                <option value="profesor">Soy Docente / Profesor (Panel Clínico de Alumnos)</option>
               </select>
             </div>
             <div class="form-group">
@@ -2797,7 +2728,7 @@
           </div>
 
           <button type="button" class="btn-create-ej-inline" data-action="open-create-custom-ejercicio" data-bloque="${h(activeModal.bloque || '')}" data-grupo="${h(catalogoFiltroGrupo !== 'todos' ? catalogoFiltroGrupo : '')}" data-from-picker="true" style="width: 100%; padding: 11px 12px;">
-            ➕ ¿No está en la lista? Crear Ejercicio Nuevo
+            ${renderIcon('plus')} ¿No está en la lista? Crear Ejercicio Nuevo
           </button>
 
           <!-- Buscador y Filtros por Segmento -->
@@ -2829,7 +2760,7 @@
             ` : ''}
           </div>
 
-          <!-- Lista de Ejercicios con 👁️ y botón "+ Añadir" -->
+          <!-- Lista de Ejercicios con vista previa y botón "+ Añadir" -->
           <div style="display: flex; flex-direction: column; gap: 8px; max-height: 340px; overflow-y: auto;">
             ${filtrados.map(e => {
               const media = Engine.resolveEjercicioMedia(e);
@@ -2963,13 +2894,13 @@
             ${media.illustrationUrl ? `
               <img src="${h(media.illustrationUrl)}" alt="${h(ej.nombre)} - Posición Inicial y Final" class="exercise-illustration-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
               <div style="display: none; width: 100%; min-height: 180px; flex-direction: column; align-items: center; justify-content: center; padding: 24px 16px; text-align: center; color: #1e293b; background: #ffffff; border-radius: var(--radius-md);">
-                <div style="font-size: 32px; margin-bottom: 8px;">🏋️</div>
+                <div style="margin-bottom: 8px; color: #2563eb;">${renderIcon('dumbbell')}</div>
                 <div style="font-size: 14px; font-weight: 800; color: #0f172a; margin-bottom: 4px;">${h(ej.nombre)}</div>
                 <div style="font-size: 12px; color: #64748b;">Demostración de postura inicial y final guiada por tu profesor de sala.</div>
               </div>
             ` : `
               <div style="display: flex; width: 100%; min-height: 180px; flex-direction: column; align-items: center; justify-content: center; padding: 24px 16px; text-align: center; color: #1e293b; background: #ffffff; border-radius: var(--radius-md);">
-                <div style="font-size: 32px; margin-bottom: 8px;">🏋️</div>
+                <div style="margin-bottom: 8px; color: #2563eb;">${renderIcon('dumbbell')}</div>
                 <div style="font-size: 14px; font-weight: 800; color: #0f172a; margin-bottom: 4px;">${h(ej.nombre)}</div>
                 <div style="font-size: 12px; color: #64748b;">Demostración de postura inicial y final guiada por tu profesor de sala.</div>
               </div>
@@ -2979,7 +2910,7 @@
           <!-- Pautas Técnicas -->
           <div style="background: var(--bg-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 12px 14px; font-size: 12px;">
             <div style="font-weight: 800; color: var(--text-main); margin-bottom: 4px; text-transform: uppercase; font-size: 11px;">
-              📋 Ejecución Técnica:
+              Ejecución Técnica:
             </div>
             <p style="color: var(--text-muted); line-height: 1.5; margin: 0;">
               ${h(ej.notas || 'Control estricto de la fase excéntrica y recorrido completo manteniendo estabilidad central.')}
@@ -3202,28 +3133,28 @@
       const r = Engine.resumenEntrenamiento(state, activeModal.entrenamientoId);
       if (!r) { activeModal = null; overlay.remove(); return; }
       const dur = r.duracionMin != null ? `${r.duracionMin} min` : '—';
-      const textoShare = `💪 Entrenamiento ${r.fecha}\n${dur} · ${r.series} series · ${Math.round(r.volumen).toLocaleString('es-AR')} kg movidos` +
-        (r.prs.length ? `\n🏆 Récords: ${r.prs.map(p => `${p.nombre} ${p.pesoKg} kg × ${p.reps}`).join(', ')}` : '') +
+      const textoShare = `Entrenamiento ${r.fecha}\n${dur} · ${r.series} series · ${Math.round(r.volumen).toLocaleString('es-AR')} kg movidos` +
+        (r.prs.length ? `\nRécords: ${r.prs.map(p => `${p.nombre} ${p.pesoKg} kg × ${p.reps}`).join(', ')}` : '') +
         `\n${r.ejercicios.map(e => `• ${e.nombre}: ${e.series} series${e.mejor ? ` · mejor ${e.mejor.pesoKg} kg × ${e.mejor.reps}` : ''}`).join('\n')}\n— Fitness MiniApp`;
       overlay.innerHTML = `
         <div class="modal-card resumen-card">
           <div class="modal-header-sticky">
             <div>
               <span class="badge badge-emerald">Sesión guardada</span>
-              <h2 class="card-title" style="margin-top: 4px;">${r.prs.length ? '🏆 ¡Gran sesión!' : '✓ ¡Buen trabajo!'}</h2>
+              <h2 class="card-title" style="margin-top: 4px;">${r.prs.length ? 'Excelente sesión' : 'Buen trabajo'}</h2>
             </div>
-            <button type="button" class="btn-close-modal" data-action="close-modal" title="Cerrar">✕</button>
+            <button type="button" class="btn-close-modal" data-action="close-modal" title="Cerrar">${renderIcon('x')}</button>
           </div>
           <div class="resumen-kpis">
             <div><span>Duración</span><strong>${h(dur)}</strong></div>
             <div><span>Series</span><strong>${r.series}</strong></div>
             <div><span>Volumen</span><strong>${Math.round(r.volumen).toLocaleString('es-AR')} <small>kg</small></strong></div>
           </div>
-          ${r.prs.length ? `<div class="resumen-prs">${r.prs.map(p => `<div>🏆 <strong>${h(p.nombre)}</strong>: ${p.tipo === 'peso' ? `nuevo peso máximo ${p.pesoKg} kg × ${p.reps}${p.previo ? ` (antes ${p.previo} kg)` : ''}` : `${p.pesoKg} kg × ${p.reps} → 1RM estimado ${p.rm} kg${p.previo ? ` (antes ${p.previo})` : ' (primer registro)'}`}</div>`).join('')}</div>` : ''}
+          ${r.prs.length ? `<div class="resumen-prs">${r.prs.map(p => `<div><strong>PR · ${h(p.nombre)}</strong>: ${p.tipo === 'peso' ? `nuevo peso máximo ${p.pesoKg} kg × ${p.reps}${p.previo ? ` (antes ${p.previo} kg)` : ''}` : `${p.pesoKg} kg × ${p.reps} → 1RM estimado ${p.rm} kg${p.previo ? ` (antes ${p.previo})` : ' (primer registro)'}`}</div>`).join('')}</div>` : ''}
           <div class="resumen-list">
             ${r.ejercicios.length ? r.ejercicios.map(e => `
               <div class="resumen-row">
-                <span>${h(e.nombre)}${e.pr ? ' 🏆' : ''}</span>
+                <span>${h(e.nombre)}${e.pr ? ' (PR)' : ''}</span>
                 <span class="mono">${e.series} × ${e.mejor ? `${e.mejor.pesoKg} kg · ${e.mejor.reps} reps` : '—'}</span>
               </div>`).join('') : '<p style="font-size: 13px; color: var(--text-dim);">No se registraron series en esta sesión.</p>'}
           </div>
@@ -3247,7 +3178,7 @@
           <div class="modal-header-sticky" style="padding: 2px 0 8px 0;">
             <div>
               <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                <span class="badge badge-neon">☁️ Sincronización Nube</span>
+                <span class="badge badge-neon">Sincronización Nube</span>
                 <span class="online-status-indicator" style="display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; color: ${navigator.onLine ? '#22C55E' : '#F97316'};">
                   <span style="width: 7px; height: 7px; border-radius: 50%; background: ${navigator.onLine ? '#22C55E' : '#F97316'}; display: inline-block;"></span>
                   ${navigator.onLine ? 'Online' : 'Offline'}
@@ -3255,15 +3186,15 @@
               </div>
               <h2 class="card-title" style="font-size: 17px; margin-top: 3px; color: var(--text-main);">Enviar Sugerencia</h2>
             </div>
-            <button type="button" class="btn-close-modal" data-action="close-modal" title="Cerrar ventana">✕</button>
+            <button type="button" class="btn-close-modal" data-action="close-modal" title="Cerrar ventana">${renderIcon('x')}</button>
           </div>
 
           <form data-action="submit-sugerencia" style="display: flex; flex-direction: column; gap: 10px;">
             <div class="form-group">
               <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
                 <label class="form-label" for="sug-mensaje">¿Qué te gustaría mejorar o agregar?</label>
-                <button type="button" class="btn-dictar ${isDictatingSugerencia ? 'listening' : ''}" data-action="dictar-sugerencia" style="padding: 5px 10px; font-size: 12px !important;">
-                  ${isDictatingSugerencia ? '🔴 Detener' : '🎤 Dictar'}
+                <button type="button" class="btn-dictar ${isDictatingSugerencia ? 'listening' : ''}" data-action="dictar-sugerencia" style="padding: 5px 10px; font-size: 12px !important; display:inline-flex; align-items:center; gap:5px;">
+                  ${renderIcon('mic')} ${isDictatingSugerencia ? 'Detener' : 'Dictar'}
                 </button>
               </div>
               <textarea id="sug-mensaje" class="form-input" rows="3" placeholder="Escribí o dictá tu sugerencia acá..." required>${h(draftSugerenciaTexto)}</textarea>
@@ -3271,18 +3202,18 @@
 
             <!-- Botón Único de Foto (despliega las 2 opciones: Adjuntar o Pegar) -->
             <div class="form-group">
-              <button type="button" class="btn-secondary" data-action="toggle-photo-options" style="justify-content: center;">
-                📷 Foto: Adjuntar o Pegar${draftSugerenciaCapturas.length > 0 ? ` (${draftSugerenciaCapturas.length})` : ''} ${showPhotoOptions ? '▲' : '▼'}
+              <button type="button" class="btn-secondary" data-action="toggle-photo-options" style="justify-content: center; gap: 6px;">
+                ${renderIcon('camera')} Foto: Adjuntar o Pegar${draftSugerenciaCapturas.length > 0 ? ` (${draftSugerenciaCapturas.length})` : ''} ${showPhotoOptions ? renderIcon('chevronUp') : renderIcon('chevronDown')}
               </button>
 
               ${showPhotoOptions ? `
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: var(--bg-elevated); padding: 8px; border-radius: var(--radius-md); border: 1px solid var(--border-subtle);">
                   <label class="btn-secondary btn-sm" style="cursor: pointer; width: 100% !important; justify-content: center;">
-                    🖼 Elegir / Cámara
+                    ${renderIcon('camera')} Elegir / Cámara
                     <input type="file" accept="image/*" multiple data-action="upload-sugerencia-capturas" style="display: none;">
                   </label>
                   <button type="button" class="btn-secondary btn-sm" data-action="paste-clipboard-image" style="width: 100% !important; justify-content: center;">
-                    📋 Pegar Copiada
+                    ${renderIcon('clipboard')} Pegar Copiada
                   </button>
                 </div>
               ` : ''}
@@ -3461,21 +3392,7 @@
 
   function renderFloatingTimer() {
     const container = document.getElementById('floating-timer-container');
-    if (!container) return;
-    if (!Timer.isRunning) {
-      container.innerHTML = '';
-      return;
-    }
-    const pct = Timer.segundosTotales ? Math.max(0, Math.min(100, (Timer.segundosRestantes / Timer.segundosTotales) * 100)) : 0;
-    container.innerHTML = `
-      <div class="floating-timer" role="timer" aria-live="off">
-        <span class="timer-ring" style="--pct:${pct.toFixed(1)}%"></span>
-        <span class="timer-digits">${Timer.format()}</span>
-        <button type="button" class="timer-btn" data-action="timer-add" data-seconds="-15">−15</button>
-        <button type="button" class="timer-btn" data-action="timer-add" data-seconds="30">+30</button>
-        <button type="button" class="timer-btn" data-action="timer-stop" title="Listo, sigo">✓</button>
-      </div>
-    `;
+    if (container) container.innerHTML = '';
   }
 
   // ==========================================
@@ -4099,7 +4016,6 @@
     'set-descanso': el => {
       const seg = parseInt(el.getAttribute('data-seconds'), 10);
       Store.commit(s => Engine.setKV(s, 'descansoSeg', seg));
-      showToast(`Descanso entre series: ${seg} s`);
       render();
     },
     'toggle-descanso-auto': () => {
@@ -4413,7 +4329,7 @@
       if (!SpeechRec) {
         const textarea = document.getElementById('sug-mensaje');
         if (textarea) textarea.focus();
-        showToast('Tu navegador no soporta dictado directo: tocá el micrófono 🎤 del teclado de tu teléfono.');
+        showToast('Tu navegador no soporta dictado directo: tocá el micrófono del teclado de tu teléfono.');
         return;
       }
 
@@ -4629,7 +4545,7 @@
       }
     },
 
-    // --- CHECK-IN DE GIMNASIO Y FLUJO MODULAR PASO A PASO (v3.1.0) ---
+    // --- CHECK-IN DE GIMNASIO Y FLUJO MODULAR PASO A PASO (v3.2.0) ---
     'checkin-gym-hoy': el => {
       const rutinaId = (el && el.getAttribute('data-rutina-id')) || null;
       Store.commit(state => Engine.registrarCheckinGym(state, {
@@ -4637,7 +4553,7 @@
         pasoInicial: 'psicofisico'
       }));
       activeTab = 'hoy';
-      showToast('✓ ¡Asistencia registrada! Completá tu estado psicofísico.');
+      showToast('Sesión iniciada. Completá tu estado psicofísico.');
       render();
     },
 
@@ -4694,11 +4610,24 @@
         });
         const ent = Engine.getEntrenamientoActivo(next);
         if (ent) {
-          next = Engine.setConfigBloqueSesion(next, ent.id, { pasoActual: 'activacion' });
+          next = Engine.setConfigBloqueSesion(next, ent.id, { pasoActual: 'rutina' });
         }
         return next;
       });
-      showToast('✓ Psicofísico guardado. Pasamos a Activación.');
+      showToast('Estado guardado. Elegí tu rutina de hoy.');
+      render();
+    },
+
+    'set-module-active': el => {
+      const mod = el.getAttribute('data-module');
+      const active = el.getAttribute('data-active') === '1';
+      if (mod !== 'activacion' && mod !== 'movilidad') return;
+      Store.commit(state => {
+        const ent = Engine.getEntrenamientoActivo(state);
+        if (!ent) return state;
+        const key = mod === 'activacion' ? 'activacionActiva' : 'movilidadActiva';
+        return Engine.setConfigBloqueSesion(state, ent.id, { [key]: active });
+      });
       render();
     },
 
@@ -4850,7 +4779,7 @@
       if (navigator.vibrate) {
         try { navigator.vibrate([60, 40, 60]); } catch (_) {}
       }
-      showToast(`🔁 Vuelta del Bloque ${bloque} guardada (${registros.length} series)`);
+      showToast(`Vuelta del Bloque ${bloque} guardada (${registros.length} series)`);
       render();
     },
 
@@ -5022,13 +4951,10 @@
         try { navigator.vibrate([80, 40, 80]); } catch (_) {}
       }
 
-      const descanso = Engine.getDescanso(Store.getState());
-      if (descanso.automatico && tipo !== 'calentamiento') Timer.start(descanso.segundos);
-
       if (prCheck.isNew1RMPR && prCheck.previous1RM > 0) {
-        showToast(`🏆 ¡Récord! 1RM estimado ${prCheck.new1RM} kg (antes ${prCheck.previous1RM})`, { duration: 5000 });
+        showToast(`Nuevo récord: 1RM estimado ${prCheck.new1RM} kg (antes ${prCheck.previous1RM})`, { duration: 5000 });
       } else {
-        showToast(`✓ ${peso} kg × ${reps} · RIR ${rir}${descanso.automatico ? ` · descanso ${descanso.segundos}s` : ''}`);
+        showToast(`${peso} kg × ${reps} · RIR ${rir}`);
       }
       render();
     },
@@ -5618,7 +5544,7 @@
         localStorage.setItem(LAST_SEEN_VERSION_KEY, APP_VERSION);
         if (lastVer) {
           setTimeout(() => {
-            showToast(`🚀 ¡Fitness MiniApp actualizada a v${APP_VERSION}! Nuevas funciones aplicadas.`, { duration: 6000 });
+            showToast(`Fitness MiniApp actualizada a v${APP_VERSION}.`, { duration: 5000 });
           }, 800);
         }
       }
