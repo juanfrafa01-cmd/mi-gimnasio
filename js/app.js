@@ -19,7 +19,7 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '3.3.0';
+  const APP_VERSION = '3.3.1';
 
   /** Número válido o valor por defecto (a diferencia de `|| def`, respeta el 0: RIR 0 = serie al fallo). */
   const numOr = (v, def) => (Number.isFinite(v) ? v : def);
@@ -1995,6 +1995,11 @@
             <span class="list-row-text"><strong>Sugerencias</strong><small>Contanos qué mejorar</small></span>
             ${renderIcon('arrowRight')}
           </button>
+          <button type="button" class="list-row" data-action="open-share-app-modal">
+            <span class="list-row-icon">${renderIcon('share')}</span>
+            <span class="list-row-text"><strong>Compartir con un amigo</strong><small>Enlace e instructivo para instalarla</small></span>
+            ${renderIcon('arrowRight')}
+          </button>
           <button type="button" class="list-row" data-action="export-backup">
             <span class="list-row-icon">${renderIcon('download')}</span>
             <span class="list-row-text"><strong>Guardar respaldo</strong><small>Descarga tus datos en un archivo</small></span>
@@ -3016,6 +3021,47 @@
       `;
       const card = overlay.querySelector('.modal-card');
       if (card) card.scrollTop = prevScroll;
+      return;
+    }
+
+    if (activeModal.type === 'share-app') {
+      const appUrl = 'https://mi-gimnasio-eight.vercel.app';
+      overlay.innerHTML = `
+        <div class="modal-card modal-sheet" style="max-width: 440px;">
+          <div class="modal-header-sticky">
+            <h2 class="modal-title">Compartir con un amigo</h2>
+            <button type="button" class="btn-close-modal" data-action="close-modal" title="Cerrar">${renderIcon('x')}</button>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+            <p class="text-sm text-muted" style="margin: 0;">Pasale este enlace para que use la app y la instale directo en la pantalla de inicio de su teléfono:</p>
+            <div class="card" style="padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+              <code style="font-size: 12.5px; color: var(--text-main); word-break: break-all;">${h(appUrl)}</code>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+              <button type="button" class="btn-secondary" data-action="copy-app-link" data-url="${h(appUrl)}">${renderIcon('copy')} Copiar enlace</button>
+              <button type="button" class="btn-primary" data-action="native-share-app" data-url="${h(appUrl)}">${renderIcon('share')} Compartir</button>
+            </div>
+            <div class="card" style="padding: 12px; display: flex; flex-direction: column; gap: 10px;">
+              <div>
+                <strong style="font-size: 13px; color: var(--text-main);">iPhone (Safari)</strong>
+                <ol class="text-sm text-muted" style="margin: 4px 0 0 18px; padding: 0; line-height: 1.45;">
+                  <li>Abrí el enlace en <strong>Safari</strong>.</li>
+                  <li>Tocá el botón <strong>Compartir</strong> (cuadrado con flecha hacia arriba).</li>
+                  <li>Elegí <strong>"Agregar a inicio"</strong> y tocá <strong>Agregar</strong>.</li>
+                </ol>
+              </div>
+              <div style="border-top: 1px solid var(--border-subtle); padding-top: 8px;">
+                <strong style="font-size: 13px; color: var(--text-main);">Android (Chrome)</strong>
+                <ol class="text-sm text-muted" style="margin: 4px 0 0 18px; padding: 0; line-height: 1.45;">
+                  <li>Abrí el enlace en <strong>Chrome</strong>.</li>
+                  <li>Tocá el menú <strong>⋮</strong> arriba a la derecha.</li>
+                  <li>Elegí <strong>"Instalar aplicación"</strong> o <strong>"Agregar a la pantalla principal"</strong>.</li>
+                </ol>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
       return;
     }
 
@@ -4192,6 +4238,36 @@
     'open-apariencia-modal': () => {
       activeModal = { type: 'apariencia' };
       renderModals();
+    },
+
+    'open-share-app-modal': () => {
+      activeModal = { type: 'share-app' };
+      renderModals();
+    },
+
+    'copy-app-link': el => {
+      const url = el.getAttribute('data-url') || 'https://mi-gimnasio-eight.vercel.app';
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(() => {
+          showToast('✓ Enlace copiado');
+        }).catch(() => showToast('Copiá este enlace: ' + url));
+      } else {
+        showToast('Copiá este enlace: ' + url);
+      }
+    },
+
+    'native-share-app': el => {
+      const url = el.getAttribute('data-url') || 'https://mi-gimnasio-eight.vercel.app';
+      const texto = 'Probá Mi Gimnasio para registrar tus rutinas y progresos (funciona 100% offline). Abrilo en Safari o Chrome y agregalo a tu pantalla de inicio:';
+      if (navigator.share) {
+        navigator.share({ title: 'Mi Gimnasio — Fitness MiniApp', text: texto, url }).catch(() => {});
+      } else if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(`${texto} ${url}`).then(() => {
+          showToast('✓ Mensaje con enlace copiado para enviar');
+        }).catch(() => showToast('Enlace: ' + url));
+      } else {
+        showToast('Enlace: ' + url);
+      }
     },
 
     'open-perfil-modal': () => {

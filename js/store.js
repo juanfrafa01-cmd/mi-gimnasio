@@ -821,7 +821,7 @@
     }
     const pref = { ...AESTHETIC_DEFAULTS, ...raw };
     // Migración de versiones anteriores (bgStyle zinc/oled/navy/steel y patrones retirados)
-    if (raw.bgStyle && !raw.bgColorDark && LEGACY_BG_STYLE[raw.bgStyle]) pref.bgColorDark = LEGACY_BG_STYLE[raw.bgStyle];
+    if (raw.bgStyle && raw.bgColorDark === undefined && LEGACY_BG_STYLE[raw.bgStyle]) pref.bgColorDark = LEGACY_BG_STYLE[raw.bgStyle];
     if (LEGACY_PATTERN[pref.bgPattern]) pref.bgPattern = LEGACY_PATTERN[pref.bgPattern];
     if (!BG_PATTERNS_VALIDOS.includes(pref.bgPattern)) pref.bgPattern = 'none';
     if (!isHexColor(pref.accentColor)) pref.accentColor = AESTHETIC_DEFAULTS.accentColor;
@@ -889,6 +889,7 @@
 
   Store.setAestheticPreference = function (patch) {
     const updated = { ...Store.getAestheticPreference(), ...patch };
+    delete updated.bgStyle;
     try {
       localStorage.setItem(AESTHETIC_PREF_KEY, JSON.stringify(updated));
     } catch {}
