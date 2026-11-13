@@ -4,8 +4,8 @@
   "start_url": "./index.html",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#09090B",
-  "theme_color": "#09090B",
+  "background_color": "#0B0B0D",
+  "theme_color": "#0B0B0D",
   "description": "Fitness MiniApp · © JF Development. Registro de entrenamientos, activación, movilidad, fuerza y AMRAP 100% offline.",
   "icons": [
     {

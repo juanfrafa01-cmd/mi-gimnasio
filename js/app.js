@@ -19,7 +19,7 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '3.2.0';
+  const APP_VERSION = '3.3.0';
 
   /** Número válido o valor por defecto (a diferencia de `|| def`, respeta el 0: RIR 0 = serie al fallo). */
   const numOr = (v, def) => (Number.isFinite(v) ? v : def);
@@ -32,6 +32,9 @@
   }
 
   // Modo de visualización en pantalla adaptado estrictamente según dispositivo
+  let accionEnCurso = false; // true mientras corre una acción del usuario (ver Store.subscribe)
+  let renderPendiente = false; // hay un redibujado en espera (se estaba escribiendo o arrastrando)
+  let dragState = null; // arrastre en curso (ver sección 10c)
   let layoutMode = getAutoLayoutMode();
   let activeTab = 'hoy'; // 'hoy' | 'rutinas' | 'historico' | 'salud' | 'evolucion' | 'ajustes'
   let activeModal = null; // null | { type, ... }
@@ -51,7 +54,6 @@
   let rutinasSubTab = 'rutinas'; // 'rutinas' | 'catalogo'
   let showPhotoOptions = false;
   let isSaludLogsOpen = false;
-  let isAjustesColorsOpen = false;
 
   // Estado persistente de formularios de Salud y Ficha Física para que guardar uno NUNCA modifique ni reinicie el otro
   let draftReadiness = {
@@ -200,36 +202,174 @@
   // Estado del panel del Profesor (alumno seleccionado actualmente)
   let selectedAlumnoUsername = null;
 
+  // Apariencia: presets de acento, color de fondo (por tema) y estilo de fondo
+  const ACCENT_PRESETS = [
+    { color: '#3B82F6', nombre: 'Azul' },
+    { color: '#6366F1', nombre: 'Índigo' },
+    { color: '#8B5CF6', nombre: 'Violeta' },
+    { color: '#EC4899', nombre: 'Rosa' },
+    { color: '#EF4444', nombre: 'Rojo' },
+    { color: '#F97316', nombre: 'Naranja' },
+    { color: '#F59E0B', nombre: 'Ámbar' },
+    { color: '#A3E635', nombre: 'Lima' },
+    { color: '#22C55E', nombre: 'Verde' },
+    { color: '#14B8A6', nombre: 'Turquesa' }
+  ];
+  const BG_COLOR_PRESETS = {
+    dark: [
+      { color: '', muestra: '#0B0B0D', nombre: 'Grafito' },
+      { color: '#000000', muestra: '#000000', nombre: 'Negro' },
+      { color: '#070B14', muestra: '#070B14', nombre: 'Noche' },
+      { color: '#07110C', muestra: '#07110C', nombre: 'Bosque' },
+      { color: '#14080B', muestra: '#14080B', nombre: 'Vino' },
+      { color: '#15171C', muestra: '#15171C', nombre: 'Pizarra' }
+    ],
+    light: [
+      { color: '', muestra: '#F4F4F6', nombre: 'Niebla' },
+      { color: '#FFFFFF', muestra: '#FFFFFF', nombre: 'Blanco' },
+      { color: '#F5F0E6', muestra: '#F5F0E6', nombre: 'Arena' },
+      { color: '#EDF2FA', muestra: '#EDF2FA', nombre: 'Cielo' },
+      { color: '#ECF5EF', muestra: '#ECF5EF', nombre: 'Menta' },
+      { color: '#F8EEF1', muestra: '#F8EEF1', nombre: 'Rosado' }
+    ]
+  };
   const BG_PATTERNS = [
-    { id: 'none', nombre: 'Liso (Sin fondo)', preview: 'background: var(--bg-primary);' },
-    { id: 'camo', nombre: 'Camuflaje', preview: 'background: linear-gradient(135deg, #1b2417 25%, #24311e 50%, #34442a 75%, #0e130c 100%);' },
-    { id: 'basquet', nombre: 'Básquet', preview: 'background: radial-gradient(circle at center, rgba(249,115,22,0.45), #18181b);' },
-    { id: 'pesas', nombre: 'Pesas', preview: 'background: linear-gradient(135deg, #27272a, #09090b);' },
-    { id: 'carbon', nombre: 'Carbono', preview: 'background: repeating-linear-gradient(45deg, #111115, #111115 4px, #1f1f27 4px, #1f1f27 8px);' },
-    { id: 'grid', nombre: 'Cuadrícula', preview: 'background: linear-gradient(to right, rgba(255,255,255,0.12) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.12) 1px, transparent 1px), #18181b; background-size: 8px 8px;' },
-    { id: 'hex', nombre: 'Malla Gym', preview: 'background: radial-gradient(circle, rgba(59,130,246,0.28), #09090b);' }
+    { id: 'none', nombre: 'Liso' },
+    { id: 'aurora', nombre: 'Aurora' },
+    { id: 'grid', nombre: 'Cuadrícula' },
+    { id: 'dots', nombre: 'Puntos' },
+    { id: 'hex', nombre: 'Panal' },
+    { id: 'pesas', nombre: 'Discos' }
   ];
 
-  function renderBackgroundPatternSelector(aesPref) {
-    const pref = aesPref || (Store.getAestheticPreference ? Store.getAestheticPreference() : {});
-    const activePat = pref.bgPattern || 'none';
-    const nonePat = BG_PATTERNS[0];
-    const restPats = BG_PATTERNS.slice(1);
+  function getEffectiveTheme() {
+    return document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+  }
+
+  /** Avatar del usuario: foto si cargó una, o iniciales sobre el color principal. */
+  function renderAvatar(user, state, size = 40, extraClass = '') {
+    const perfil = (state && state.perfil) || {};
+    const nombre = (user && (user.displayName || user.username)) || '';
+    const style = `width:${size}px;height:${size}px;font-size:${Math.round(size * 0.38)}px;`;
+    if (perfil.avatar) {
+      return `<span class="avatar ${extraClass}" style="${style}"><img src="${h(perfil.avatar)}" alt=""></span>`;
+    }
+    return `<span class="avatar avatar-initials ${extraClass}" style="${style}" aria-hidden="true">${h(Engine.inicialesDe(nombre))}</span>`;
+  }
+
+  /** Nombre corto para saludar: "Juan (Alumno)" -> "Juan". */
+  function nombreCorto(user) {
+    const base = String((user && (user.displayName || user.username)) || '').replace(/\([^)]*\)/g, ' ').trim();
+    return base.split(/\s+/)[0] || 'atleta';
+  }
+
+  function fechaLarga(iso) {
+    try {
+      const d = new Date(iso + 'T12:00:00');
+      const txt = d.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'short' }).replace('.', '');
+      return txt.charAt(0).toUpperCase() + txt.slice(1);
+    } catch (_) {
+      return iso;
+    }
+  }
+
+  /** Tira de la semana (L a D) con los días entrenados y el día de hoy. */
+  function renderSemanaStrip(state) {
+    const hoyISO = Engine.todayISO();
+    const hoy = new Date(hoyISO + 'T12:00:00');
+    const offset = (hoy.getDay() + 6) % 7; // lunes = 0
+    const entrenados = new Set((state.entrenamientos || []).filter(t => !t.deleted && t.fecha).map(t => t.fecha));
+    const letras = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+    let hechos = 0;
+    const celdas = letras.map((letra, i) => {
+      const d = new Date(hoy);
+      d.setDate(hoy.getDate() - offset + i);
+      const iso = Engine.todayISO(d);
+      const hecho = entrenados.has(iso);
+      if (hecho) hechos++;
+      return `<div class="semana-dia ${hecho ? 'hecho' : ''} ${iso === hoyISO ? 'hoy' : ''}"><span>${letra}</span><i>${hecho ? renderIcon('check') : ''}</i></div>`;
+    }).join('');
+    return { html: `<div class="semana-strip" aria-label="Días entrenados esta semana">${celdas}</div>`, hechos };
+  }
+
+  /** Panel de apariencia: tema, color principal, color y estilo de fondo, foto propia. */
+  function renderAppearancePanel() {
+    const pref = Store.getAestheticPreference();
+    const themePref = Store.getThemePreference ? Store.getThemePreference() : 'dark';
+    const theme = getEffectiveTheme();
+    const bgActual = theme === 'light' ? pref.bgColorLight : pref.bgColorDark;
+    const bgPresets = BG_COLOR_PRESETS[theme];
+    const accentEsPreset = ACCENT_PRESETS.some(a => a.color.toLowerCase() === pref.accentColor.toLowerCase());
+    const bgEsPreset = bgPresets.some(b => b.color.toLowerCase() === (bgActual || '').toLowerCase());
+    const hayFoto = Boolean(Store.getBackgroundPhoto());
+
     return `
-      <div style="margin-top: 8px; padding-top: 10px; border-top: 1px dashed var(--border-subtle); display: flex; flex-direction: column; gap: 8px;">
-        <span class="theme-selector-label">Tema de Fondo</span>
-        <button type="button" class="pattern-chip ${activePat === nonePat.id ? 'active' : ''}" data-action="set-aesthetic-pattern" data-pattern="${nonePat.id}" style="flex-direction: row; justify-content: center; padding: 8px 10px;">
-          <span style="width:14px;height:14px;border-radius:4px;border:1px solid var(--border-subtle);${nonePat.preview};display:inline-block;"></span>
-          <span>${nonePat.nombre}</span>
-        </button>
-        <div class="pattern-chips-grid">
-          ${restPats.map(p => `
-            <button type="button" class="pattern-chip ${activePat === p.id ? 'active' : ''}" data-action="set-aesthetic-pattern" data-pattern="${p.id}">
-              <div class="pattern-preview" style="${p.preview}"></div>
-              <span>${h(p.nombre)}</span>
-            </button>
-          `).join('')}
-        </div>
+      <div class="appearance">
+        <section class="appearance-group">
+          <span class="appearance-label">Tema</span>
+          <div class="seg">
+            ${[['dark', 'Oscuro'], ['light', 'Claro'], ['system', 'Automático']].map(([val, label]) => `
+              <button type="button" class="seg-btn ${themePref === val ? 'active' : ''}" data-action="set-theme-pref" data-theme-val="${val}">${label}</button>
+            `).join('')}
+          </div>
+        </section>
+
+        <section class="appearance-group">
+          <span class="appearance-label">Color principal</span>
+          <div class="swatch-row">
+            ${ACCENT_PRESETS.map(a => `
+              <button type="button" class="swatch ${pref.accentColor.toLowerCase() === a.color.toLowerCase() ? 'active' : ''}" data-action="set-aesthetic-accent" data-color="${a.color}" style="--sw:${a.color};" title="${a.nombre}" aria-label="${a.nombre}"></button>
+            `).join('')}
+            <label class="swatch swatch-custom ${accentEsPreset ? '' : 'active'}" style="--sw:${accentEsPreset ? 'transparent' : h(pref.accentColor)};" title="Elegir otro color">
+              ${accentEsPreset ? renderIcon('plus') : ''}
+              <input type="color" value="${h(pref.accentColor)}" data-change="pick-accent-color" aria-label="Elegir color principal">
+            </label>
+          </div>
+        </section>
+
+        <section class="appearance-group">
+          <span class="appearance-label">Color de fondo</span>
+          <div class="swatch-row">
+            ${bgPresets.map(b => `
+              <button type="button" class="swatch swatch-bg ${(bgActual || '').toLowerCase() === b.color.toLowerCase() ? 'active' : ''}" data-action="set-aesthetic-bgcolor" data-color="${b.color}" style="--sw:${b.muestra};" title="${b.nombre}" aria-label="${b.nombre}"></button>
+            `).join('')}
+            <label class="swatch swatch-bg swatch-custom ${bgEsPreset ? '' : 'active'}" style="--sw:${bgEsPreset ? 'transparent' : h(bgActual)};" title="Elegir otro color de fondo">
+              ${bgEsPreset ? renderIcon('plus') : ''}
+              <input type="color" value="${h(bgActual || bgPresets[0].muestra)}" data-change="pick-bg-color" aria-label="Elegir color de fondo">
+            </label>
+          </div>
+        </section>
+
+        <section class="appearance-group">
+          <span class="appearance-label">Estilo de fondo</span>
+          <div class="bgstyle-grid">
+            ${BG_PATTERNS.map(pt => `
+              <button type="button" class="bgstyle ${pref.bgPattern === pt.id ? 'active' : ''}" data-action="set-aesthetic-pattern" data-pattern="${pt.id}">
+                <span class="bgstyle-preview" data-preview="${pt.id}"></span>
+                <span>${pt.nombre}</span>
+              </button>
+            `).join('')}
+            <label class="bgstyle ${pref.bgPattern === 'foto' ? 'active' : ''}">
+              <span class="bgstyle-preview" data-preview="foto" ${hayFoto ? `style="background-image:url('${Store.getBackgroundPhoto()}')"` : ''}>${hayFoto ? '' : renderIcon('camera')}</span>
+              <span>${hayFoto ? 'Tu foto' : 'Foto'}</span>
+              <input type="file" accept="image/*" data-change="upload-bg-photo" hidden>
+            </label>
+          </div>
+          ${pref.bgPattern === 'foto' && hayFoto ? `
+            <div class="range-row">
+              <span>Atenuar foto</span>
+              <input type="range" min="0" max="85" step="5" value="${pref.bgDim}" data-change="set-bg-dim" data-live="set-bg-dim" aria-label="Atenuar foto de fondo">
+              <button type="button" class="btn-link" data-action="remove-bg-photo">Quitar</button>
+            </div>
+          ` : (hayFoto ? `
+            <div class="range-row">
+              <button type="button" class="btn-link" data-action="set-aesthetic-pattern" data-pattern="foto">Usar mi foto</button>
+              <button type="button" class="btn-link" data-action="remove-bg-photo">Quitar foto</button>
+            </div>
+          ` : '')}
+        </section>
+
+        <button type="button" class="btn-link appearance-reset" data-action="reset-aesthetic-pref">Restablecer apariencia</button>
       </div>
     `;
   }
@@ -286,12 +426,12 @@
     return `
       <div class="app-brand-wrapper">
         <svg class="app-logo-svg" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <rect x="6" y="6" width="88" height="88" rx="20" fill="var(--logo-box-bg, #18181B)" stroke="var(--logo-box-stroke, #2563EB)" stroke-width="4"/>
-          <rect x="18" y="36" width="10" height="28" rx="4" fill="var(--logo-dumbbell, #3B82F6)"/>
-          <rect x="30" y="28" width="8" height="44" rx="3" fill="var(--logo-dumbbell, #2563EB)"/>
-          <rect x="38" y="46" width="24" height="8" rx="2" fill="var(--steel-silver, #A1A1AA)"/>
-          <rect x="62" y="28" width="8" height="44" rx="3" fill="var(--logo-dumbbell, #2563EB)"/>
-          <rect x="72" y="36" width="10" height="28" rx="4" fill="var(--logo-dumbbell, #3B82F6)"/>
+          <rect x="4" y="4" width="92" height="92" rx="26" fill="var(--accent)"/>
+          <rect x="19" y="37" width="9" height="26" rx="4" fill="var(--on-accent)"/>
+          <rect x="30" y="29" width="9" height="42" rx="4" fill="var(--on-accent)"/>
+          <rect x="39" y="46" width="22" height="8" rx="2" fill="var(--on-accent)"/>
+          <rect x="61" y="29" width="9" height="42" rx="4" fill="var(--on-accent)"/>
+          <rect x="72" y="37" width="9" height="26" rx="4" fill="var(--on-accent)"/>
         </svg>
         <div class="app-brand-text">
           <div class="app-brand-title">Fitness MiniApp</div>
@@ -478,87 +618,48 @@
   // ==========================================
   function renderAuthView() {
     return `
-      <div style="min-height: 94vh; display: flex; align-items: center; justify-content: center; padding: 16px;">
-        <div style="width: 100%; max-width: 920px; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; align-items: stretch;">
-          
-          <!-- Columna 1: Iniciar Sesión o Crear Cuenta (Alumno / Docente) -->
-          <div class="card">
-            <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;">
-              ${renderAppBrand('Ingreso Personal · Alumno o Docente')}
-              <span class="badge badge-blue">v${APP_VERSION}</span>
-            </div>
-
-            <p style="font-size: 13px; color: var(--text-muted); line-height: 1.45;">
-              Ingresá con tu usuario y contraseña personal, o creá tu cuenta nueva eligiendo si sos <strong>Alumno</strong> o <strong>Docente / Profesor</strong>.
-            </p>
-
-            <form data-action="submit-login" style="display: flex; flex-direction: column; gap: 12px;">
-              <div class="form-group">
-                <label class="form-label" for="login-username">Usuario</label>
-                <input type="text" id="login-username" class="form-input" placeholder="Ingresá tu nombre de usuario" required autocomplete="username" autocapitalize="none">
-              </div>
-
-              <div class="form-group">
-                <label class="form-label" for="login-pin">Contraseña o PIN</label>
-                <input type="password" id="login-pin" class="form-input" placeholder="Ingresá tu contraseña o PIN" required>
-              </div>
-
-              <button type="submit" class="btn-primary" style="margin-top: 2px;">
-                Ingresar con mi Usuario y Contraseña
-              </button>
-
-              <button type="button" class="btn-secondary" data-action="login-biometrics" style="display:inline-flex;align-items:center;justify-content:center;gap:6px;">
-                ${renderIcon('bolt')} Ingresar con Face ID / Huella Digital
-              </button>
-            </form>
-
-            <div style="border-top: 1px solid var(--border-subtle); padding-top: 14px; display: flex; flex-direction: column; gap: 8px;">
-              <span style="font-size: 12px; font-weight: 700; color: var(--text-main); text-align: center;">
-                ¿Sos nuevo o te compartieron este enlace? Elegí tu rol:
-              </span>
-              <button type="button" class="btn-primary" data-action="open-register-modal">
-                + Crear Cuenta Nueva (Elegir Alumno o Docente)
-              </button>
-            </div>
+      <div class="auth-screen">
+        <div class="auth-card">
+          <div class="auth-brand">
+            <svg class="auth-logo" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <rect x="4" y="4" width="92" height="92" rx="26" fill="var(--accent)"/>
+              <rect x="19" y="37" width="9" height="26" rx="4" fill="var(--on-accent)"/>
+              <rect x="30" y="29" width="9" height="42" rx="4" fill="var(--on-accent)"/>
+              <rect x="39" y="46" width="22" height="8" rx="2" fill="var(--on-accent)"/>
+              <rect x="61" y="29" width="9" height="42" rx="4" fill="var(--on-accent)"/>
+              <rect x="72" y="37" width="9" height="26" rx="4" fill="var(--on-accent)"/>
+            </svg>
+            <h1 class="auth-title">Fitness MiniApp</h1>
+            <p class="auth-sub">Tu entrenamiento, serie por serie.</p>
           </div>
 
-          <!-- Columna 2: Información de Roles y Acceso Rápido de Prueba -->
-          <div class="card" style="justify-content: space-between;">
-            <div style="display: flex; flex-direction: column; gap: 12px;">
-              <div class="card-header">
-                <h2 class="card-title">¿Cómo funciona Fitness MiniApp?</h2>
-                <span class="badge badge-emerald">100% Offline</span>
-              </div>
-
-              <div style="display: flex; flex-direction: column; gap: 10px; font-size: 13px; color: var(--text-muted); line-height: 1.5;">
-                <div style="background: var(--bg-elevated); padding: 12px; border-radius: var(--radius-md); border: 1px solid var(--border-subtle);">
-                  <strong style="color: var(--text-main); display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">${renderIcon('user')} Modo Alumno / Atleta (Móvil y PC)</strong>
-                  Cada alumno tiene su sesión privada aislada y un <strong>Código Único (ej. GYM-1024)</strong>. Podés armar tu rutina del día con los ejercicios ilustrados (Posición Inicial y Final), editar o quitar cualquier ejercicio, cargar series y registrar tu estado psicofísico.
-                </div>
-                <div style="background: var(--bg-elevated); padding: 12px; border-radius: var(--radius-md); border: 1px solid var(--border-subtle);">
-                  <strong style="color: var(--text-main); display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">${renderIcon('clipboard')} Modo Docente / Profesor (Panel Clínico)</strong>
-                  Vinculá a tus alumnos con su código único, supervisá su carga semanal, prescribí o editá sus rutinas y registrá observaciones clínicas.
-                </div>
-              </div>
+          <form data-action="submit-login" class="auth-form">
+            <div class="form-group">
+              <label class="form-label" for="login-username">Usuario</label>
+              <input type="text" id="login-username" class="form-input" placeholder="Tu usuario" required autocomplete="username" autocapitalize="none">
             </div>
-
-            <div style="border-top: 1px solid var(--border-subtle); padding-top: 12px; display: flex; flex-direction: column; gap: 8px;">
-              <span style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: var(--text-dim);">
-                Cuentas Demo de Prueba Rápida (PIN: 1234):
-              </span>
-              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                <button type="button" class="btn-secondary" data-action="quick-demo-login" data-username="juan" data-mode="phone-alumno">
-                  Demo Alumno (Juan)
-                </button>
-                <button type="button" class="btn-secondary" data-action="quick-demo-login" data-username="profe" data-mode="pc-profesor">
-                  Demo Docente (Profe)
-                </button>
-              </div>
-              ${renderJFCopyrightSeal()}
+            <div class="form-group">
+              <label class="form-label" for="login-pin">Contraseña o PIN</label>
+              <input type="password" id="login-pin" class="form-input" placeholder="Tu contraseña" required autocomplete="current-password">
             </div>
+            <button type="submit" class="btn-primary btn-lg">Ingresar</button>
+            <button type="button" class="btn-ghost" data-action="login-biometrics">
+              ${renderIcon('shield')} Usar Face ID o huella
+            </button>
+          </form>
+
+          <div class="auth-divider"><span>¿Primera vez?</span></div>
+
+          <button type="button" class="btn-secondary btn-lg" data-action="open-register-modal">Crear cuenta</button>
+
+          <div class="auth-demo">
+            <span>Probar sin cuenta:</span>
+            <button type="button" class="btn-link" data-action="quick-demo-login" data-username="juan" data-mode="phone-alumno">alumno</button>
+            <span>·</span>
+            <button type="button" class="btn-link" data-action="quick-demo-login" data-username="profe" data-mode="pc-profesor">profesor</button>
           </div>
-
         </div>
+        <p class="auth-foot">© JF Development · v${APP_VERSION}</p>
       </div>
     `;
   }
@@ -587,38 +688,26 @@
 
     const prevStep = bloqueKey === 'A' ? 'rutina' : (bloqueKey === 'B' ? 'A' : 'B');
     const nextStep = bloqueKey === 'A' ? 'B' : (bloqueKey === 'B' ? 'cierre' : null);
-    const prevLabel = bloqueKey === 'A' ? 'Previa' : (bloqueKey === 'B' ? 'Bloque A' : 'Bloque B');
-    const nextLabel = bloqueKey === 'A' ? 'Bloque B' : 'Cierre';
+    const prevLabel = bloqueKey === 'A' ? 'Entrada' : (bloqueKey === 'B' ? 'Fuerza A' : 'Fuerza B');
+    const nextLabel = bloqueKey === 'A' ? 'Fuerza B' : 'Cierre';
+    const tituloBloque = esBloqueCierre ? 'Cierre' : `Fuerza ${bloqueKey}`;
 
     return `
-      <div class="card" style="padding: 10px 12px; gap: 6px; flex-shrink: 0;">
-        <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px;">
-          <div style="display: flex; align-items: center; gap: 6px; min-width: 0;">
-            <h2 class="card-title" style="font-size: 14.5px; margin: 0;">
-              ${esBloqueCierre ? 'Cierre (opcional)' : `Bloque ${bloqueKey}`}
-            </h2>
-            <span class="badge" style="font-family: var(--font-mono); font-size: 10px;">${listaEjercicios.length} ej.</span>
-          </div>
-          <div style="display: flex; gap: 6px; flex-shrink: 0;">
-            <button type="button" class="btn-primary btn-sm" data-action="open-catalog-picker" data-mode="workout" data-bloque="${bloqueKey}" data-filter-group="${esBloqueCierre ? 'brazos' : 'todos'}" style="min-height: 32px; padding: 4px 10px; font-size: 11.5px !important;">
-              ${renderIcon('plus')} Catálogo
+      <div class="block-bar">
+        <div class="row-between">
+          <span class="section-title">${tituloBloque}${esBloqueCierre ? ' <em>opcional</em>' : ''}</span>
+          <div class="row-gap">
+            <button type="button" class="btn-secondary btn-sm" data-action="open-catalog-picker" data-mode="workout" data-bloque="${bloqueKey}" data-filter-group="${esBloqueCierre ? 'brazos' : 'todos'}">
+              ${renderIcon('plus')} Agregar
             </button>
-            <button type="button" class="btn-create-ej-inline" data-action="open-create-custom-ejercicio" data-bloque="${bloqueKey}" data-grupo="${esBloqueCierre ? 'brazos' : 'pecho'}" style="min-height: 32px; padding: 4px 10px; font-size: 11.5px;">
-              ${renderIcon('plus')} Crear
-            </button>
+            <button type="button" class="btn-link" data-action="open-create-custom-ejercicio" data-bloque="${bloqueKey}" data-grupo="${esBloqueCierre ? 'brazos' : 'pecho'}">Crear</button>
           </div>
         </div>
 
         ${!esBloqueCierre ? `
-          <div class="modulation-toggle">
-            <button type="button" class="mod-btn ${!esVertical ? 'active' : ''}" data-action="set-bloque-modalidad" data-bloque="${bloqueKey}" data-modalidad="horizontal">
-              <strong>Horizontal</strong>
-              <span>Todas las series de 1 ejercicio</span>
-            </button>
-            <button type="button" class="mod-btn ${esVertical ? 'active' : ''}" data-action="set-bloque-modalidad" data-bloque="${bloqueKey}" data-modalidad="vertical">
-              <strong>Vertical (Circuito)</strong>
-              <span>1 serie de cada ejercicio por vuelta</span>
-            </button>
+          <div class="seg seg-sm" title="Por ejercicio: todas las series de un ejercicio. Circuito: una serie de cada uno por vuelta.">
+            <button type="button" class="seg-btn ${!esVertical ? 'active' : ''}" data-action="set-bloque-modalidad" data-bloque="${bloqueKey}" data-modalidad="horizontal">Por ejercicio</button>
+            <button type="button" class="seg-btn ${esVertical ? 'active' : ''}" data-action="set-bloque-modalidad" data-bloque="${bloqueKey}" data-modalidad="vertical">Circuito</button>
           </div>
 
           ${esVertical ? `
@@ -653,12 +742,12 @@
         ${listaEjercicios.length === 0 ? `
           <div class="card" style="text-align: center; padding: 18px 14px;">
             <p style="font-size: 13px; font-weight: 700; color: var(--text-main);">
-              Sin ejercicios en ${esBloqueCierre ? 'Cierre' : `Bloque ${bloqueKey}`}.
+              Sin ejercicios en ${tituloBloque}.
             </p>
             <p style="font-size: 11.5px; color: var(--text-dim); margin-top: 2px;">
               ${esBloqueCierre
                 ? 'Podés sumar un accesorio final o tocar Terminar.'
-                : 'Usá Catálogo o Crear para sumar ejercicios acá.'}
+                : 'Tocá Agregar para elegir del catálogo, o Crear si no figura.'}
             </p>
           </div>
         ` : listaEjercicios.map((item, idx) => {
@@ -677,32 +766,27 @@
             return `
               <div class="ej-step-card ${yaGuardado ? 'completo' : ''}" data-drag-id="${h(ej.id)}">
                 <div class="ej-card-top">
+                  <span class="drag-handle" data-drag-handle title="Mantené y arrastrá para ordenar" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></span>
                   <div class="ej-thumb" data-action="view-ejercicio" data-ejercicio-id="${h(ej.id)}" title="Ver técnica de ${h(ej.nombre)}">
                     ${media.illustrationUrl ? `
-                      <img class="ej-thumb-img" src="${h(media.illustrationUrl)}" alt="${h(ej.nombre)}" loading="lazy">
+                      <img class="ej-thumb-img" src="${h(media.illustrationUrl)}" alt="" loading="lazy">
                     ` : `
                       <div class="ej-thumb-fallback">${h((ej.nombre || 'EJ').slice(0, 2).toUpperCase())}</div>
                     `}
                   </div>
                   <div class="ej-info">
-                    <div style="display: flex; align-items: center; gap: 5px; flex-wrap: wrap;">
-                      <h3 class="ej-title" style="margin: 0;">${idx + 1}. ${h(ej.nombre)}</h3>
-                      <span class="badge badge-neon" style="font-size: 9px; padding: 2px 6px;">${h(ej.grupoMuscular)}</span>
-                    </div>
+                    <h3 class="ej-title">${h(ej.nombre)}</h3>
                     <div class="ej-clase-anterior">
                       ${prev
                         ? `Última vez (${h(prevFechaDM)}): <strong>${h(prev.texto)}</strong>`
-                        : '<span class="primera-vez">Sin registros previos</span>'}
+                        : `<span class="primera-vez">${h(ej.grupoMuscular || '')} · primera vez</span>`}
                     </div>
-                    ${item.notaProfesor ? `<p class="ej-nota" style="margin-top: 2px;">Nota profe: ${h(item.notaProfesor)}</p>` : ''}
+                    ${item.notaProfesor ? `<p class="ej-nota">${h(item.notaProfesor)}</p>` : ''}
                   </div>
                   <div class="ej-tools">
                     ${!esBloqueCierre ? `
-                      <button type="button" class="badge" data-action="move-ej-bloque" data-ejercicio-id="${h(ej.id)}" data-entrenamiento-id="${h(entActivo.id)}" data-target-bloque="${bloqueKey === 'A' ? 'B' : 'A'}" title="Mover al otro bloque" style="cursor: pointer; font-size: 10px;">
-                        ${bloqueKey === 'A' ? '→ B' : '→ A'}
-                      </button>
+                      <button type="button" class="btn-icon-action btn-move" data-action="move-ej-bloque" data-ejercicio-id="${h(ej.id)}" data-entrenamiento-id="${h(entActivo.id)}" data-target-bloque="${bloqueKey === 'A' ? 'B' : 'A'}" title="Pasar a Fuerza ${bloqueKey === 'A' ? 'B' : 'A'}">${bloqueKey === 'A' ? 'B' : 'A'}</button>
                     ` : ''}
-                    <button type="button" class="btn-eye-icon" data-action="view-ejercicio" data-ejercicio-id="${h(ej.id)}" title="Ver técnica">${renderIcon('eye')}</button>
                     <button type="button" class="btn-icon-action danger" data-action="delete-sesion-ej" data-ejercicio-id="${h(ej.id)}" data-entrenamiento-id="${h(entActivo.id)}" title="Quitar de hoy">${renderIcon('x')}</button>
                   </div>
                 </div>
@@ -768,7 +852,7 @@
                         </div>
                       </div>
                       <button type="button" class="btn-primary btn-save-bulk" data-action="save-ejercicio-completo" data-ejercicio-id="${h(ej.id)}" data-entrenamiento-id="${h(entActivo.id)}">
-                        ${renderIcon('check')} Guardar series
+                        ${renderIcon('check')} Guardar
                       </button>
                     </div>
                   `}
@@ -779,21 +863,24 @@
       </div>
 
       <div style="display: flex; flex-direction: column; gap: 6px; flex-shrink: 0;">
+        ${esBloqueCierre ? `
+          <button type="button" class="btn-link" data-action="save-today-as-routine" style="align-self: center;">Guardar lo de hoy como rutina</button>
+        ` : ''}
         ${esVertical && listaEjercicios.length > 0 ? `
           <button type="button" class="btn-primary" data-action="complete-vuelta-vertical" data-bloque="${bloqueKey}" data-entrenamiento-id="${h(entActivo.id)}" style="background: var(--accent-emerald); min-height: 40px; font-size: 13px !important;">
             ${renderIcon('repeat')} Completar Vuelta #${progreso.vueltasCompletadas + 1} (1 serie c/u)
           </button>
         ` : ''}
         <div style="display: flex; gap: 8px;">
-          <button type="button" class="btn-secondary" data-action="set-workout-step" data-step="${prevStep}" style="flex: 1; min-height: 40px;">
+          <button type="button" class="btn-secondary" data-action="set-workout-step" data-step="${prevStep}" style="flex: 1;">
             ${renderIcon('arrowLeft')} ${prevLabel}
           </button>
           ${nextStep ? `
-            <button type="button" class="btn-primary" data-action="set-workout-step" data-step="${nextStep}" style="flex: 1.4; min-height: 40px;">
+            <button type="button" class="btn-primary" data-action="set-workout-step" data-step="${nextStep}" style="flex: 1.6;">
               ${nextLabel} ${renderIcon('arrowRight')}
             </button>
           ` : `
-            <button type="button" class="btn-primary" data-action="finish-workout" data-entrenamiento-id="${h(entActivo.id)}" style="flex: 1.4; min-height: 40px; background: var(--accent-emerald);">
+            <button type="button" class="btn-primary" data-action="finish-workout" data-entrenamiento-id="${h(entActivo.id)}" style="flex: 1.6;">
               ${renderIcon('check')} Terminar sesión
             </button>
           `}
@@ -820,90 +907,74 @@
       const tieneFicha = Boolean(state.perfil && state.perfil.diasSemana && state.perfil.diasSemana.length > 0);
       const rutinaHoy = hoyInfo.rutina;
 
+      const ultimo = Engine.ultimoEntrenamiento(state);
+      const semana = renderSemanaStrip(state);
+      const metaSemana = (state.perfil && Array.isArray(state.perfil.diasSemana)) ? state.perfil.diasSemana.length : 0;
+      const otrasRutinas = rutinasActivas.filter(r => !rutinaHoy || r.id !== rutinaHoy.id);
+
       return `
         <div class="onepage-view">
-          <div class="hero-checkin-card">
-            <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-              <span style="font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim);">
-                ${h(hoyInfo.dia)} · ${hoyInfo.esDiaDeGym ? 'Día de entrenamiento' : 'Día libre'}
-              </span>
-              ${checkinHoy
-                ? `<span class="badge badge-emerald" style="font-size: 10px;">Ingresado ${h(checkinHoy.horaLlegada || '')} hs</span>`
-                : (!tieneFicha ? `<button type="button" class="badge badge-blue" data-action="switch-tab" data-tab="salud" style="cursor: pointer; font-size: 10px;">Ficha de salud</button>` : '')}
+          <div class="hero-card">
+            <div class="hero-top">
+              <span class="eyebrow">${hoyInfo.esDiaDeGym ? 'Hoy toca' : 'Día libre'}</span>
+              ${checkinHoy ? `<span class="chip chip-ok">${renderIcon('check')} Ingresaste ${h(checkinHoy.horaLlegada || '')}</span>` : ''}
             </div>
-
-            <div>
-              <h2 style="font-size: 18px; font-weight: 800; margin: 0; letter-spacing: -0.02em;">Hola, ${h(user.displayName)}</h2>
-              <p style="font-size: 12.5px; color: var(--text-muted); margin-top: 2px;">
-                ${checkinHoy
-                  ? 'Ya registraste tu ingreso hoy. Podés abrir una nueva sesión abajo.'
-                  : 'Registrá tu llegada al gimnasio para empezar la sesión de hoy.'}
-              </p>
-            </div>
-
-            <button type="button" class="hero-checkin-btn" data-action="checkin-gym-hoy" ${rutinaHoy ? `data-rutina-id="${h(rutinaHoy.id)}"` : ''}>
+            <h2 class="hero-title">${rutinaHoy ? h(rutinaHoy.nombre) : (hoyInfo.esDiaDeGym ? 'Entrenamiento del día' : 'Entrenamiento libre')}</h2>
+            <p class="hero-sub">
+              ${rutinaHoy
+                ? `${(rutinaHoy.ejercicios || []).length} ejercicios · ${h(rutinaHoy.horario || '19:00')} hs`
+                : (ultimo ? `Último entreno ${h(ultimo.haceTexto)} · ${ultimo.series} series` : 'Armás la sesión paso a paso al llegar.')}
+            </p>
+            <button type="button" class="btn-primary btn-xl hero-cta" data-action="checkin-gym-hoy" ${rutinaHoy ? `data-rutina-id="${h(rutinaHoy.id)}"` : ''}>
               ${renderIcon('play')}
-              <span>${checkinHoy ? 'Nueva sesión de entrenamiento' : 'Llegué al gimnasio — Empezar sesión'}</span>
+              <span>${checkinHoy ? 'Nueva sesión' : 'Llegué al gimnasio'}</span>
             </button>
           </div>
 
-          ${observacionesRecientes.length > 0 ? `
-            <div class="card" style="border-left: 3px solid var(--accent-blue); padding: 8px 12px; flex-shrink: 0;">
-              <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; gap: 8px;">
-                <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><strong>Nota del profe:</strong> ${h(observacionesRecientes[0].texto)}</span>
-                <button type="button" class="badge badge-blue" data-action="switch-tab" data-tab="salud" style="flex-shrink: 0;">Ver</button>
-              </div>
+          <div class="card card-flat semana-card">
+            <div class="row-between">
+              <span class="section-title">Esta semana</span>
+              <span class="section-meta">${semana.hechos}${metaSemana ? ` de ${metaSemana}` : ''} ${semana.hechos === 1 && !metaSemana ? 'día' : 'días'}</span>
             </div>
+            ${semana.html}
+          </div>
+
+          ${!tieneFicha ? `
+            <button type="button" class="list-row" data-action="switch-tab" data-tab="salud">
+              <span class="list-row-icon">${renderIcon('activity')}</span>
+              <span class="list-row-text"><strong>Completá tu ficha</strong><small>Días, horario y objetivo</small></span>
+              ${renderIcon('arrowRight')}
+            </button>
           ` : ''}
 
-          <div class="card" style="flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; padding: 10px 12px; gap: 8px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-shrink: 0;">
-              <span style="font-size: 12.5px; font-weight: 800;">Rutinas (${rutinasActivas.length})</span>
-              <div style="display: flex; gap: 6px;">
-                <button type="button" class="btn-create-ej-inline" data-action="open-create-custom-ejercicio" style="padding: 5px 9px; font-size: 11px;">
-                  ${renderIcon('plus')} Crear ej.
-                </button>
-                <button type="button" class="btn-sm btn-secondary" data-action="open-rutina-builder" style="min-height: 30px; padding: 4px 9px; font-size: 11px !important;">
-                  ${renderIcon('plus')} Rutina
-                </button>
-              </div>
+          ${observacionesRecientes.length > 0 ? `
+            <button type="button" class="list-row" data-action="switch-tab" data-tab="salud">
+              <span class="list-row-icon">${renderIcon('user')}</span>
+              <span class="list-row-text"><strong>Nota del profe</strong><small>${h(observacionesRecientes[0].texto)}</small></span>
+              ${renderIcon('arrowRight')}
+            </button>
+          ` : ''}
+
+          <div class="card card-flat card-fill">
+            <div class="row-between">
+              <span class="section-title">Mis rutinas</span>
+              <button type="button" class="btn-link" data-action="open-rutina-builder">${renderIcon('plus')} Nueva</button>
             </div>
 
             <div class="onepage-scroll-list">
-              ${rutinaHoy ? `
-                <div class="rutina-row hoy" style="padding: 9px 10px;">
-                  <div style="min-width: 0; flex: 1;">
-                    <div style="display: flex; align-items: center; gap: 6px;">
-                      <span class="badge badge-blue" style="font-size: 9.5px;">Hoy</span>
-                      <h3 style="font-size: 13.5px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${h(rutinaHoy.nombre)}</h3>
-                    </div>
-                    <div style="font-size: 11px; color: var(--text-dim); margin-top: 2px;">
-                      ${(rutinaHoy.ejercicios || []).length} ejercicios · ${h(rutinaHoy.horario || '19:00')} hs
-                    </div>
+              ${otrasRutinas.length > 0 ? otrasRutinas.map(r => `
+                <div class="rutina-row">
+                  <div class="rutina-row-text">
+                    <strong>${h(r.nombre)}</strong>
+                    <small>${(r.dias || []).map(d => h(d.slice(0, 3))).join(' · ')}${(r.dias || []).length ? ' · ' : ''}${(r.ejercicios || []).length} ejercicios</small>
                   </div>
-                  <button type="button" class="btn-primary btn-sm" data-action="start-workout" data-rutina-id="${h(rutinaHoy.id)}" style="min-height: 34px; padding: 4px 12px;">
-                    Iniciar
-                  </button>
-                </div>
-              ` : ''}
-
-              ${rutinasActivas.length > 0 ? rutinasActivas.filter(r => !rutinaHoy || r.id !== rutinaHoy.id).map(r => `
-                <div class="rutina-row" style="padding: 8px 10px;">
-                  <div style="min-width: 0; flex: 1;">
-                    <h3 style="font-size: 13px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${h(r.nombre)}</h3>
-                    <div style="font-size: 11px; color: var(--text-dim);">
-                      ${(r.dias || []).map(d => h(d.slice(0, 3))).join(' · ')} · ${(r.ejercicios || []).length} ej.
-                    </div>
-                  </div>
-                  <div style="display: flex; gap: 5px; flex-shrink: 0;">
-                    <button type="button" class="btn-icon-action" data-action="edit-rutina" data-rutina-id="${h(r.id)}" title="Editar">${renderIcon('edit')}</button>
-                    <button type="button" class="btn-primary btn-sm" data-action="start-workout" data-rutina-id="${h(r.id)}" style="min-height: 32px; padding: 4px 10px;">Iniciar</button>
-                  </div>
+                  <button type="button" class="btn-icon-action" data-action="edit-rutina" data-rutina-id="${h(r.id)}" title="Editar">${renderIcon('edit')}</button>
+                  <button type="button" class="btn-secondary btn-sm" data-action="start-workout" data-rutina-id="${h(r.id)}">Iniciar</button>
                 </div>
               `).join('') : `
-                <div style="padding: 14px; text-align: center; border: 1px dashed var(--border-subtle); border-radius: var(--radius-md); font-size: 12px; color: var(--text-muted);">
-                  Tocá "Llegué al gimnasio" arriba para armar tu sesión paso a paso.
-                </div>
+                <p class="empty-hint">
+                  ${rutinaHoy ? 'No tenés otras rutinas guardadas.' : 'Todavía no guardaste rutinas. Podés entrenar libre y guardarla al terminar.'}
+                </p>
               `}
             </div>
           </div>
@@ -944,23 +1015,16 @@
 
       return `
         <div class="onepage-view">
-          <div class="card active-session-bar" style="padding: 10px 12px; flex-shrink: 0;">
-            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
-              <div>
-                <span style="font-size: 10.5px; font-weight: 800; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em;">Estado psicofísico</span>
-                <h2 style="font-size: 16px; font-weight: 800; margin: 1px 0 0 0;">¿Cómo estás hoy?</h2>
-              </div>
-              <div style="display: flex; align-items: center; gap: 6px;">
-                ${readinessHoy ? '<span class="badge badge-emerald" style="font-size: 10px;">Guardado</span>' : ''}
-                <button type="button" class="btn-secondary btn-sm" data-action="set-workout-step" data-step="rutina" style="min-height: 32px; padding: 4px 10px;">
-                  Ir a rutina
-                </button>
-              </div>
+          <div class="step-head">
+            <div>
+              <span class="eyebrow">Antes de empezar</span>
+              <h2 class="step-title">¿Cómo llegás hoy?</h2>
             </div>
+            <button type="button" class="btn-link" data-action="set-workout-step" data-step="rutina">Saltar</button>
           </div>
 
-          <div class="card" style="flex: 0 0 auto; display: flex; flex-direction: column; padding: 12px; gap: 12px;">
-            <div style="display: flex; flex-direction: column; gap: 9px;">
+          <div class="card psico-card">
+            <div class="psico-rows">
               <div class="psico-compact-row">
                 <span class="psico-compact-label">Estado</span>
                 <div class="psico-chips">
@@ -1021,14 +1085,14 @@
                 </div>
               </div>
 
-              <div class="psico-dual-inputs" style="margin-top: 2px;">
-                <input type="text" id="step-psico-dolor" class="form-input" value="${h(draftReadiness.zonaDolor || '')}" placeholder="Molestia (opc.)">
-                <input type="text" id="step-psico-obs" class="form-input" value="${h(draftReadiness.observacionAlumno || '')}" placeholder="Observación (opc.)">
+              <div class="psico-dual-inputs">
+                <input type="text" id="step-psico-dolor" class="form-input" value="${h(draftReadiness.zonaDolor || '')}" placeholder="¿Alguna molestia?">
+                <input type="text" id="step-psico-obs" class="form-input" value="${h(draftReadiness.observacionAlumno || '')}" placeholder="Nota (opcional)">
               </div>
             </div>
 
-            <button type="button" class="btn-primary" data-action="submit-step-psicofisico" style="min-height: 46px;">
-              Continuar a la rutina ${renderIcon('arrowRight')}
+            <button type="button" class="btn-primary btn-lg" data-action="submit-step-psicofisico">
+              Continuar ${renderIcon('arrowRight')}
             </button>
           </div>
         </div>
@@ -1162,73 +1226,44 @@
     const ejerciciosBloqueA = ejerciciosList.filter(x => x.bloque === 'A');
     const ejerciciosBloqueB = ejerciciosList.filter(x => x.bloque === 'B');
     const ejerciciosCierre = ejerciciosList.filter(x => x.bloque === 'cierre');
-    const bloqueParaCrear = ['A', 'B', 'cierre'].includes(cfg.pasoActual) ? cfg.pasoActual : 'A';
     const estadoLabel = (readinessHoy && readinessHoy.estadoGeneral) || draftReadiness.estadoGeneral || 'Registrar';
 
     // Contenido de Rutina / Bloque A / Bloque B / Cierre
     let stepBodyHtml = '';
     if (cfg.pasoActual === 'rutina') {
       stepBodyHtml = `
-        <div style="display: flex; flex-direction: column; gap: 6px; flex-shrink: 0;">
-          <div class="toggle-pill-row">
-            <div>
-              <strong style="font-size: 13px;">Activación</strong>
-              <div style="font-size: 11px; color: var(--text-dim);">Entrada en calor previa</div>
-            </div>
-            <div class="toggle-seg">
-              <button type="button" class="toggle-seg-btn ${!cfg.activacionActiva ? 'active' : ''}" data-action="set-module-active" data-module="activacion" data-active="0">No</button>
-              <button type="button" class="toggle-seg-btn ${cfg.activacionActiva ? 'active' : ''}" data-action="set-module-active" data-module="activacion" data-active="1">Sí</button>
-            </div>
-          </div>
-
-          <div class="toggle-pill-row">
-            <div>
-              <strong style="font-size: 13px;">Movilidad</strong>
-              <div style="font-size: 11px; color: var(--text-dim);">Movilidad articular inicial</div>
-            </div>
-            <div class="toggle-seg">
-              <button type="button" class="toggle-seg-btn ${!cfg.movilidadActiva ? 'active' : ''}" data-action="set-module-active" data-module="movilidad" data-active="0">No</button>
-              <button type="button" class="toggle-seg-btn ${cfg.movilidadActiva ? 'active' : ''}" data-action="set-module-active" data-module="movilidad" data-active="1">Sí</button>
-            </div>
-          </div>
-        </div>
-
         <div class="onepage-scroll-list">
-          ${!cfg.activacionActiva && !cfg.movilidadActiva ? `
-            <div class="card" style="text-align: center; padding: 18px 14px;">
-              <p style="font-size: 13px; font-weight: 700; color: var(--text-main);">Sin activación ni movilidad previa.</p>
-              <p style="font-size: 11.5px; color: var(--text-dim); margin-top: 2px;">Podés pasar directo al Bloque A o activar alguno arriba.</p>
-            </div>
-          ` : ''}
-
-          ${cfg.activacionActiva ? `
-            <div class="card" style="padding: 10px 12px; gap: 6px;">
-              <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px;">
-                <strong style="font-size: 12.5px;">Activación (${actDoneCount}/${listaActivacionHoy.length})</strong>
-                <div style="display: flex; gap: 5px;">
-                  <button type="button" class="btn-primary btn-sm" data-action="open-catalog-picker" data-mode="workout" data-bloque="activacion" data-filter-group="activacion" style="min-height: 28px; padding: 3px 8px; font-size: 11px !important;">
+          <div class="card modulo-card ${cfg.activacionActiva ? '' : 'off'}">
+            <div class="row-between">
+              <button type="button" class="modulo-switch" data-action="set-module-active" data-module="activacion" data-active="${cfg.activacionActiva ? '0' : '1'}" role="switch" aria-checked="${cfg.activacionActiva}" title="${cfg.activacionActiva ? 'Hoy no hago activación' : 'Sumar activación'}">
+                <span class="switch ${cfg.activacionActiva ? 'on' : ''}"><i></i></span>
+                <span class="section-title">Activación ${cfg.activacionActiva ? `<em>${actDoneCount}/${listaActivacionHoy.length}</em>` : '<em>hoy no</em>'}</span>
+              </button>
+              ${cfg.activacionActiva ? `
+                <div class="row-gap">
+                  <button type="button" class="btn-secondary btn-sm" data-action="open-catalog-picker" data-mode="workout" data-bloque="activacion" data-filter-group="activacion">
                     ${renderIcon('plus')} Agregar
                   </button>
-                  <button type="button" class="btn-create-ej-inline" data-action="open-create-custom-ejercicio" data-bloque="activacion" data-grupo="activacion" style="min-height: 28px; padding: 3px 8px; font-size: 11px;">
-                    ${renderIcon('plus')} Crear
-                  </button>
+                  <button type="button" class="btn-link" data-action="open-create-custom-ejercicio" data-bloque="activacion" data-grupo="activacion">Crear</button>
                 </div>
-              </div>
+              ` : ''}
+            </div>
+            ${!cfg.activacionActiva ? '' : `<div class="modulo-body">
               ${listaActivacionHoy.length === 0 ? `
-                <p style="font-size: 11.5px; color: var(--text-dim); margin: 4px 0;">Sin ejercicios de activación cargados.</p>
+                <p class="empty-hint">Sin ejercicios de activación.</p>
               ` : listaActivacionHoy.map(act => {
                 const ejRef = (state.ejercicios || []).find(e => e.id === act.id) || (Engine.CATALOGO_EJERCICIOS || []).find(e => e.id === act.id);
                 const media = ejRef ? Engine.resolveEjercicioMedia(ejRef) : {};
                 return `
-                  <div class="ej-step-card" style="padding: 7px 9px;">
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                      <button type="button" class="badge ${act.completado ? 'badge-emerald' : ''}" data-action="toggle-act-mov-done" data-ejercicio-id="${h(act.id)}" data-entrenamiento-id="${h(entActivo.id)}" style="cursor: pointer; min-width: 28px; height: 28px; justify-content: center;">
+                  <div class="check-row ${act.completado ? 'done' : ''}">
+                    <div class="check-row-inner">
+                      <button type="button" class="check-box" data-action="toggle-act-mov-done" data-ejercicio-id="${h(act.id)}" data-entrenamiento-id="${h(entActivo.id)}" aria-label="Marcar ${h(act.nombre)} como hecho" aria-pressed="${act.completado}">
                         ${act.completado ? renderIcon('check') : ''}
                       </button>
-                      ${media.illustrationUrl ? `<img src="${h(media.illustrationUrl)}" alt="${h(act.nombre)}" style="width: 32px; height: 32px; border-radius: 6px; object-fit: cover; flex-shrink: 0;">` : ''}
-                      <div style="flex: 1; min-width: 0;">
-                        <div style="font-size: 12.5px; font-weight: 700; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${h(act.nombre)}</div>
-                        <div style="font-size: 10.5px; color: var(--text-dim);">${h(act.prescripcion || '')}</div>
+                      ${media.illustrationUrl ? `<img class="check-row-img" src="${h(media.illustrationUrl)}" alt="" loading="lazy">` : ''}
+                      <div class="check-row-text">
+                        <strong>${h(act.nombre)}</strong>
+                        <small>${h(act.prescripcion || '')}</small>
                       </div>
                       <button type="button" class="btn-eye-icon" data-action="view-ejercicio" data-ejercicio-id="${h(act.id)}" title="Ver técnica">${renderIcon('eye')}</button>
                       <button type="button" class="btn-icon-action danger" data-action="${act.esPersonalizadoEnSesion ? 'delete-sesion-ej' : 'delete-activacion'}" data-act-id="${h(act.id)}" data-ejercicio-id="${h(act.id)}" data-entrenamiento-id="${h(entActivo.id)}" title="Quitar">${renderIcon('x')}</button>
@@ -1236,51 +1271,55 @@
                   </div>
                 `;
               }).join('')}
-            </div>
-          ` : ''}
+            </div>`}
+          </div>
 
-          ${cfg.movilidadActiva ? `
-            <div class="card" style="padding: 10px 12px; gap: 6px;">
-              <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px;">
-                <strong style="font-size: 12.5px;">Movilidad (${listaMovilidadHoy.length})</strong>
-                <div style="display: flex; gap: 5px;">
-                  <button type="button" class="btn-primary btn-sm" data-action="open-catalog-picker" data-mode="workout" data-bloque="movilidad" data-filter-group="movilidad" style="min-height: 28px; padding: 3px 8px; font-size: 11px !important;">
+          <div class="card modulo-card ${cfg.movilidadActiva ? '' : 'off'}">
+            <div class="row-between">
+              <button type="button" class="modulo-switch" data-action="set-module-active" data-module="movilidad" data-active="${cfg.movilidadActiva ? '0' : '1'}" role="switch" aria-checked="${cfg.movilidadActiva}" title="${cfg.movilidadActiva ? 'Hoy no hago movilidad' : 'Sumar movilidad'}">
+                <span class="switch ${cfg.movilidadActiva ? 'on' : ''}"><i></i></span>
+                <span class="section-title">Movilidad ${cfg.movilidadActiva ? `<em>${listaMovilidadHoy.filter(m => m.completado).length}/${listaMovilidadHoy.length}</em>` : '<em>hoy no</em>'}</span>
+              </button>
+              ${cfg.movilidadActiva ? `
+                <div class="row-gap">
+                  <button type="button" class="btn-secondary btn-sm" data-action="open-catalog-picker" data-mode="workout" data-bloque="movilidad" data-filter-group="movilidad">
                     ${renderIcon('plus')} Agregar
                   </button>
-                  <button type="button" class="btn-create-ej-inline" data-action="open-create-custom-ejercicio" data-bloque="movilidad" data-grupo="movilidad" style="min-height: 28px; padding: 3px 8px; font-size: 11px;">
-                    ${renderIcon('plus')} Crear
-                  </button>
+                  <button type="button" class="btn-link" data-action="open-create-custom-ejercicio" data-bloque="movilidad" data-grupo="movilidad">Crear</button>
                 </div>
-              </div>
+              ` : ''}
+            </div>
+            ${!cfg.movilidadActiva ? '' : `<div class="modulo-body">
               ${hayMovilidadPrevia && listaMovilidadHoy.length === 0 ? `
                 <button type="button" class="btn-secondary btn-sm" data-action="repeat-last-movilidad" style="width: 100% !important; min-height: 30px; font-size: 11.5px !important;">
                   ${renderIcon('refresh')} Repetir movilidad de la última sesión
                 </button>
               ` : ''}
               ${listaMovilidadHoy.length === 0 ? `
-                <p style="font-size: 11.5px; color: var(--text-dim); margin: 4px 0;">Sin ejercicios de movilidad cargados.</p>
-              ` : listaMovilidadHoy.map(m => {
+                <p class="empty-hint">Sin ejercicios de movilidad.</p>
+              ` : `<div class="drag-list" data-drag-list="movilidad">${listaMovilidadHoy.map(m => {
                 const ejRef = (state.ejercicios || []).find(e => e.id === m.ejercicioId) || (Engine.CATALOGO_EJERCICIOS || []).find(e => e.id === m.ejercicioId);
                 const media = ejRef ? Engine.resolveEjercicioMedia(ejRef) : {};
                 return `
-                  <div class="ej-step-card" style="padding: 7px 9px;">
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                      <button type="button" class="badge ${m.completado ? 'badge-emerald' : ''}" data-action="toggle-act-mov-done" data-mov-id="${h(m.esSesionItem ? '' : m.id)}" data-ejercicio-id="${h(m.ejercicioId)}" data-entrenamiento-id="${h(entActivo.id)}" style="cursor: pointer; min-width: 28px; height: 28px; justify-content: center;">
+                  <div class="check-row ${m.completado ? 'done' : ''}" data-drag-id="${m.esSesionItem ? 'ses' : 'mov'}:${h(m.id)}">
+                    <div class="check-row-inner">
+                      <span class="drag-handle" data-drag-handle title="Mantené y arrastrá para ordenar" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></span>
+                      <button type="button" class="check-box" data-action="toggle-act-mov-done" data-mov-id="${h(m.esSesionItem ? '' : m.id)}" data-ejercicio-id="${h(m.ejercicioId)}" data-entrenamiento-id="${h(entActivo.id)}" aria-label="Marcar ${h(m.nombre)} como hecho" aria-pressed="${Boolean(m.completado)}">
                         ${m.completado ? renderIcon('check') : ''}
                       </button>
-                      ${media.illustrationUrl ? `<img src="${h(media.illustrationUrl)}" alt="${h(m.nombre)}" style="width: 32px; height: 32px; border-radius: 6px; object-fit: cover; flex-shrink: 0;">` : ''}
-                      <div style="flex: 1; min-width: 0;">
-                        <div style="font-size: 12.5px; font-weight: 700; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${h(m.nombre)}</div>
-                        <div style="font-size: 10.5px; color: var(--text-dim);">${m.series || 2} series × ${h(m.reps || '12')} reps</div>
+                      ${media.illustrationUrl ? `<img class="check-row-img" src="${h(media.illustrationUrl)}" alt="" loading="lazy">` : ''}
+                      <div class="check-row-text">
+                        <strong>${h(m.nombre)}</strong>
+                        <small>${m.series || 2} series × ${h(m.reps || '12')} reps</small>
                       </div>
                       <button type="button" class="btn-eye-icon" data-action="view-ejercicio" data-ejercicio-id="${h(m.ejercicioId)}" title="Ver técnica">${renderIcon('eye')}</button>
                       <button type="button" class="btn-icon-action danger" data-action="${m.esSesionItem ? 'delete-sesion-ej' : 'delete-movilidad'}" data-mov-id="${h(m.id)}" data-ejercicio-id="${h(m.ejercicioId)}" data-entrenamiento-id="${h(entActivo.id)}" title="Quitar">${renderIcon('x')}</button>
                     </div>
                   </div>
                 `;
-              }).join('')}
-            </div>
-          ` : ''}
+              }).join('')}</div>`}
+            </div>`}
+          </div>
 
           ${bloquesAmrapHoy.map(b => `
             <div class="amrap-card" style="padding: 10px 12px;">
@@ -1298,11 +1337,11 @@
         </div>
 
         <div style="display: flex; gap: 8px; flex-shrink: 0;">
-          <button type="button" class="btn-secondary" data-action="set-workout-step" data-step="psicofisico" style="flex: 1; min-height: 42px;">
-            ${renderIcon('arrowLeft')} Psicofísico
+          <button type="button" class="btn-secondary" data-action="set-workout-step" data-step="psicofisico" style="flex: 1;">
+            ${renderIcon('arrowLeft')} Estado
           </button>
-          <button type="button" class="btn-primary" data-action="set-workout-step" data-step="A" style="flex: 1.5; min-height: 42px;">
-            Ir a Bloque A ${renderIcon('arrowRight')}
+          <button type="button" class="btn-primary" data-action="set-workout-step" data-step="A" style="flex: 1.6;">
+            Fuerza A ${renderIcon('arrowRight')}
           </button>
         </div>
       `;
@@ -1316,45 +1355,27 @@
 
     return `
       <div class="onepage-view">
-        <div class="card active-session-bar" style="padding: 9px 10px; gap: 8px; flex-shrink: 0;">
-          <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
-            <h2 class="active-session-title" style="margin: 0; font-size: 15px; font-weight: 800; min-width: 0; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-              ${h(rutinaAsociada ? rutinaAsociada.nombre : 'Rutina de hoy')}
-            </h2>
-            <button type="button" class="badge ${readinessHoy ? 'badge-emerald' : 'badge-neon'}" data-action="set-workout-step" data-step="psicofisico" style="cursor: pointer; font-size: 10.5px; flex-shrink: 0;">
-              Estado: ${h(estadoLabel)}
+        <div class="session-head">
+          <div class="session-head-top">
+            <h2 class="session-title">${h(rutinaAsociada ? rutinaAsociada.nombre : 'Sesión de hoy')}</h2>
+            <button type="button" class="chip ${readinessHoy ? 'chip-ok' : ''}" data-action="set-workout-step" data-step="psicofisico" title="Cambiar mi estado de hoy">
+              ${h(estadoLabel)}
             </button>
-          </div>
-
-          <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px;">
-            <button type="button" class="btn-secondary btn-sm" data-action="open-create-custom-ejercicio" data-bloque="${h(bloqueParaCrear)}" title="Crear ejercicio nuevo" style="min-height: 32px; padding: 4px 6px; font-size: 11.5px !important; gap: 4px;">
-              ${renderIcon('plus')} Crear ej.
-            </button>
-            <button type="button" class="btn-secondary btn-sm" data-action="save-today-as-routine" title="Guardar rutina" style="min-height: 32px; padding: 4px 6px; font-size: 11.5px !important;">
-              Guardar rutina
-            </button>
-            <button type="button" class="btn-primary btn-sm" data-action="finish-workout" data-entrenamiento-id="${h(entActivo.id)}" style="min-height: 32px; padding: 4px 6px; font-size: 11.5px !important;">
-              Terminar
-            </button>
+            <button type="button" class="btn-secondary btn-sm" data-action="finish-workout" data-entrenamiento-id="${h(entActivo.id)}">Terminar</button>
           </div>
 
           <div class="workout-stepper" role="tablist">
-            <button type="button" class="step-pill ${cfg.pasoActual === 'rutina' ? 'active' : ''}" data-action="set-workout-step" data-step="rutina">
-              <span class="step-pill-label">Previa</span>
-              <span class="step-pill-sub">Inicio</span>
-            </button>
-            <button type="button" class="step-pill ${cfg.pasoActual === 'A' ? 'active' : ''} ${ejerciciosBloqueA.some(item => seriesEntreno.some(s => s.ejercicioId === item.ejercicio.id)) ? 'done' : ''}" data-action="set-workout-step" data-step="A">
-              <span class="step-pill-label">Bloque A</span>
-              <span class="step-pill-sub">${ejerciciosBloqueA.length} ej.</span>
-            </button>
-            <button type="button" class="step-pill ${cfg.pasoActual === 'B' ? 'active' : ''} ${ejerciciosBloqueB.some(item => seriesEntreno.some(s => s.ejercicioId === item.ejercicio.id)) ? 'done' : ''}" data-action="set-workout-step" data-step="B">
-              <span class="step-pill-label">Bloque B</span>
-              <span class="step-pill-sub">${ejerciciosBloqueB.length} ej.</span>
-            </button>
-            <button type="button" class="step-pill ${cfg.pasoActual === 'cierre' ? 'active' : ''} ${ejerciciosCierre.some(item => seriesEntreno.some(s => s.ejercicioId === item.ejercicio.id)) ? 'done' : ''}" data-action="set-workout-step" data-step="cierre">
-              <span class="step-pill-label">Cierre</span>
-              <span class="step-pill-sub">${ejerciciosCierre.length} ej.</span>
-            </button>
+            ${[
+              { step: 'rutina', label: 'Entrada', sub: `${listaActivacionHoy.length + listaMovilidadHoy.length} ej.`, done: actDoneCount > 0 },
+              { step: 'A', label: 'Fuerza A', sub: `${ejerciciosBloqueA.length} ej.`, done: ejerciciosBloqueA.some(item => seriesEntreno.some(sr => sr.ejercicioId === item.ejercicio.id)) },
+              { step: 'B', label: 'Fuerza B', sub: `${ejerciciosBloqueB.length} ej.`, done: ejerciciosBloqueB.some(item => seriesEntreno.some(sr => sr.ejercicioId === item.ejercicio.id)) },
+              { step: 'cierre', label: 'Cierre', sub: `${ejerciciosCierre.length} ej.`, done: ejerciciosCierre.some(item => seriesEntreno.some(sr => sr.ejercicioId === item.ejercicio.id)) }
+            ].map(st => `
+              <button type="button" class="step-pill ${cfg.pasoActual === st.step ? 'active' : ''} ${st.done ? 'done' : ''}" data-action="set-workout-step" data-step="${st.step}" role="tab" aria-selected="${cfg.pasoActual === st.step}">
+                <span class="step-pill-label">${st.label}</span>
+                <span class="step-pill-sub">${st.sub}</span>
+              </button>
+            `).join('')}
           </div>
         </div>
 
@@ -1367,137 +1388,103 @@
   function renderAlumnoRutinasSection(state) {
     const rutinas = (state.rutinas || []).filter(r => !r.deleted);
     const catalogo = (state.ejercicios || []).filter(e => !e.deleted);
+    const catalogoFiltrado = catalogo.filter(e => catalogoFiltroGrupo === 'todos' || e.grupoMuscular === catalogoFiltroGrupo);
+    const nombreGrupo = g => (g === 'todos' ? 'Todos' : g === 'activacion' ? 'Activación' : g === 'amrap' ? 'AMRAP' : g.charAt(0).toUpperCase() + g.slice(1));
 
     return `
       <div class="onepage-view">
-        <div class="card onepage-card" style="flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden;">
-          <div class="onepage-tabs-bar" style="flex-shrink: 0;">
-            <button type="button" class="onepage-tab-btn ${rutinasSubTab === 'rutinas' ? 'active' : ''}" data-action="set-rutinas-subtab" data-subtab="rutinas">
-              Mis Rutinas (${rutinas.length})
-            </button>
-            <button type="button" class="onepage-tab-btn ${rutinasSubTab === 'catalogo' ? 'active' : ''}" data-action="set-rutinas-subtab" data-subtab="catalogo">
-              Catálogo (${catalogo.length})
-            </button>
+        <div class="seg">
+          <button type="button" class="seg-btn ${rutinasSubTab === 'rutinas' ? 'active' : ''}" data-action="set-rutinas-subtab" data-subtab="rutinas">Mis rutinas</button>
+          <button type="button" class="seg-btn ${rutinasSubTab === 'catalogo' ? 'active' : ''}" data-action="set-rutinas-subtab" data-subtab="catalogo">Ejercicios</button>
+        </div>
+
+        ${rutinasSubTab === 'rutinas' ? `
+          <div class="row-between" style="flex-shrink: 0; padding: 0 2px;">
+            <span class="section-meta">${rutinas.length} ${rutinas.length === 1 ? 'rutina' : 'rutinas'}</span>
+            <div class="row-gap">
+              <button type="button" class="btn-link" data-action="open-amrap-builder">AMRAP</button>
+              <button type="button" class="btn-primary btn-sm" data-action="open-rutina-builder">${renderIcon('plus')} Nueva</button>
+            </div>
           </div>
 
-          ${rutinasSubTab === 'rutinas' ? `
-            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; flex-shrink: 0;">
-              <div>
-                <h2 class="card-title" style="font-size: 15px; color: var(--text-main);">Mis Rutinas</h2>
-                <p style="font-size: 11px; color: var(--text-dim);">Elegí días, horario y ejercicios.</p>
-              </div>
-              <div style="display: flex; gap: 6px;">
-                <button type="button" class="btn-secondary btn-sm" data-action="open-amrap-builder">
-                  + AMRAP
-                </button>
-                <button type="button" class="btn-primary btn-sm" data-action="open-rutina-builder">
-                  ${renderIcon('plus')} Nueva Rutina
-                </button>
-              </div>
+          ${rutinas.length === 0 ? `
+            <div class="empty-state">
+              <span class="empty-state-icon">${renderIcon('clipboard')}</span>
+              <strong>Todavía no tenés rutinas</strong>
+              <p>Armá tu plan con días y ejercicios, o entrená libre y guardalo al terminar.</p>
+              <button type="button" class="btn-secondary" data-action="open-rutina-builder" style="width: auto;">Crear mi primera rutina</button>
             </div>
-
-            ${rutinas.length === 0 ? `
-              <div style="padding: 18px; text-align: center; background: var(--bg-elevated); border-radius: var(--radius-md); color: var(--text-dim); font-size: 12.5px;">
-                Todavía no tenés rutinas creadas. Tocá <strong>"Nueva Rutina"</strong> para armar tu plan.
-              </div>
-            ` : `
-              <div class="onepage-scroll-list">
-                ${rutinas.map(r => `
-                  <div style="background: var(--bg-elevated); border-radius: var(--radius-md); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px;">
-                    <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 6px;">
-                      <div>
-                        <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                          <h3 style="font-size: 14.5px; font-weight: 800; color: var(--text-main);">${h(r.nombre)}</h3>
-                          <span class="badge badge-neon">${h(r.horario || '19:00')} hs</span>
-                        </div>
-                        <div style="display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px;">
-                          ${(r.dias || []).map(d => `<span class="badge" style="background: var(--bg-card); color: var(--text-muted); font-size: 9.5px; padding: 2px 6px;">${h(d.slice(0, 3))}</span>`).join('')}
-                        </div>
-                      </div>
-                      <div style="display: flex; gap: 4px;">
-                        <button type="button" class="btn-secondary btn-sm" data-action="open-catalog-picker" data-mode="append-to-rutina" data-rutina-id="${h(r.id)}">
-                          + Ej.
-                        </button>
-                        <button type="button" class="btn-secondary btn-sm" data-action="edit-rutina" data-rutina-id="${h(r.id)}" title="Editar">
-                          ${renderIcon('edit')}
-                        </button>
-                        <button type="button" class="btn-secondary btn-sm" data-action="delete-rutina" data-rutina-id="${h(r.id)}" title="Borrar">
-                          ${renderIcon('x')}
-                        </button>
-                      </div>
-                    </div>
-
-                    ${(r.ejercicios || []).length === 0 ? `
-                      <p style="font-size: 11.5px; color: var(--text-dim);">Sin ejercicios todavía. Tocá "+ Ej." para elegir del catálogo.</p>
-                    ` : `
-                      <div style="display: flex; flex-direction: column; gap: 4px;">
-                        ${r.ejercicios.map((re, idx) => {
-                          const ej = (state.ejercicios || []).find(e => e.id === re.ejercicioId)
-                            || Engine.CATALOGO_EJERCICIOS.find(e => e.id === re.ejercicioId)
-                            || { nombre: re.nombre || re.ejercicioId, grupoMuscular: '', equipo: '' };
-                          return `
-                            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; background: var(--bg-card); padding: 6px 10px; border-radius: var(--radius-sm);">
-                              <div style="min-width: 0; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                                <strong style="color: var(--text-main);">${idx + 1}. ${h(ej ? ej.nombre : re.ejercicioId)}</strong>
-                              </div>
-                              <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
-                                <span style="font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); font-weight: 700;">
-                                  ${re.seriesObjetivo}×${h(re.repsObjetivo)}
-                                </span>
-                                <button type="button" class="btn-eye-icon" data-action="view-ejercicio" data-ejercicio-id="${h(re.ejercicioId)}" title="Ver técnica">${renderIcon('eye')}</button>
-                                <button type="button" data-action="remove-ej-from-rutina" data-rutina-id="${h(r.id)}" data-index="${idx}" style="color: var(--text-dim); padding: 0 4px;" title="Quitar">${renderIcon('x')}</button>
-                              </div>
-                            </div>
-                          `;
-                        }).join('')}
-                      </div>
-                    `}
-                  </div>
-                `).join('')}
-              </div>
-            `}
           ` : `
-            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; flex-shrink: 0;">
-              <h3 class="card-title" style="font-size: 15px; color: var(--text-main);">Catálogo de Ejercicios</h3>
-              <button type="button" class="btn-create-ej-inline" data-action="open-create-custom-ejercicio">
-                ${renderIcon('plus')} Crear Ejercicio
-              </button>
-            </div>
+            <div class="onepage-scroll-list">
+              ${rutinas.map(r => `
+                <div class="card rutina-card">
+                  <div class="row-between">
+                    <div class="rutina-row-text">
+                      <strong>${h(r.nombre)}</strong>
+                      <small>${(r.dias || []).map(d => h(d.slice(0, 3))).join(' · ')}${(r.dias || []).length ? ' · ' : ''}${h(r.horario || '19:00')} hs</small>
+                    </div>
+                    <div class="row-gap">
+                      <button type="button" class="btn-icon-action" data-action="edit-rutina" data-rutina-id="${h(r.id)}" title="Editar rutina">${renderIcon('edit')}</button>
+                      <button type="button" class="btn-icon-action danger" data-action="delete-rutina" data-rutina-id="${h(r.id)}" title="Borrar rutina">${renderIcon('trash')}</button>
+                    </div>
+                  </div>
 
-          <div class="day-chips" style="overflow-x: auto; flex-wrap: nowrap; padding-bottom: 2px;">
+                  ${(r.ejercicios || []).length === 0 ? '' : `
+                    <div class="rutina-ej-list">
+                      ${r.ejercicios.map((re, idx) => {
+                        const ej = (state.ejercicios || []).find(e => e.id === re.ejercicioId)
+                          || Engine.CATALOGO_EJERCICIOS.find(e => e.id === re.ejercicioId)
+                          || { nombre: re.nombre || re.ejercicioId, grupoMuscular: '', equipo: '' };
+                        return `
+                          <div class="rutina-ej">
+                            <button type="button" class="rutina-ej-name" data-action="view-ejercicio" data-ejercicio-id="${h(re.ejercicioId)}" title="Ver técnica">${h(ej ? ej.nombre : re.ejercicioId)}</button>
+                            <span class="rutina-ej-meta">${re.seriesObjetivo}×${h(re.repsObjetivo)}</span>
+                            <button type="button" class="rutina-ej-x" data-action="remove-ej-from-rutina" data-rutina-id="${h(r.id)}" data-index="${idx}" title="Quitar" aria-label="Quitar ${h(ej ? ej.nombre : '')}">${renderIcon('x')}</button>
+                          </div>
+                        `;
+                      }).join('')}
+                    </div>
+                  `}
+
+                  <div class="row-between">
+                    <button type="button" class="btn-link" data-action="open-catalog-picker" data-mode="append-to-rutina" data-rutina-id="${h(r.id)}" style="padding-left: 0;">${renderIcon('plus')} Agregar ejercicio</button>
+                    <button type="button" class="btn-secondary btn-sm" data-action="start-workout" data-rutina-id="${h(r.id)}">Iniciar</button>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          `}
+        ` : `
+          <div class="chip-scroller">
             ${GRUPOS_CATALOGO.map(g => `
-              <button type="button" class="day-chip ${catalogoFiltroGrupo === g ? 'selected' : ''}" data-action="filter-catalog-group" data-group="${g}" style="flex-shrink: 0; padding: 5px 10px; font-size: 11px !important;">
-                ${g.toUpperCase()}
-              </button>
+              <button type="button" class="chip chip-filter ${catalogoFiltroGrupo === g ? 'active' : ''}" data-action="filter-catalog-group" data-group="${g}">${nombreGrupo(g)}</button>
             `).join('')}
           </div>
 
-          <div class="onepage-scroll-list">
-            ${catalogo
-              .filter(e => catalogoFiltroGrupo === 'todos' || e.grupoMuscular === catalogoFiltroGrupo)
-              .map(e => {
+          <div class="card card-fill" style="padding: 6px 6px 6px 14px !important;">
+            <div class="onepage-scroll-list" style="gap: 0;">
+              <button type="button" class="catalog-row catalog-row-create" data-action="open-create-custom-ejercicio">
+                <span class="list-row-icon">${renderIcon('plus')}</span>
+                <span class="check-row-text"><strong>Crear ejercicio</strong><small>Si el tuyo no figura en la lista</small></span>
+              </button>
+              ${catalogoFiltrado.map(e => {
                 const media = Engine.resolveEjercicioMedia(e);
                 return `
-                  <div style="background: var(--bg-elevated); border-radius: var(--radius-md); padding: 8px 10px; display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+                  <div class="catalog-row">
                     <div class="ej-thumb" data-action="view-ejercicio" data-ejercicio-id="${h(e.id)}" style="width: 42px; height: 42px;">
-                      ${media.illustrationUrl ? `<img class="ej-thumb-img" src="${h(media.illustrationUrl)}" alt="${h(e.nombre)}" loading="lazy">` : `<div class="ej-thumb-fallback">${h((e.nombre || 'EJ').slice(0, 2).toUpperCase())}</div>`}
+                      ${media.illustrationUrl ? `<img class="ej-thumb-img" src="${h(media.illustrationUrl)}" alt="" loading="lazy">` : `<div class="ej-thumb-fallback">${h((e.nombre || 'EJ').slice(0, 2).toUpperCase())}</div>`}
                     </div>
-                    <div style="flex: 1; min-width: 0;">
-                      <h4 style="font-size: 13px; font-weight: 800; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${h(e.nombre)}</h4>
-                      <span style="font-size: 10.5px; color: var(--text-dim); text-transform: uppercase; font-weight: 700;">${h(e.grupoMuscular)} · ${h(e.equipo)}</span>
-                    </div>
-                    <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
-                      <button type="button" class="btn-eye-icon" data-action="view-ejercicio" data-ejercicio-id="${h(e.id)}" title="Ver técnica">${renderIcon('eye')}</button>
-                      <button type="button" class="badge badge-neon" data-action="add-catalog-to-today" data-ejercicio-id="${h(e.id)}" style="cursor: pointer; padding: 5px 9px;">
-                        + Hoy
-                      </button>
-                    </div>
+                    <button type="button" class="check-row-text" data-action="view-ejercicio" data-ejercicio-id="${h(e.id)}" style="text-align: left;">
+                      <strong>${h(e.nombre)}</strong>
+                      <small style="text-transform: capitalize;">${h(e.grupoMuscular)} · ${h(e.equipo)}</small>
+                    </button>
+                    <button type="button" class="btn-icon-action" data-action="add-catalog-to-today" data-ejercicio-id="${h(e.id)}" title="Sumar a la sesión de hoy" aria-label="Sumar ${h(e.nombre)} a hoy">${renderIcon('plus')}</button>
                   </div>
                 `;
               }).join('')}
+            </div>
           </div>
         `}
-        </div>
       </div>
     `;
   }
@@ -1616,140 +1603,95 @@
       return cl.ejercicios.some(d => (d.ej.nombre || '').toLowerCase().includes(q) || (d.ej.grupoMuscular || '').toLowerCase().includes(q));
     });
 
+    const fechaCorta = iso => {
+      if (!iso) return '';
+      try {
+        const t = new Date(iso + 'T12:00:00').toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' }).replace(/\./g, '');
+        return t.charAt(0).toUpperCase() + t.slice(1);
+      } catch (_) {
+        return iso.split('-').reverse().join('/');
+      }
+    };
+    const kg = n => `${Math.round(n).toLocaleString('es-AR')} kg`;
+
     return `
       <div class="onepage-view">
-        <div class="card onepage-card" style="flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden;">
-          <!-- Cabecera Compacta con KPIs en línea -->
-          <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; flex-shrink: 0;">
-            <div>
-              <h2 class="card-title" style="font-size: 16px; color: var(--text-main);">Mi Histórico</h2>
-              <p style="font-size: 11px; color: var(--text-dim);">Solo tus clases y ejercicios realizados.</p>
-            </div>
-            <div style="display: flex; gap: 6px; align-items: center;">
-              <span class="badge badge-neon">${clasesRealizadas.length} clases</span>
-              <span class="badge badge-blue" style="font-family: var(--font-mono);">${Math.round(volumenTotal).toLocaleString()} kg</span>
-            </div>
+        <div class="kpi-row">
+          <div class="kpi"><strong>${clasesRealizadas.length}</strong><span>${clasesRealizadas.length === 1 ? 'clase' : 'clases'}</span></div>
+          <div class="kpi"><strong>${ejerciciosRealizados.length}</strong><span>ejercicios</span></div>
+          <div class="kpi"><strong>${Math.round(volumenTotal).toLocaleString('es-AR')}</strong><span>kg movidos</span></div>
+        </div>
+
+        <div class="seg">
+          <button type="button" class="seg-btn ${historicoModo === 'clases' ? 'active' : ''}" data-action="set-historico-modo" data-modo="clases">Por clase</button>
+          <button type="button" class="seg-btn ${historicoModo === 'ejercicios' ? 'active' : ''}" data-action="set-historico-modo" data-modo="ejercicios">Por ejercicio</button>
+        </div>
+
+        ${clasesRealizadas.length > 3 || historialBusqueda ? `
+          <div class="search-box">
+            ${renderIcon('search')}
+            <input type="text" id="historial-search-input" class="form-input" placeholder="${historicoModo === 'clases' ? 'Buscar clase o ejercicio' : 'Buscar ejercicio'}" value="${h(historialBusqueda)}" data-action="search-historial">
+            ${historialBusqueda ? `<button type="button" class="search-clear" data-action="clear-historial-search" aria-label="Borrar búsqueda">${renderIcon('x')}</button>` : ''}
           </div>
+        ` : ''}
 
-        <!-- Selector Organizar por Clase vs Ver por Ejercicio -->
-        <div class="onepage-tabs-bar" style="flex-shrink: 0;">
-          <button type="button" class="onepage-tab-btn ${historicoModo === 'clases' ? 'active' : ''}" data-action="set-historico-modo" data-modo="clases">
-            Por Clase (${clasesRealizadas.length})
-          </button>
-          <button type="button" class="onepage-tab-btn ${historicoModo === 'ejercicios' ? 'active' : ''}" data-action="set-historico-modo" data-modo="ejercicios">
-            Por Ejercicio (${ejerciciosRealizados.length})
-          </button>
-        </div>
-
-        <!-- Buscador instantáneo -->
-        <div style="position: relative; flex-shrink: 0;">
-          <input type="text" id="historial-search-input" class="form-input" placeholder="${historicoModo === 'clases' ? 'Filtrar clase o ejercicio...' : 'Buscar ejercicio realizado...'}" value="${h(historialBusqueda)}" data-action="search-historial" style="min-height: 36px; font-size: 16px; padding: 6px 32px 6px 10px;">
-          ${historialBusqueda ? `
-            <button type="button" data-action="clear-historial-search" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-dim); cursor: pointer; padding: 2px 6px;">${renderIcon('x')}</button>
-          ` : ''}
-        </div>
-
-        <!-- Listado según modo elegido -->
         <div class="onepage-scroll-list">
           ${historicoModo === 'clases' ? (
-            clasesFiltradas.length === 0 ? `
-              <div style="text-align: center; padding: 20px 12px; color: var(--text-dim); font-size: 12.5px;">
-                ${clasesRealizadas.length === 0
-                  ? 'Todavía no tenés clases registradas. Cuando guardes series en Entrenar, aparecerán acá organizadas por clase.'
-                  : `No se encontraron clases con "${h(historialBusqueda)}".`}
+            clasesFiltradas.length === 0 ? (clasesRealizadas.length === 0 ? `
+              <div class="empty-state">
+                <span class="empty-state-icon">${renderIcon('chart')}</span>
+                <strong>Tu historial empieza hoy</strong>
+                <p>Cada sesión que guardes aparece acá con sus ejercicios, series y kilos.</p>
               </div>
-            ` : clasesFiltradas.map(cl => {
-              const fechaFmt = cl.fecha ? cl.fecha.split('-').reverse().join('/') : 'Clase';
-              return `
-                <div class="historico-ej-card" style="padding: 10px 12px; gap: 8px;">
-                  <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
-                    <div>
-                      <div style="display: flex; align-items: center; gap: 6px;">
-                        <strong style="font-size: 13.5px; color: var(--text-main);">${h(fechaFmt)}</strong>
-                        <span class="badge badge-neon">${cl.ejercicios.length} ej. · ${cl.totalSeries} series</span>
-                      </div>
-                      <div style="font-size: 12px; color: var(--text-muted); font-weight: 600; margin-top: 2px;">
-                        ${h(cl.nombre)}
-                      </div>
-                    </div>
-                    <span class="badge badge-blue" style="font-family: var(--font-mono); font-size: 11px;">
-                      ${Math.round(cl.volumen).toLocaleString()} kg
-                    </span>
+            ` : `<p class="empty-hint">Nada coincide con "${h(historialBusqueda)}".</p>`) : clasesFiltradas.map(cl => `
+              <div class="card hist-card">
+                <div class="row-between">
+                  <div class="rutina-row-text">
+                    <strong>${h(cl.nombre)}</strong>
+                    <small>${h(fechaCorta(cl.fecha))} · ${cl.totalSeries} series</small>
                   </div>
-
-                  <div style="display: flex; flex-direction: column; gap: 4px; border-top: 1px dashed var(--border-subtle); padding-top: 6px;">
-                    ${cl.ejercicios.map(det => {
-                      const media = Engine.resolveEjercicioMedia(det.ej);
-                      return `
-                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; background: var(--bg-elevated); padding: 6px 8px; border-radius: var(--radius-sm); font-size: 12px;">
-                          <div style="display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1;">
-                            <div class="ej-thumb" data-action="view-ejercicio" data-ejercicio-id="${h(det.ej.id)}" style="width: 32px; height: 32px; border-radius: 6px;">
-                              ${media.illustrationUrl ? `<img class="ej-thumb-img" src="${h(media.illustrationUrl)}" alt="${h(det.ej.nombre)}" loading="lazy">` : `<div class="ej-thumb-fallback" style="font-size: 12px;">${h((det.ej.nombre || 'EJ').slice(0, 2).toUpperCase())}</div>`}
-                            </div>
-                            <strong style="color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${h(det.ej.nombre)}</strong>
-                          </div>
-                          <span style="font-family: var(--font-mono); font-weight: 800; color: var(--cta-blue-light); flex-shrink: 0;">
-                            ${det.cantidadSeries} × ${det.pesoKg} kg × ${det.reps}
-                          </span>
-                        </div>
-                      `;
-                    }).join('')}
-                  </div>
+                  <span class="hist-vol">${kg(cl.volumen)}</span>
                 </div>
-              `;
-            }).join('')
-          ) : (
-            ejerciciosFiltrados.length === 0 ? `
-              <div style="text-align: center; padding: 20px 12px; color: var(--text-dim); font-size: 12.5px;">
-                ${ejerciciosRealizados.length === 0
-                  ? 'Todavía no registraste ningún ejercicio. Los ejercicios que hagas en tus clases aparecerán acá con su conteo total.'
-                  : `No se encontraron ejercicios realizados con "${h(historialBusqueda)}".`}
+                <div class="rutina-ej-list">
+                  ${cl.ejercicios.map(det => `
+                    <div class="rutina-ej">
+                      <button type="button" class="rutina-ej-name" data-action="view-ejercicio" data-ejercicio-id="${h(det.ej.id)}">${h(det.ej.nombre)}</button>
+                      <span class="rutina-ej-meta">${det.cantidadSeries} × ${det.pesoKg} kg × ${det.reps}</span>
+                    </div>
+                  `).join('')}
+                </div>
               </div>
-            ` : ejerciciosFiltrados.map(item => {
-              const { ej, historial, prev, totalClases, totalSeries, mejorPeso, mejorReps } = item;
+            `).join('')
+          ) : (
+            ejerciciosFiltrados.length === 0 ? (ejerciciosRealizados.length === 0 ? `
+              <div class="empty-state">
+                <span class="empty-state-icon">${renderIcon('dumbbell')}</span>
+                <strong>Todavía no hiciste ejercicios</strong>
+                <p>Acá vas a ver solo los ejercicios que realmente hiciste, con tu mejor marca.</p>
+              </div>
+            ` : `<p class="empty-hint">Nada coincide con "${h(historialBusqueda)}".</p>`) : ejerciciosFiltrados.map(item => {
+              const { ej, historial, totalClases, totalSeries, mejorPeso, mejorReps } = item;
               const media = Engine.resolveEjercicioMedia(ej);
               const isExpanded = expandedHistorialEjIds.has(ej.id);
-
               return `
-                <div class="historico-ej-card" style="padding: 10px 12px; gap: 6px;">
-                  <div class="ej-card-top" style="align-items: center;">
-                    <div class="ej-thumb" data-action="view-ejercicio" data-ejercicio-id="${h(ej.id)}" title="${h(ej.nombre)}" style="width: 44px; height: 44px;">
-                      ${media.illustrationUrl ? `
-                        <img class="ej-thumb-img" src="${h(media.illustrationUrl)}" alt="${h(ej.nombre)}" loading="lazy">
-                      ` : `
-                        <div class="ej-thumb-fallback">${h((ej.nombre || 'EJ').slice(0, 2).toUpperCase())}</div>
-                      `}
-                    </div>
-                    <div class="ej-info">
-                      <div style="display: flex; align-items: center; gap: 5px; flex-wrap: wrap;">
-                        <span class="badge badge-blue">${totalClases} ${totalClases === 1 ? 'clase' : 'clases'} · ${totalSeries} series</span>
-                        <span class="badge badge-neon" style="font-size: 9.5px; padding: 2px 6px;">${h(ej.grupoMuscular)}</span>
-                      </div>
-                      <h3 class="ej-title" style="font-size: 14px; margin: 2px 0 1px 0;">${h(ej.nombre)}</h3>
-                      <div class="ej-clase-anterior" style="font-size: 11.5px;">
-                        ${prev ? `Última (${h(prev.fecha.slice(5).split('-').reverse().join('/'))}): <strong>${h(prev.texto)}</strong> · Mejor: <strong>${mejorPeso}kg×${mejorReps}</strong>` : ''}
-                      </div>
-                    </div>
-                    <div class="ej-tools">
-                      <button type="button" class="btn-sm btn-secondary" data-action="toggle-expand-historial-ej" data-ejercicio-id="${h(ej.id)}" title="Ver detalle por clase">
-                        ${isExpanded ? 'Ocultar' : 'Clases'}
-                      </button>
-                    </div>
-                  </div>
-
+                <div class="card hist-card">
+                  <button type="button" class="hist-ej-head" data-action="toggle-expand-historial-ej" data-ejercicio-id="${h(ej.id)}" aria-expanded="${isExpanded}">
+                    <span class="ej-thumb" style="width: 42px; height: 42px;">
+                      ${media.illustrationUrl ? `<img class="ej-thumb-img" src="${h(media.illustrationUrl)}" alt="" loading="lazy">` : `<span class="ej-thumb-fallback">${h((ej.nombre || 'EJ').slice(0, 2).toUpperCase())}</span>`}
+                    </span>
+                    <span class="rutina-row-text">
+                      <strong>${h(ej.nombre)}</strong>
+                      <small>${totalClases} ${totalClases === 1 ? 'clase' : 'clases'} · ${totalSeries} series</small>
+                    </span>
+                    <span class="hist-best"><strong>${mejorPeso} kg</strong><small>× ${mejorReps} mejor</small></span>
+                    ${isExpanded ? renderIcon('chevronUp') : renderIcon('chevronDown')}
+                  </button>
                   ${isExpanded ? `
-                    <div class="historico-clases-list">
+                    <div class="rutina-ej-list">
                       ${historial.map(sesion => `
-                        <div class="historico-clase-item" style="padding: 6px 8px; font-size: 11.5px;">
-                          <div>
-                            <strong>${h(sesion.fecha ? sesion.fecha.split('-').reverse().join('/') : 'Clase')}</strong>
-                            <span style="color: var(--text-dim); margin-left: 6px;">
-                              ${sesion.series.length} series · <strong>${sesion.mejorSerie.pesoKg} kg × ${sesion.mejorSerie.reps} reps</strong>
-                            </span>
-                          </div>
-                          <span class="badge badge-neon" style="font-family: var(--font-mono); font-size: 10.5px;">
-                            ${Math.round(sesion.volumenTotal).toLocaleString()} kg
-                          </span>
+                        <div class="rutina-ej">
+                          <span class="rutina-ej-name">${h(fechaCorta(sesion.fecha))}</span>
+                          <span class="rutina-ej-meta">${sesion.series.length} × ${sesion.mejorSerie.pesoKg} kg × ${sesion.mejorSerie.reps}</span>
                         </div>
                       `).join('')}
                     </div>
@@ -1758,7 +1700,6 @@
               `;
             }).join('')
           )}
-          </div>
         </div>
       </div>
     `;
@@ -1785,163 +1726,140 @@
 
     const fechaDisplay = selFecha === hoyISO ? 'Hoy' : (selFecha === ayerISO ? 'Ayer' : selFecha.split('-').reverse().join('/'));
 
+    const ESTADOS = [
+      { val: 'Excelente', label: 'Genial', energia: 5, estres: 1, sueno: 5 },
+      { val: 'Con energía', label: 'Bien', energia: 4, estres: 1, sueno: 4 },
+      { val: 'Normal', label: 'Normal', energia: 3, estres: 2, sueno: 3 },
+      { val: 'Cansado', label: 'Cansado', energia: 2, estres: 3, sueno: 2 },
+      { val: 'Con molestia', label: 'Dolorido', energia: 2, estres: 4, sueno: 3 }
+    ];
+
     return `
       <div class="onepage-view">
-        <!-- Tarjeta Principal: Registro Psicofísico Rápido (One-Page, sin scroll) -->
-        <div class="card" style="padding: 10px 12px; gap: 8px; flex-shrink: 0;">
-          <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px; flex-wrap: wrap;">
-            <div>
-              <h2 class="card-title" style="font-size: 15px; color: var(--text-main);">Estado Psicofísico</h2>
-              <p style="font-size: 11px; color: var(--text-dim);">Registrá cómo estás el día que quieras.</p>
-            </div>
-            <div style="display: flex; align-items: center; gap: 4px;">
-              ${logDeEstaFecha ? `<span class="badge badge-blue" style="font-size: 10px;">Guardado</span>` : ''}
-              <button type="button" class="btn-sm btn-secondary ${selFecha === hoyISO ? 'btn-primary' : ''}" data-action="set-readiness-date" data-date="${hoyISO}" style="min-height: 30px; padding: 3px 8px;">
-                Hoy
-              </button>
-              <button type="button" class="btn-sm btn-secondary ${selFecha === ayerISO ? 'btn-primary' : ''}" data-action="set-readiness-date" data-date="${ayerISO}" style="min-height: 30px; padding: 3px 8px;">
-                Ayer
-              </button>
-              <input type="date" id="rd-fecha" class="form-input" value="${h(selFecha)}" data-action="change-readiness-date" style="width: 154px; min-height: 32px; padding: 2px 6px; font-size: 16px; font-family: var(--font-mono); flex-shrink: 0;">
+        <div class="card card-flat">
+          <div class="row-between">
+            <span class="section-title">¿Cómo estás?${logDeEstaFecha ? ' <em>guardado</em>' : ''}</span>
+            <div class="date-picker-row">
+              <button type="button" class="chip chip-filter ${selFecha === hoyISO ? 'active' : ''}" data-action="set-readiness-date" data-date="${hoyISO}">Hoy</button>
+              <button type="button" class="chip chip-filter ${selFecha === ayerISO ? 'active' : ''}" data-action="set-readiness-date" data-date="${ayerISO}">Ayer</button>
+              <label class="chip chip-filter chip-date ${selFecha !== hoyISO && selFecha !== ayerISO ? 'active' : ''}" title="Elegir otra fecha">
+                ${selFecha !== hoyISO && selFecha !== ayerISO ? h(fechaDisplay.slice(0, 5)) : renderIcon('calendar')}
+                <input type="date" id="rd-fecha" value="${h(selFecha)}" max="${hoyISO}" data-action="change-readiness-date" aria-label="Elegir fecha">
+              </label>
             </div>
           </div>
 
-          <!-- 1. Sensación General en 1 Fila -->
-          <div class="salud-status-grid">
-            <button type="button" class="salud-chip ${selEstado === 'Excelente' ? 'selected' : ''}" data-action="pick-salud-estado" data-estado="Excelente" data-energia="5" data-estres="1" data-sueno="5">
-              <strong>Excelente</strong>
-            </button>
-            <button type="button" class="salud-chip ${selEstado === 'Con energía' ? 'selected' : ''}" data-action="pick-salud-estado" data-estado="Con energía" data-energia="4" data-estres="1" data-sueno="4">
-              <strong>Energía</strong>
-            </button>
-            <button type="button" class="salud-chip ${selEstado === 'Normal' ? 'selected' : ''}" data-action="pick-salud-estado" data-estado="Normal" data-energia="3" data-estres="2" data-sueno="3">
-              <strong>Normal</strong>
-            </button>
-            <button type="button" class="salud-chip ${selEstado === 'Cansado' ? 'selected' : ''}" data-action="pick-salud-estado" data-estado="Cansado" data-energia="2" data-estres="3" data-sueno="2">
-              <strong>Cansado</strong>
-            </button>
-            <button type="button" class="salud-chip ${selEstado === 'Con molestia' ? 'selected' : ''}" data-action="pick-salud-estado" data-estado="Con molestia" data-energia="2" data-estres="4" data-sueno="3">
-              <strong>Molestia</strong>
-            </button>
+          <div class="psico-chips" style="grid-template-columns: repeat(5, minmax(0, 1fr));">
+            ${ESTADOS.map(e => `
+              <button type="button" class="psico-chip ${selEstado === e.val ? 'selected' : ''}" data-action="pick-salud-estado" data-estado="${e.val}" data-energia="${e.energia}" data-estres="${e.estres}" data-sueno="${e.sueno}">${e.label}</button>
+            `).join('')}
           </div>
 
-          <!-- 2. Ajuste Fino Compacto -->
-          <div class="salud-submetrics">
-            <div class="salud-submetric-inline">
-              <span class="salud-metric-label">Energía</span>
-              <div class="salud-metric-chips">
+          <div class="psico-rows">
+            <div class="psico-compact-row">
+              <span class="psico-compact-label">Energía</span>
+              <div class="psico-chips" style="grid-template-columns: repeat(5, minmax(0, 1fr));">
                 ${[1, 2, 3, 4, 5].map(v => `
-                  <button type="button" class="salud-m-chip ${Number(selEnergia) === v ? 'selected' : ''}" data-action="set-salud-metric" data-metric="energia" data-val="${v}">
-                    ${v}
-                  </button>
+                  <button type="button" class="psico-chip ${Number(selEnergia) === v ? 'selected' : ''}" data-action="set-salud-metric" data-metric="energia" data-val="${v}">${v}</button>
                 `).join('')}
               </div>
             </div>
-
-            <div class="salud-submetric-inline">
-              <span class="salud-metric-label">Estrés</span>
-              <div class="salud-metric-chips">
-                <button type="button" class="salud-m-chip ${Number(selEstres) <= 1 ? 'selected' : ''}" data-action="set-salud-metric" data-metric="estres" data-val="1">Bajo</button>
-                <button type="button" class="salud-m-chip ${Number(selEstres) === 2 || Number(selEstres) === 3 ? 'selected' : ''}" data-action="set-salud-metric" data-metric="estres" data-val="2">Normal</button>
-                <button type="button" class="salud-m-chip ${Number(selEstres) >= 4 ? 'selected' : ''}" data-action="set-salud-metric" data-metric="estres" data-val="4">Alto</button>
+            <div class="psico-compact-row">
+              <span class="psico-compact-label">Estrés</span>
+              <div class="psico-chips">
+                <button type="button" class="psico-chip ${Number(selEstres) <= 1 ? 'selected' : ''}" data-action="set-salud-metric" data-metric="estres" data-val="1">Bajo</button>
+                <button type="button" class="psico-chip ${Number(selEstres) === 2 || Number(selEstres) === 3 ? 'selected' : ''}" data-action="set-salud-metric" data-metric="estres" data-val="2">Medio</button>
+                <button type="button" class="psico-chip ${Number(selEstres) >= 4 ? 'selected' : ''}" data-action="set-salud-metric" data-metric="estres" data-val="4">Alto</button>
               </div>
             </div>
-
-            <div class="salud-submetric-inline">
-              <span class="salud-metric-label">Sueño</span>
-              <div class="salud-metric-chips">
-                <button type="button" class="salud-m-chip ${Number(selSueno) >= 4 ? 'selected' : ''}" data-action="set-salud-metric" data-metric="sueno" data-val="5">+7h</button>
-                <button type="button" class="salud-m-chip ${Number(selSueno) === 3 ? 'selected' : ''}" data-action="set-salud-metric" data-metric="sueno" data-val="3">6h</button>
-                <button type="button" class="salud-m-chip ${Number(selSueno) <= 2 ? 'selected' : ''}" data-action="set-salud-metric" data-metric="sueno" data-val="2">&lt;5h</button>
+            <div class="psico-compact-row">
+              <span class="psico-compact-label">Sueño</span>
+              <div class="psico-chips">
+                <button type="button" class="psico-chip ${Number(selSueno) >= 4 ? 'selected' : ''}" data-action="set-salud-metric" data-metric="sueno" data-val="5">7 h o más</button>
+                <button type="button" class="psico-chip ${Number(selSueno) === 3 ? 'selected' : ''}" data-action="set-salud-metric" data-metric="sueno" data-val="3">6 h</button>
+                <button type="button" class="psico-chip ${Number(selSueno) <= 2 ? 'selected' : ''}" data-action="set-salud-metric" data-metric="sueno" data-val="2">5 h o menos</button>
               </div>
-            </div>
-
-            <div class="psico-dual-inputs">
-              <input type="text" id="rd-dolor" class="form-input" value="${h(draftReadiness.zonaDolor || '')}" placeholder="Molestia (opc.)">
-              <input type="text" id="rd-obs" class="form-input" value="${h(draftReadiness.observacionAlumno || '')}" placeholder="Nota (opc.)">
             </div>
           </div>
 
-          <button type="button" class="btn-primary" data-action="submit-readiness" style="min-height: 40px;">
-            ${renderIcon('check')} Guardar Estado (${fechaDisplay})
+          <div class="psico-dual-inputs">
+            <input type="text" id="rd-dolor" class="form-input" value="${h(draftReadiness.zonaDolor || '')}" placeholder="¿Alguna molestia?">
+            <input type="text" id="rd-obs" class="form-input" value="${h(draftReadiness.observacionAlumno || '')}" placeholder="Nota (opcional)">
+          </div>
+
+          <button type="button" class="btn-primary" data-action="submit-readiness">
+            Guardar ${selFecha === hoyISO ? 'cómo estoy hoy' : `(${h(fechaDisplay)})`}
           </button>
         </div>
 
-        <!-- Barra inferior de desplegables -->
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; flex-shrink: 0;">
-          <button type="button" class="btn-secondary btn-sm" data-action="toggle-salud-logs" style="width: 100% !important; min-height: 34px !important;">
-            Bitácora (${logs.length}) ${isSaludLogsOpen ? renderIcon('chevronUp') : renderIcon('chevronDown')}
-          </button>
-          <button type="button" class="btn-secondary btn-sm" data-action="toggle-perfil-collapse" style="width: 100% !important; min-height: 34px !important;">
-            Ficha Física ${isPerfilOpen ? renderIcon('chevronUp') : renderIcon('chevronDown')}
-          </button>
+        <div class="seg seg-sm">
+          <button type="button" class="seg-btn ${isSaludLogsOpen ? 'active' : ''}" data-action="toggle-salud-logs">Registros (${logs.length})</button>
+          <button type="button" class="seg-btn ${isPerfilOpen ? 'active' : ''}" data-action="toggle-perfil-collapse">Mi ficha</button>
         </div>
 
         <div class="onepage-scroll-list">
-          ${isSaludLogsOpen ? `
-            <div class="card" style="padding: 10px 12px; gap: 6px;">
-              ${logs.length === 0 ? `
-                <div style="padding: 8px; text-align: center; color: var(--text-dim); font-size: 12px;">
-                  Sin registros todavía.
-                </div>
-              ` : logs.map(l => `
-                <div style="background: var(--bg-elevated); padding: 6px 10px; border-radius: var(--radius-sm); font-size: 12px; display: flex; justify-content: space-between; align-items: center; gap: 8px;">
-                  <div style="flex: 1; min-width: 0;">
-                    <strong>${h(l.fecha.split('-').reverse().join('/'))}</strong>
-                    <span class="badge badge-blue" style="margin-left: 4px;">E:${l.energia}/5</span>
-                    ${l.zonaDolor ? `<span class="badge badge-amber">${h(l.zonaDolor)}</span>` : ''}
-                    ${l.observacionAlumno ? `<span style="color: var(--text-muted); margin-left: 4px;">· ${h(l.observacionAlumno)}</span>` : ''}
+          ${observaciones.length > 0 ? `
+            <div class="list-row" style="cursor: default;">
+              <span class="list-row-icon">${renderIcon('user')}</span>
+              <span class="list-row-text"><strong>Nota del profe</strong><small style="white-space: normal;">${h(observaciones[0].texto)}</small></span>
+            </div>
+          ` : ''}
+
+          ${isSaludLogsOpen ? (logs.length === 0 ? `<p class="empty-hint">Todavía no guardaste ningún registro.</p>` : `
+            <div class="card" style="padding: 6px 8px 6px 14px !important; gap: 0 !important;">
+              ${logs.map(l => `
+                <div class="catalog-row">
+                  <div class="check-row-text">
+                    <strong>${h(l.fecha.split('-').reverse().join('/'))} · energía ${l.energia}/5</strong>
+                    <small>${[l.estadoGeneral, l.zonaDolor ? `molestia: ${l.zonaDolor}` : '', l.observacionAlumno && l.observacionAlumno !== l.estadoGeneral ? l.observacionAlumno : ''].filter(Boolean).map(h).join(' · ') || 'Sin notas'}</small>
                   </div>
-                  <div style="display: flex; gap: 4px; flex-shrink: 0;">
-                    <button type="button" class="btn-sm btn-secondary" data-action="set-readiness-date" data-date="${h(l.fecha)}" title="Editar">${renderIcon('edit')}</button>
-                    <button type="button" class="btn-sm btn-secondary danger" data-action="delete-readiness-log" data-log-id="${h(l.id)}" title="Borrar">${renderIcon('x')}</button>
-                  </div>
+                  <button type="button" class="btn-icon-action" data-action="set-readiness-date" data-date="${h(l.fecha)}" title="Editar">${renderIcon('edit')}</button>
+                  <button type="button" class="btn-icon-action danger" data-action="delete-readiness-log" data-log-id="${h(l.id)}" title="Borrar">${renderIcon('trash')}</button>
                 </div>
               `).join('')}
             </div>
-          ` : ''}
+          `) : ''}
 
           ${isPerfilOpen ? `
-            <div class="card" style="padding: 10px 12px;">
-              <form data-action="save-perfil-fisico" style="display: flex; flex-direction: column; gap: 8px;">
-                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;">
-                  <div>
-                    <label class="form-label" style="font-size: 10px;">Edad</label>
-                    <input type="number" id="pf-edad" class="form-input" value="${h(draftPerfil.edad || '')}" placeholder="28" style="min-height: 36px;">
+            <div class="card">
+              <form data-action="save-perfil-fisico" class="ficha-form">
+                <div class="ficha-grid-3">
+                  <div class="form-group">
+                    <label class="form-label" for="pf-edad">Edad</label>
+                    <input type="number" id="pf-edad" class="form-input" value="${h(draftPerfil.edad || '')}" placeholder="28" inputmode="numeric">
                   </div>
-                  <div>
-                    <label class="form-label" style="font-size: 10px;">Peso (kg)</label>
-                    <input type="number" step="0.1" id="pf-peso" class="form-input" value="${h(draftPerfil.pesoKg || '')}" placeholder="78.5" style="min-height: 36px;">
+                  <div class="form-group">
+                    <label class="form-label" for="pf-peso">Peso (kg)</label>
+                    <input type="number" step="0.1" id="pf-peso" class="form-input" value="${h(draftPerfil.pesoKg || '')}" placeholder="78,5" inputmode="decimal">
                   </div>
-                  <div>
-                    <label class="form-label" style="font-size: 10px;">Altura (cm)</label>
-                    <input type="number" id="pf-altura" class="form-input" value="${h(draftPerfil.alturaCm || '')}" placeholder="176" style="min-height: 36px;">
+                  <div class="form-group">
+                    <label class="form-label" for="pf-altura">Altura (cm)</label>
+                    <input type="number" id="pf-altura" class="form-input" value="${h(draftPerfil.alturaCm || '')}" placeholder="176" inputmode="numeric">
                   </div>
                 </div>
 
-                <div class="day-chips" id="pf-dias-container">
-                  ${DIAS_SEMANA.map(d => `
-                    <button type="button" class="day-chip ${diasSeleccionados.includes(d) ? 'selected' : ''}" data-action="toggle-perfil-dia" data-dia="${d}" style="padding: 5px 8px; font-size: 11px !important;">
-                      ${d.slice(0, 3)}
-                    </button>
-                  `).join('')}
+                <div class="form-group">
+                  <span class="form-label">Días que entreno</span>
+                  <div class="dias-grid" id="pf-dias-container">
+                    ${DIAS_SEMANA.map(d => `
+                      <button type="button" class="dia-btn ${diasSeleccionados.includes(d) ? 'selected' : ''}" data-action="toggle-perfil-dia" data-dia="${d}" aria-pressed="${diasSeleccionados.includes(d)}">${d.slice(0, 2)}</button>
+                    `).join('')}
+                  </div>
                 </div>
 
-                <div style="display: grid; grid-template-columns: 110px 1fr; gap: 6px;">
-                  <input type="time" id="pf-horario" class="form-input" value="${h(draftPerfil.horarioHabitual || '19:00')}" style="min-height: 36px;">
-                  <input type="text" id="pf-lesiones" class="form-input" value="${h(draftPerfil.lesiones || '')}" placeholder="Lesiones / Antecedentes" style="min-height: 36px;">
+                <div class="ficha-grid-2">
+                  <div class="form-group">
+                    <label class="form-label" for="pf-horario">Horario</label>
+                    <input type="time" id="pf-horario" class="form-input" value="${h(draftPerfil.horarioHabitual || '19:00')}">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label" for="pf-lesiones">Lesiones o antecedentes</label>
+                    <input type="text" id="pf-lesiones" class="form-input" value="${h(draftPerfil.lesiones || '')}" placeholder="Ninguna">
+                  </div>
                 </div>
 
-                <button type="button" class="btn-primary btn-sm" data-action="save-perfil-fisico" style="width: 100% !important; min-height: 38px !important;">
-                  ${renderIcon('check')} Guardar Ficha Física
-                </button>
+                <button type="button" class="btn-primary" data-action="save-perfil-fisico">Guardar ficha</button>
               </form>
-            </div>
-          ` : ''}
-
-          ${observaciones.length > 0 ? `
-            <div class="card" style="padding: 8px 12px;">
-              <strong style="font-size: 12px; color: var(--text-main);">Nota Profesor: ${h(observaciones[0].texto)}</strong>
             </div>
           ` : ''}
         </div>
@@ -2045,78 +1963,56 @@
 
   // 6.5 Pestaña CUENTA Y AJUSTES (Compacta One-Page, sin descanso entre series, estilo colapsado)
   function renderAlumnoAjustesSection(state, user) {
-    const aesPref = Store.getAestheticPreference ? Store.getAestheticPreference() : {};
+    const pref = Store.getAestheticPreference();
+    const themePref = Store.getThemePreference ? Store.getThemePreference() : 'dark';
+    const themeLabel = themePref === 'light' ? 'Claro' : (themePref === 'system' ? 'Automático' : 'Oscuro');
     return `
       <div class="onepage-view">
-        <div class="card" style="flex-shrink: 0;">
-          <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
-            <div>
-              <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                <h2 class="card-title" style="font-size: 16px; color: var(--text-main);">${h(user.displayName)} (@${h(user.username)})</h2>
-                <span class="badge badge-emerald">v${APP_VERSION}</span>
-              </div>
-              <p style="font-size: 11.5px; color: var(--text-dim); font-family: var(--font-mono); margin-top: 2px;">
-                Código alumno: <strong style="color: var(--text-main);">${h(state.codigoAlumno)}</strong>
-              </p>
-            </div>
-            <button type="button" class="btn-logout" data-action="logout">
-              Cerrar Sesión
+        <div class="profile-card">
+          <button type="button" class="profile-avatar-btn" data-action="open-perfil-modal" title="Cambiar foto de perfil">
+            ${renderAvatar(user, state, 68)}
+            <span class="profile-avatar-badge">${renderIcon('camera')}</span>
+          </button>
+          <div class="profile-info">
+            <h2 class="profile-name">${h(user.displayName)}</h2>
+            <span class="profile-handle">@${h(user.username)}</span>
+            <button type="button" class="chip chip-code" data-action="copy-alumno-code" data-code="${h(state.codigoAlumno)}" title="Copiar mi código para el profesor">
+              ${h(state.codigoAlumno)} ${renderIcon('copy')}
             </button>
           </div>
-
-          <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px;">
-            <button type="button" class="btn-secondary btn-sm" data-action="open-sugerencias-modal" style="width: 100% !important;">
-              ${renderIcon('bulb')} Sugerencias
-            </button>
-            <button type="button" class="btn-secondary btn-sm" data-action="check-app-update" style="width: 100% !important;">
-              ${renderIcon('refresh')} Actualizar App
-            </button>
-            <button type="button" class="btn-secondary btn-sm" data-action="export-backup" style="width: 100% !important;">
-              ${renderIcon('download')} Exportar JSON
-            </button>
-            <label class="btn-secondary btn-sm" style="cursor: pointer; width: 100% !important;">
-              ${renderIcon('upload')} Importar JSON
-              <input type="file" accept=".json" style="display: none;" data-action="import-backup">
-            </label>
-          </div>
+          <button type="button" class="btn-secondary btn-sm" data-action="open-perfil-modal">Editar</button>
         </div>
 
-        <div class="card" style="flex: ${isAjustesColorsOpen ? '1' : '0 0 auto'}; min-height: 0; display: flex; flex-direction: column; overflow: hidden; padding: 10px 12px; gap: 8px;">
-          <button type="button" data-action="toggle-ajustes-colors" style="display: flex; justify-content: space-between; align-items: center; width: 100%; background: none; border: none; padding: 2px 0; cursor: pointer; color: var(--text-main); flex-shrink: 0;">
-            <span style="display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 800;">
-              ${renderIcon('palette')} Estilo visual y tema
-            </span>
-            <span class="badge" style="font-size: 10.5px;">
-              ${isAjustesColorsOpen ? 'Ocultar' : 'Personalizar'} ${isAjustesColorsOpen ? renderIcon('chevronUp') : renderIcon('chevronDown')}
-            </span>
+        <div class="settings-list onepage-scroll-list">
+          <button type="button" class="list-row" data-action="open-apariencia-modal">
+            <span class="list-row-icon">${renderIcon('palette')}</span>
+            <span class="list-row-text"><strong>Apariencia</strong><small>Tema ${themeLabel.toLowerCase()}, colores y fondo</small></span>
+            <span class="list-row-swatch" style="background:${h(pref.accentColor)};"></span>
+            ${renderIcon('arrowRight')}
           </button>
-
-          ${isAjustesColorsOpen ? `
-            <div class="onepage-scroll-list" style="border-top: 1px dashed var(--border-subtle); padding-top: 8px; gap: 10px;">
-              ${renderThemeSelector()}
-              ${renderBackgroundPatternSelector(aesPref)}
-
-              <div style="border-top: 1px dashed var(--border-subtle); padding-top: 8px; display: flex; flex-direction: column; gap: 8px;">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                  <span class="form-label" style="font-size: 10px;">Superficie y Color de Acento</span>
-                  <button type="button" class="btn-link" data-action="reset-aesthetic-pref" style="font-size: 11px; padding: 0;">Restablecer</button>
-                </div>
-                <div style="display: flex; gap: 4px; flex-wrap: wrap;">
-                  <button type="button" class="theme-chip ${aesPref.bgStyle === 'zinc' ? 'active' : ''}" data-action="set-aesthetic-bg" data-bg="zinc">Zinc</button>
-                  <button type="button" class="theme-chip ${aesPref.bgStyle === 'oled' ? 'active' : ''}" data-action="set-aesthetic-bg" data-bg="oled">OLED</button>
-                  <button type="button" class="theme-chip ${aesPref.bgStyle === 'navy' ? 'active' : ''}" data-action="set-aesthetic-bg" data-bg="navy">Navy</button>
-                  <button type="button" class="theme-chip ${aesPref.bgStyle === 'steel' ? 'active' : ''}" data-action="set-aesthetic-bg" data-bg="steel">Acero</button>
-                </div>
-                <div style="display: flex; gap: 4px; flex-wrap: wrap;">
-                  <button type="button" class="theme-chip ${aesPref.accentColor === '#3B82F6' ? 'active' : ''}" data-action="set-aesthetic-accent" data-color="#3B82F6"><span style="width:9px;height:9px;border-radius:99px;background:#3B82F6;display:inline-block;"></span> Azul</button>
-                  <button type="button" class="theme-chip ${aesPref.accentColor === '#22C55E' ? 'active' : ''}" data-action="set-aesthetic-accent" data-color="#22C55E"><span style="width:9px;height:9px;border-radius:99px;background:#22C55E;display:inline-block;"></span> Verde</button>
-                  <button type="button" class="theme-chip ${aesPref.accentColor === '#F97316' ? 'active' : ''}" data-action="set-aesthetic-accent" data-color="#F97316"><span style="width:9px;height:9px;border-radius:99px;background:#F97316;display:inline-block;"></span> Naranja</button>
-                  <button type="button" class="theme-chip ${aesPref.accentColor === '#8B5CF6' ? 'active' : ''}" data-action="set-aesthetic-accent" data-color="#8B5CF6"><span style="width:9px;height:9px;border-radius:99px;background:#8B5CF6;display:inline-block;"></span> Violeta</button>
-                  <button type="button" class="theme-chip ${aesPref.accentColor === '#EF4444' ? 'active' : ''}" data-action="set-aesthetic-accent" data-color="#EF4444"><span style="width:9px;height:9px;border-radius:99px;background:#EF4444;display:inline-block;"></span> Rojo</button>
-                </div>
-              </div>
-            </div>
-          ` : ''}
+          <button type="button" class="list-row" data-action="open-sugerencias-modal">
+            <span class="list-row-icon">${renderIcon('bulb')}</span>
+            <span class="list-row-text"><strong>Sugerencias</strong><small>Contanos qué mejorar</small></span>
+            ${renderIcon('arrowRight')}
+          </button>
+          <button type="button" class="list-row" data-action="export-backup">
+            <span class="list-row-icon">${renderIcon('download')}</span>
+            <span class="list-row-text"><strong>Guardar respaldo</strong><small>Descarga tus datos en un archivo</small></span>
+          </button>
+          <label class="list-row">
+            <span class="list-row-icon">${renderIcon('upload')}</span>
+            <span class="list-row-text"><strong>Restaurar respaldo</strong><small>Cargar un archivo guardado</small></span>
+            <input type="file" accept=".json" hidden data-action="import-backup">
+          </label>
+          <button type="button" class="list-row" data-action="check-app-update">
+            <span class="list-row-icon">${renderIcon('refresh')}</span>
+            <span class="list-row-text"><strong>Buscar actualización</strong><small>Versión ${APP_VERSION}</small></span>
+          </button>
+          <button type="button" class="list-row list-row-danger" data-action="logout">
+            <span class="list-row-icon">${renderIcon('arrowLeft')}</span>
+            <span class="list-row-text"><strong>Cerrar sesión</strong></span>
+          </button>
+          <p class="settings-foot">© JF Development · Fitness MiniApp</p>
         </div>
       </div>
     `;
@@ -2424,15 +2320,16 @@
     return `
       <div class="layout-phone-shell">
         <header class="app-header">
-          ${renderAppBrand(`Alumno: @${h(user.username)}`)}
-          <div style="display: flex; align-items: center; gap: 6px;">
-            <button type="button" class="btn-eye-icon" data-action="open-sugerencias-modal" title="Enviar Sugerencia">
-              ${renderIcon('bulb')}
-            </button>
-            <button type="button" class="code-pill" data-action="copy-alumno-code" data-code="${h(state.codigoAlumno)}" title="Copiar mi código para el profesor">
-              ${h(state.codigoAlumno)} · Copiar
-            </button>
-          </div>
+          <button type="button" class="hdr-profile" data-action="switch-tab" data-tab="ajustes" title="Mi cuenta">
+            ${renderAvatar(user, state, 38)}
+            <span class="hdr-text">
+              <span class="hdr-kicker">${activeTab === 'hoy' ? h(fechaLarga(Engine.todayISO())) : `Hola, ${h(nombreCorto(user))}`}</span>
+              <span class="hdr-title">${{ hoy: `Hola, ${h(nombreCorto(user))}`, rutinas: 'Rutinas', historico: 'Histórico', evolucion: 'Histórico', salud: 'Salud', ajustes: 'Mi cuenta' }[activeTab] || 'Fitness MiniApp'}</span>
+            </span>
+          </button>
+          <button type="button" class="icon-btn" data-action="open-sugerencias-modal" title="Enviar sugerencia" aria-label="Enviar sugerencia">
+            ${renderIcon('bulb')}
+          </button>
         </header>
 
         <main class="view-container" style="flex: 1;">
@@ -2485,19 +2382,19 @@
 
             <nav class="pc-nav-list">
               <button type="button" class="pc-nav-btn ${activeTab === 'hoy' ? 'active' : ''}" data-action="switch-tab" data-tab="hoy">
-                ${renderIcon('bolt')}<span>Entrenamiento de Hoy</span>
+                ${renderIcon('bolt')}<span>Entrenar</span>
               </button>
               <button type="button" class="pc-nav-btn ${activeTab === 'rutinas' ? 'active' : ''}" data-action="switch-tab" data-tab="rutinas">
-                ${renderIcon('clipboard')}<span>Mis Rutinas & Catálogo (+)</span>
+                ${renderIcon('clipboard')}<span>Rutinas</span>
               </button>
               <button type="button" class="pc-nav-btn ${activeTab === 'historico' || activeTab === 'evolucion' ? 'active' : ''}" data-action="switch-tab" data-tab="historico">
-                ${renderIcon('chart')}<span>Histórico de Clases & Ejercicios</span>
+                ${renderIcon('chart')}<span>Histórico</span>
               </button>
               <button type="button" class="pc-nav-btn ${activeTab === 'salud' ? 'active' : ''}" data-action="switch-tab" data-tab="salud">
-                ${renderIcon('activity')}<span>Salud Física/Psicológica & Días</span>
+                ${renderIcon('activity')}<span>Salud</span>
               </button>
               <button type="button" class="pc-nav-btn ${activeTab === 'ajustes' ? 'active' : ''}" data-action="switch-tab" data-tab="ajustes">
-                ${renderIcon('settings')}<span>Cuenta & Respaldo Offline</span>
+                ${renderIcon('settings')}<span>Mi cuenta</span>
               </button>
               <button type="button" class="pc-nav-btn" data-action="open-sugerencias-modal">
                 ${renderIcon('bulb')}<span>Sugerencias</span>
@@ -2573,37 +2470,33 @@
         <div class="modal-card">
           <div class="modal-header-sticky">
             <div>
-              <span class="badge badge-blue">Registro Personal</span>
-              <h2 class="card-title" style="margin-top: 4px;">Crear Cuenta Nueva</h2>
+                            <h2 class="modal-title">Crear cuenta</h2>
             </div>
-            <button type="button" class="btn-close-modal" data-action="close-modal" title="Cerrar">✕</button>
+            <button type="button" class="btn-close-modal" data-action="close-modal" title="Cerrar">${renderIcon('x')}</button>
           </div>
-          <p style="font-size: 13px; color: var(--text-dim);">
-            Elegí si ingresás como <strong>Alumno</strong> o como <strong>Docente / Profesor</strong> y creá tu usuario y contraseña.
-          </p>
           <form data-action="submit-register" style="display: flex; flex-direction: column; gap: 12px;">
             <div class="form-group">
-              <label class="form-label">¿Sos Alumno o Docente / Profesor?</label>
+              <label class="form-label">Voy a usar la app como</label>
               <select id="reg-role" class="form-input">
-                <option value="alumno" selected>Soy Alumno / Atleta (Recibe Código Único GYM-XXXX)</option>
-                <option value="profesor">Soy Docente / Profesor (Panel Clínico de Alumnos)</option>
+                <option value="alumno" selected>Alumno</option>
+                <option value="profesor">Profesor</option>
               </select>
             </div>
             <div class="form-group">
-              <label class="form-label">Nombre de usuario (sin espacios)</label>
+              <label class="form-label">Usuario (sin espacios)</label>
               <input type="text" id="reg-username" class="form-input" placeholder="Ej: martin" required autocapitalize="none">
             </div>
             <div class="form-group">
-              <label class="form-label">Tu Nombre y Apellido</label>
+              <label class="form-label">Nombre</label>
               <input type="text" id="reg-display" class="form-input" placeholder="Ej: Martín Gómez" required>
             </div>
             <div class="form-group">
               <label class="form-label">Contraseña o PIN</label>
-              <input type="password" id="reg-pin" class="form-input" placeholder="Creá tu contraseña o PIN" required>
+              <input type="password" id="reg-pin" class="form-input" placeholder="Elegí una contraseña" required>
             </div>
             <div style="display: flex; gap: 10px; margin-top: 6px;">
               <button type="button" class="btn-secondary" data-action="close-modal">Cancelar</button>
-              <button type="submit" class="btn-primary">Crear Cuenta e Ingresar</button>
+              <button type="submit" class="btn-primary">Crear cuenta</button>
             </div>
           </form>
         </div>
@@ -2617,22 +2510,20 @@
         <div class="modal-card">
           <div class="card-header">
             <div>
-              <span class="badge badge-neon">${draftRutina.targetUsername ? 'Modo Profesor → Alumno' : 'Constructor de Rutina'}</span>
-              <h2 class="card-title" style="margin-top: 4px; color: var(--text-main);">
-                ${draftRutina.id ? 'Editar Rutina' : 'Armar Rutina desde Cero'}
-              </h2>
+              <h2 class="modal-title">${draftRutina.id ? 'Editar rutina' : 'Nueva rutina'}</h2>
+              ${draftRutina.targetUsername ? `<span class="net-status" style="margin: 0;">Para @${h(draftRutina.targetUsername)}</span>` : ''}
             </div>
-            <button type="button" class="btn-close-modal" data-action="close-modal" title="Cerrar">✕</button>
+            <button type="button" class="btn-close-modal" data-action="close-modal" title="Cerrar">${renderIcon('x')}</button>
           </div>
 
           <div class="form-group">
-            <label class="form-label">Nombre de la Rutina</label>
-            <input type="text" id="builder-rutina-nombre" class="form-input" value="${h(draftRutina.nombre)}" placeholder="Ej: Torso / Pierna o Full Body Lunes-Miércoles-Viernes">
+            <label class="form-label">Nombre</label>
+            <input type="text" id="builder-rutina-nombre" class="form-input" value="${h(draftRutina.nombre)}" placeholder="Ej: Torso y pierna">
           </div>
 
           <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 12px;">
             <div class="form-group">
-              <label class="form-label">Días de la semana para esta rutina</label>
+              <label class="form-label">Días</label>
               <div class="day-chips">
                 ${DIAS_SEMANA.map(d => `
                   <button type="button" class="day-chip ${draftRutina.dias.includes(d) ? 'selected' : ''}" data-action="toggle-builder-dia" data-dia="${d}">
@@ -2642,7 +2533,7 @@
               </div>
             </div>
             <div class="form-group">
-              <label class="form-label">Horario de Gimnasio</label>
+              <label class="form-label">Horario</label>
               <input type="time" id="builder-rutina-horario" class="form-input" value="${h(draftRutina.horario || '19:00')}">
             </div>
           </div>
@@ -2650,15 +2541,15 @@
           <!-- Lista de ejercicios agregados al borrador y botón "+" para abrir el Catálogo -->
           <div style="padding-top: 12px; display: flex; flex-direction: column; gap: 10px;">
             <div style="display: flex; justify-content: space-between; align-items: center;">
-              <span class="form-label">Ejercicios de la Rutina (${draftRutina.ejercicios.length})</span>
+              <span class="form-label">Ejercicios (${draftRutina.ejercicios.length})</span>
               <button type="button" class="btn-primary" data-action="open-catalog-from-builder" style="width: auto; min-height: 36px; padding: 0 12px; font-size: 12px !important;">
-                + Agregar Ejercicio del Catálogo
+                ${renderIcon('plus')} Agregar
               </button>
             </div>
 
             ${draftRutina.ejercicios.length === 0 ? `
               <div style="padding: 18px; text-align: center; background: var(--bg-elevated); border-radius: var(--radius-md); font-size: 12px; color: var(--text-dim);">
-                Todavía no agregaste ejercicios. Tocá <strong>"+ Agregar Ejercicio del Catálogo"</strong> arriba a la derecha.
+                Todavía no agregaste ejercicios.
               </div>
             ` : `
               <div style="display: flex; flex-direction: column; gap: 6px; max-height: 240px; overflow-y: auto;">
@@ -2685,7 +2576,7 @@
           <div style="display: flex; gap: 10px; margin-top: 6px;">
             <button type="button" class="btn-secondary" data-action="close-modal">Cancelar</button>
             <button type="button" class="btn-primary" data-action="save-built-rutina">
-              ✓ Guardar Rutina Completa
+              Guardar rutina
             </button>
           </div>
         </div>
@@ -2704,99 +2595,64 @@
 
       const esModoMovilidad = activeModal.mode === 'workout-movilidad' || activeModal.bloque === 'movilidad' || catalogoFiltroGrupo === 'movilidad';
       const esModoAmrap = activeModal.mode === 'append-to-amrap';
-      const bloqueLabelMap = {
-        activacion: 'Módulo Activación',
-        movilidad: 'Módulo Movilidad',
-        A: 'Bloque A',
-        B: 'Bloque B',
-        cierre: 'Cierre (Optativo)'
-      };
-      const destinoBadge = esModoAmrap
-        ? 'Sumar Ejercicio dentro de tu Rutina AMRAP'
-        : (activeModal.bloque && bloqueLabelMap[activeModal.bloque]
-            ? `Sumando a: ${bloqueLabelMap[activeModal.bloque]}`
-            : 'Catálogo Total (Activación · Movilidad · Fuerza · AMRAP)');
+      const bloqueLabelMap = { activacion: 'Activación', movilidad: 'Movilidad', A: 'Fuerza A', B: 'Fuerza B', cierre: 'Cierre' };
+      const destino = esModoAmrap ? 'tu AMRAP' : (activeModal.bloque && bloqueLabelMap[activeModal.bloque]) || '';
+      const nombreGrupo = g => (g === 'todos' ? 'Todos' : g === 'activacion' ? 'Activación' : g === 'amrap' ? 'AMRAP' : g.charAt(0).toUpperCase() + g.slice(1));
+      const prevList = overlay.querySelector('.picker-list');
+      const prevScroll = prevList ? prevList.scrollTop : 0;
 
       overlay.innerHTML = `
-        <div class="modal-card" style="max-width: 680px;">
-          <div class="card-header">
+        <div class="modal-card modal-picker" style="max-width: 560px;">
+          <div class="modal-header-sticky">
             <div>
-              <span class="badge badge-neon">${h(destinoBadge)}</span>
-              <h2 class="card-title" style="margin-top: 4px; color: var(--text-main);">Seleccioná un Ejercicio para Añadir</h2>
+              <h2 class="modal-title">Agregar ejercicio</h2>
+              ${destino ? `<span class="net-status" style="margin: 0;">Para ${h(destino)}</span>` : ''}
             </div>
-            <button type="button" class="btn-close-modal" data-action="close-modal" title="Cerrar">✕</button>
+            <button type="button" class="btn-close-modal" data-action="close-modal" title="Cerrar">${renderIcon('x')}</button>
           </div>
 
-          <button type="button" class="btn-create-ej-inline" data-action="open-create-custom-ejercicio" data-bloque="${h(activeModal.bloque || '')}" data-grupo="${h(catalogoFiltroGrupo !== 'todos' ? catalogoFiltroGrupo : '')}" data-from-picker="true" style="width: 100%; padding: 11px 12px;">
-            ${renderIcon('plus')} ¿No está en la lista? Crear Ejercicio Nuevo
-          </button>
+          <div class="search-box">
+            ${renderIcon('search')}
+            <input type="text" id="catalog-search-input" class="form-input" value="${h(catalogoBusqueda)}" placeholder="Buscar ejercicio" data-action="search-catalog" autocomplete="off">
+          </div>
 
-          <!-- Buscador y Filtros por Segmento -->
-          <input type="text" id="catalog-search-input" class="form-input" value="${h(catalogoBusqueda)}" placeholder="Buscar ejercicio (ej: Gato, Puente glúteo, Press Banca, Sentadilla...)" data-action="search-catalog">
-
-          <div class="day-chips">
+          <div class="chip-scroller" style="margin: 0 -20px; padding: 0 20px;">
             ${GRUPOS_CATALOGO.map(g => `
-              <button type="button" class="day-chip ${catalogoFiltroGrupo === g ? 'selected' : ''}" data-action="filter-catalog-modal" data-group="${g}">
-                ${g.toUpperCase()}
-              </button>
+              <button type="button" class="chip chip-filter ${catalogoFiltroGrupo === g ? 'active' : ''}" data-action="filter-catalog-modal" data-group="${g}">${nombreGrupo(g)}</button>
             `).join('')}
           </div>
 
-          <!-- Parámetros de Series, Repeticiones y Peso -->
-          <div style="background: var(--bg-elevated); padding: 10px 12px; border-radius: var(--radius-md); display: grid; grid-template-columns: ${esModoMovilidad ? 'repeat(3, 1fr)' : 'repeat(2, 1fr)'}; gap: 8px;">
-            <div>
-              <label class="form-label" style="font-size: 10px;">Series Objetivo</label>
-              <input type="number" id="picker-series" class="form-input" value="${esModoMovilidad ? '2' : '3'}" min="1" max="12" style="min-height: 36px;">
-            </div>
-            <div>
-              <label class="form-label" style="font-size: 10px;">Repeticiones / Meta</label>
-              <input type="text" id="picker-reps" class="form-input" value="${esModoMovilidad ? '15' : (esModoAmrap ? '12 reps' : '8-10')}" style="min-height: 36px;">
-            </div>
-            ${esModoMovilidad ? `
-              <div>
-                <label class="form-label" style="font-size: 10px;">Peso opcional (kg)</label>
-                <input type="number" step="0.5" id="picker-peso" class="form-input" value="15" style="min-height: 36px;">
-              </div>
-            ` : ''}
+          <div class="picker-params" style="grid-template-columns: ${esModoMovilidad ? 'repeat(3, 1fr)' : 'repeat(2, 1fr)'};">
+            <label><span>Series</span><input type="number" id="picker-series" class="form-input" value="${esModoMovilidad ? '2' : '3'}" min="1" max="12" inputmode="numeric"></label>
+            <label><span>Repeticiones</span><input type="text" id="picker-reps" class="form-input" value="${esModoMovilidad ? '15' : (esModoAmrap ? '12 reps' : '8-10')}"></label>
+            ${esModoMovilidad ? `<label><span>Peso (kg)</span><input type="number" step="0.5" id="picker-peso" class="form-input" value="0" inputmode="decimal"></label>` : ''}
           </div>
 
-          <!-- Lista de Ejercicios con vista previa y botón "+ Añadir" -->
-          <div style="display: flex; flex-direction: column; gap: 8px; max-height: 340px; overflow-y: auto;">
+          <div class="picker-list">
             ${filtrados.map(e => {
               const media = Engine.resolveEjercicioMedia(e);
               return `
-              <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; background: var(--bg-elevated); padding: 10px 12px; border-radius: var(--radius-md);">
-                <div style="display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0;">
-                  <div class="catalog-item-thumb">
-                    ${media.illustrationUrl ? `
-                      <img class="catalog-thumb-img" src="${h(media.illustrationUrl)}" alt="${h(e.nombre)}" loading="lazy">
-                    ` : `
-                      <div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; color: var(--text-dim); background: var(--bg-surface);">${h((e.nombre || 'EJ').slice(0, 2).toUpperCase())}</div>
-                    `}
+                <div class="catalog-row">
+                  <div class="ej-thumb" data-action="view-ejercicio" data-ejercicio-id="${h(e.id)}" style="width: 42px; height: 42px;" title="Ver técnica">
+                    ${media.illustrationUrl ? `<img class="ej-thumb-img" src="${h(media.illustrationUrl)}" alt="" loading="lazy">` : `<div class="ej-thumb-fallback">${h((e.nombre || 'EJ').slice(0, 2).toUpperCase())}</div>`}
                   </div>
-                  <div style="flex: 1; min-width: 0;">
-                    <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
-                      <span class="badge badge-neon">${h(e.grupoMuscular)}</span>
-                      <span style="font-size: 10px; color: var(--text-dim); text-transform: uppercase; font-weight: 700;">${h(e.equipo)}</span>
-                      ${e.esAmrap || e.grupoMuscular === 'amrap' ? `<span class="badge badge-amber">${e.tiempoTrabajoSeg || 40}s / ${e.tiempoDescansoSeg || 20}s</span>` : ''}
-                    </div>
-                    <div style="font-size: 13.5px; font-weight: 800; margin-top: 2px; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${h(e.nombre)}</div>
-                    <div style="font-size: 11px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${h(e.notas || '')}</div>
-                  </div>
-                </div>
-                <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
-                  <button type="button" class="btn-eye-icon" data-action="view-ejercicio" data-ejercicio-id="${h(e.id)}" title="Ver técnica e ilustración">
-                    ${renderIcon('eye')}
+                  <button type="button" class="check-row-text" data-action="pick-catalog-exercise" data-ejercicio-id="${h(e.id)}" style="text-align: left;">
+                    <strong>${h(e.nombre)}</strong>
+                    <small style="text-transform: capitalize;">${h(e.grupoMuscular)} · ${h(e.equipo)}${e.esAmrap || e.grupoMuscular === 'amrap' ? ` · ${e.tiempoTrabajoSeg || 40}s/${e.tiempoDescansoSeg || 20}s` : ''}</small>
                   </button>
-                  <button type="button" class="btn-primary" data-action="pick-catalog-exercise" data-ejercicio-id="${h(e.id)}" style="width: auto; min-height: 36px; padding: 0 14px;">
-                    + Añadir
-                  </button>
+                  <button type="button" class="btn-secondary btn-sm" data-action="pick-catalog-exercise" data-ejercicio-id="${h(e.id)}">Agregar</button>
                 </div>
-              </div>
-            `;}).join('')}
+              `;
+            }).join('')}
+            <button type="button" class="catalog-row catalog-row-create" data-action="open-create-custom-ejercicio" data-bloque="${h(activeModal.bloque || '')}" data-grupo="${h(catalogoFiltroGrupo !== 'todos' ? catalogoFiltroGrupo : '')}" data-from-picker="true">
+              <span class="list-row-icon">${renderIcon('plus')}</span>
+              <span class="check-row-text"><strong>${filtrados.length === 0 ? 'No figura: crear ejercicio' : '¿No figura? Crear ejercicio'}</strong><small>Queda guardado en tu catálogo</small></span>
+            </button>
           </div>
         </div>
       `;
+      const newList = overlay.querySelector('.picker-list');
+      if (newList) newList.scrollTop = prevScroll;
       return;
     }
 
@@ -2819,19 +2675,19 @@
         <div class="modal-card">
           <div class="card-header">
             <div>
-              ${activeModal.targetBloque ? `<span class="badge badge-neon">Se sumará automático a: ${h(activeModal.targetBloque === 'cierre' ? 'Cierre (Optativo)' : activeModal.targetBloque)}</span>` : ''}
-              <h2 class="card-title" style="margin-top: 4px;">+ Crear Ejercicio Nuevo</h2>
+              ${activeModal.targetBloque ? `<span class="net-status" style="margin: 0 0 2px;">Se suma a ${h({ activacion: 'Activación', movilidad: 'Movilidad', A: 'Fuerza A', B: 'Fuerza B', cierre: 'Cierre' }[activeModal.targetBloque] || activeModal.targetBloque)}</span>` : ''}
+              <h2 class="modal-title">Crear ejercicio</h2>
             </div>
-            <button type="button" class="btn-close-modal" data-action="close-modal" title="Cerrar">✕</button>
+            <button type="button" class="btn-close-modal" data-action="close-modal" title="Cerrar">${renderIcon('x')}</button>
           </div>
           <form data-action="submit-custom-ejercicio" style="display: flex; flex-direction: column; gap: 12px;">
             <div class="form-group">
-              <label class="form-label">Nombre del Ejercicio</label>
-              <input type="text" id="custom-ej-nombre" class="form-input" placeholder="Ej: Sentadilla Hack en Máquina" required>
+              <label class="form-label">Nombre</label>
+              <input type="text" id="custom-ej-nombre" class="form-input" placeholder="Ej: Sentadilla hack" required>
             </div>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
               <div class="form-group">
-                <label class="form-label">Segmento / Grupo Muscular</label>
+                <label class="form-label">Grupo</label>
                 <select id="custom-ej-grupo" class="form-input">
                   ${opcionesGrupo.map(([v, lbl]) => `<option value="${v}" ${defGrupo === v ? 'selected' : ''}>${lbl}</option>`).join('')}
                 </select>
@@ -2841,7 +2697,7 @@
                 <select id="custom-ej-equipo" class="form-input">
                   <option value="barra">Barra</option>
                   <option value="mancuerna">Mancuerna</option>
-                  <option value="kettlebell">Pesa Rusa / Kettlebell</option>
+                  <option value="kettlebell">Pesa rusa</option>
                   <option value="polea">Polea</option>
                   <option value="maquina">Máquina</option>
                   <option value="corporal">Corporal</option>
@@ -2853,7 +2709,7 @@
               <label class="form-label">Notas técnicas (opcional)</label>
               <input type="text" id="custom-ej-notas" class="form-input" placeholder="Indicaciones de postura o recorrido">
             </div>
-            <button type="submit" class="btn-primary">${tieneDestino ? '✓ Guardar y Sumar Ahora' : '✓ Guardar en el Catálogo'}</button>
+            <button type="submit" class="btn-primary">${tieneDestino ? 'Guardar y sumar' : 'Guardar'}</button>
           </form>
         </div>
       `;
@@ -2877,52 +2733,30 @@
       const media = Engine.resolveEjercicioMedia(ej);
 
       overlay.innerHTML = `
-        <div class="modal-card" style="max-width: 680px;">
-          <div class="card-header">
-            <div>
-              <span class="badge badge-blue">Posición Inicial y Final</span>
-              <h2 class="card-title" style="margin-top: 4px; color: var(--text-main); font-size: 18px;">${h(ej.nombre)}</h2>
-              <div style="display: flex; gap: 6px; margin-top: 4px; font-size: 11px; color: var(--text-dim); text-transform: uppercase; font-weight: 700; flex-wrap: wrap;">
-                <span>Segmento: ${h(ej.grupoMuscular)}</span> • <span>Equipo: ${h(ej.equipo)}</span> • <span>Músculo activo: ${h(ej.musculoActivo || ej.grupoMuscular)}</span>
-              </div>
+        <div class="modal-card" style="max-width: 560px;">
+          <div class="modal-header-sticky">
+            <div style="min-width: 0;">
+              <h2 class="modal-title" style="font-size: 18px;">${h(ej.nombre)}</h2>
+              <span class="net-status" style="margin: 2px 0 0; text-transform: capitalize;">${h(ej.grupoMuscular)} · ${h(ej.equipo)}</span>
             </div>
-            <button type="button" class="btn-close-modal" data-action="close-modal" title="Cerrar (Esc)">✕</button>
+            <button type="button" class="btn-close-modal" data-action="close-modal" title="Cerrar">${renderIcon('x')}</button>
           </div>
 
-          <!-- Lámina Anatómica de Posición Inicial y Posición Final -->
           <div class="exercise-illustration-card">
             ${media.illustrationUrl ? `
-              <img src="${h(media.illustrationUrl)}" alt="${h(ej.nombre)} - Posición Inicial y Final" class="exercise-illustration-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
-              <div style="display: none; width: 100%; min-height: 180px; flex-direction: column; align-items: center; justify-content: center; padding: 24px 16px; text-align: center; color: #1e293b; background: #ffffff; border-radius: var(--radius-md);">
-                <div style="margin-bottom: 8px; color: #2563eb;">${renderIcon('dumbbell')}</div>
-                <div style="font-size: 14px; font-weight: 800; color: #0f172a; margin-bottom: 4px;">${h(ej.nombre)}</div>
-                <div style="font-size: 12px; color: #64748b;">Demostración de postura inicial y final guiada por tu profesor de sala.</div>
-              </div>
+              <img src="${h(media.illustrationUrl)}" alt="${h(ej.nombre)}: posición inicial y final" class="exercise-illustration-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+              <div class="illustration-fallback" style="display: none;">${renderIcon('dumbbell')}<span>Sin lámina. Pedile la demostración a tu profe.</span></div>
             ` : `
-              <div style="display: flex; width: 100%; min-height: 180px; flex-direction: column; align-items: center; justify-content: center; padding: 24px 16px; text-align: center; color: #1e293b; background: #ffffff; border-radius: var(--radius-md);">
-                <div style="margin-bottom: 8px; color: #2563eb;">${renderIcon('dumbbell')}</div>
-                <div style="font-size: 14px; font-weight: 800; color: #0f172a; margin-bottom: 4px;">${h(ej.nombre)}</div>
-                <div style="font-size: 12px; color: #64748b;">Demostración de postura inicial y final guiada por tu profesor de sala.</div>
-              </div>
+              <div class="illustration-fallback">${renderIcon('dumbbell')}<span>Sin lámina. Pedile la demostración a tu profe.</span></div>
             `}
           </div>
 
-          <!-- Pautas Técnicas -->
-          <div style="background: var(--bg-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 12px 14px; font-size: 12px;">
-            <div style="font-weight: 800; color: var(--text-main); margin-bottom: 4px; text-transform: uppercase; font-size: 11px;">
-              Ejecución Técnica:
-            </div>
-            <p style="color: var(--text-muted); line-height: 1.5; margin: 0;">
-              ${h(ej.notas || 'Control estricto de la fase excéntrica y recorrido completo manteniendo estabilidad central.')}
-            </p>
+          <div class="tech-notes">
+            ${ej.musculoActivo ? `<p><strong>Trabaja:</strong> ${h(ej.musculoActivo)}</p>` : ''}
+            <p><strong>Técnica:</strong> ${h(ej.notas || 'Recorrido completo, bajada controlada y abdomen firme.')}</p>
           </div>
 
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
-            <span style="font-size: 11px; color: var(--text-dim);">Presioná <strong>Esc</strong> para cerrar</span>
-            <button type="button" class="btn-primary" data-action="close-modal" style="width: auto; min-height: 38px;">
-              Cerrar (Esc)
-            </button>
-          </div>
+          <button type="button" class="btn-secondary" data-action="close-modal">Listo</button>
         </div>
       `;
       return;
@@ -2935,14 +2769,13 @@
         <div class="modal-card">
           <div class="card-header">
             <div>
-              <span class="badge badge-neon">Segmento Movilidad</span>
-              <h2 class="card-title" style="margin-top: 4px; color: var(--text-main);">+ Añadir Movilidad a la Rutina de Hoy</h2>
+                            <h2 class="modal-title">Agregar movilidad</h2>
             </div>
-            <button type="button" class="btn-close-modal" data-action="close-modal" title="Cerrar">✕</button>
+            <button type="button" class="btn-close-modal" data-action="close-modal" title="Cerrar">${renderIcon('x')}</button>
           </div>
           <form data-action="submit-movilidad" style="display: flex; flex-direction: column; gap: 12px;">
             <div class="form-group">
-              <label class="form-label">Elegir del Catálogo de Movilidad (o editar nombre abajo)</label>
+              <label class="form-label">Elegir del catálogo</label>
               <select id="mov-catalogo-select" class="form-input" data-action="select-movilidad-preset">
                 ${catalogoMovilidad.map(m => `
                   <option value="${h(m.id)}" data-nombre="${h(m.nombre)}" data-series="${m.seriesSugeridas || 2}" data-reps="${h(m.repsSugeridas || '15')}" data-peso="${m.pesoSugerido || 0}" data-notas="${h(m.notas || '')}">
@@ -2952,7 +2785,7 @@
               </select>
             </div>
             <div class="form-group">
-              <label class="form-label">Nombre del Ejercicio de Movilidad</label>
+              <label class="form-label">Nombre</label>
               <input type="text" id="mov-nombre" class="form-input" placeholder="Ej: Puente de glúteo uni, Gato - Camello..." value="Puente de Glúteo Unilateral" required>
             </div>
             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
@@ -2965,17 +2798,17 @@
                 <input type="text" id="mov-reps" class="form-input" value="15" placeholder="Ej: 15">
               </div>
               <div class="form-group">
-                <label class="form-label">Carga / Peso (kg)</label>
+                <label class="form-label">Peso (kg)</label>
                 <input type="number" step="0.5" id="mov-peso" class="form-input" value="15" placeholder="Ej: 15">
               </div>
             </div>
             <div class="form-group">
-              <label class="form-label">Indicación / Detalle de Ejecución</label>
+              <label class="form-label">Indicación</label>
               <input type="text" id="mov-notas" class="form-input" value="Mantener 2 seg arriba contrayendo glúteo fuerte" placeholder="Ej: Mantener 2 seg arriba contrayendo glúteo">
             </div>
             <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px;">
               <button type="button" class="btn-secondary" data-action="close-modal">Cancelar</button>
-              <button type="submit" class="btn-primary" style="width: auto;">+ Añadir Movilidad a Hoy</button>
+              <button type="submit" class="btn-primary" style="width: auto;">Agregar</button>
             </div>
           </form>
         </div>
@@ -2990,31 +2823,30 @@
         <div class="modal-card" style="max-width: 640px;">
           <div class="card-header">
             <div>
-              <span class="badge badge-neon">Rutina AMRAP dentro del Día</span>
-              <h2 class="card-title" style="margin-top: 4px; color: var(--text-main);">Armar Rutina AMRAP (Varios Ejercicios)</h2>
+                            <h2 class="modal-title">Circuito AMRAP</h2>
               <p style="font-size: 12px; color: var(--text-dim);">
                 Agregá todos los ejercicios que componen tu bloque AMRAP de hoy y definí el tiempo de trabajo por ejercicio y el descanso entre ellos.
               </p>
             </div>
-            <button type="button" class="btn-close-modal" data-action="close-modal" title="Cerrar">✕</button>
+            <button type="button" class="btn-close-modal" data-action="close-modal" title="Cerrar">${renderIcon('x')}</button>
           </div>
 
           <div class="form-group">
-            <label class="form-label">Nombre de la Rutina AMRAP</label>
+            <label class="form-label">Nombre</label>
             <input type="text" id="amrap-nombre" class="form-input" value="${h(draftAmrap.nombre)}" placeholder="Ej: Rutina AMRAP Metabólica del Día">
           </div>
 
           <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
             <div class="form-group">
-              <label class="form-label">Tiempo por Ejercicio (seg)</label>
+              <label class="form-label">Trabajo (seg)</label>
               <input type="number" id="amrap-trabajo-seg" class="form-input" value="${draftAmrap.tiempoTrabajoSeg}" step="5" min="10">
             </div>
             <div class="form-group">
-              <label class="form-label">Descanso entre ellos (seg)</label>
+              <label class="form-label">Descanso (seg)</label>
               <input type="number" id="amrap-descanso-seg" class="form-input" value="${draftAmrap.tiempoDescansoSeg}" step="5" min="0">
             </div>
             <div class="form-group">
-              <label class="form-label">Rondas Objetivo</label>
+              <label class="form-label">Rondas</label>
               <input type="number" id="amrap-rondas" class="form-input" value="${draftAmrap.rondasObjetivo}" min="1" max="20">
             </div>
           </div>
@@ -3076,10 +2908,9 @@
         <div class="modal-card">
           <div class="modal-header-sticky">
             <div>
-              <span class="badge badge-blue">Modificar Ejercicio de Hoy</span>
-              <h2 class="card-title" style="margin-top: 4px; color: var(--text-main);">Cambiar o Editar Ejercicio</h2>
+                            <h2 class="modal-title">Editar ejercicio</h2>
             </div>
-            <button type="button" class="btn-close-modal" data-action="close-modal" title="Cerrar">✕</button>
+            <button type="button" class="btn-close-modal" data-action="close-modal" title="Cerrar">${renderIcon('x')}</button>
           </div>
 
           <form data-action="submit-edit-sesion-ej" style="display: flex; flex-direction: column; gap: 12px;">
@@ -3087,7 +2918,7 @@
             <input type="hidden" id="edit-sesion-old-ej-id" value="${h(activeModal.ejercicioId || '')}">
 
             <div class="form-group">
-              <label class="form-label">Elegir Ejercicio (podés cambiarlo por otro del catálogo)</label>
+              <label class="form-label">Ejercicio</label>
               <select id="edit-sesion-new-ej-id" class="form-input">
                 ${todosEjercicios.map(e => `
                   <option value="${h(e.id)}" ${e.id === activeModal.ejercicioId ? 'selected' : ''}>
@@ -3099,17 +2930,17 @@
 
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
               <div class="form-group">
-                <label class="form-label">Series Objetivo</label>
+                <label class="form-label">Series</label>
                 <input type="number" id="edit-sesion-series" class="form-input" value="${h(activeModal.series || '3')}" min="1" max="15">
               </div>
               <div class="form-group">
-                <label class="form-label">Repeticiones / Meta</label>
+                <label class="form-label">Repeticiones</label>
                 <input type="text" id="edit-sesion-reps" class="form-input" value="${h(activeModal.reps || '8-12')}" placeholder="Ej: 8-12">
               </div>
             </div>
 
             <div class="form-group">
-              <label class="form-label">Nota o Indicación Personal</label>
+              <label class="form-label">Nota</label>
               <input type="text" id="edit-sesion-notas" class="form-input" value="${h(activeModal.notas || '')}" placeholder="Ej: Controlar bajada 2 segundos">
             </div>
 
@@ -3119,7 +2950,7 @@
               </button>
               <div style="display: flex; gap: 8px;">
                 <button type="button" class="btn-secondary" data-action="close-modal" style="width: auto;">Cancelar</button>
-                <button type="submit" class="btn-primary" style="width: auto;">✓ Guardar Cambios</button>
+                <button type="submit" class="btn-primary" style="width: auto;">Guardar</button>
               </div>
             </div>
           </form>
@@ -3140,8 +2971,8 @@
         <div class="modal-card resumen-card">
           <div class="modal-header-sticky">
             <div>
-              <span class="badge badge-emerald">Sesión guardada</span>
-              <h2 class="card-title" style="margin-top: 4px;">${r.prs.length ? 'Excelente sesión' : 'Buen trabajo'}</h2>
+              <h2 class="modal-title">${r.prs.length ? 'Excelente sesión' : 'Buen trabajo'}</h2>
+              <span class="net-status on" style="margin: 2px 0 0;"><i></i>Sesión guardada</span>
             </div>
             <button type="button" class="btn-close-modal" data-action="close-modal" title="Cerrar">${renderIcon('x')}</button>
           </div>
@@ -3162,7 +2993,7 @@
             <label class="form-label" for="resumen-nota">¿Cómo te sentiste? (opcional)</label>
             <textarea id="resumen-nota" class="form-input" rows="2" placeholder="Ej: hombro derecho molestó en el press, bajar peso la próxima">${h(r.entrenamiento.notas || '')}</textarea>
           </div>
-          <div style="display: flex; gap: 8px; margin-top: 10px;">
+          <div class="modal-actions">
             <button type="button" class="btn-secondary" data-action="share-resumen" data-texto="${h(textoShare)}">Compartir</button>
             <button type="button" class="btn-primary" data-action="save-session-note" data-entrenamiento-id="${h(r.entrenamiento.id)}">Listo</button>
           </div>
@@ -3172,48 +3003,99 @@
     }
 
     // MODAL 9: Buzón de Sugerencias (Simplificado, sin listado inferior ni botón WhatsApp, y botón unificado de Foto)
+    if (activeModal.type === 'apariencia') {
+      const prevScroll = overlay.querySelector('.modal-card') ? overlay.querySelector('.modal-card').scrollTop : 0;
+      overlay.innerHTML = `
+        <div class="modal-card modal-sheet" style="max-width: 460px;">
+          <div class="modal-header-sticky">
+            <h2 class="modal-title">Apariencia</h2>
+            <button type="button" class="btn-close-modal" data-action="close-modal" title="Cerrar">${renderIcon('x')}</button>
+          </div>
+          ${renderAppearancePanel()}
+        </div>
+      `;
+      const card = overlay.querySelector('.modal-card');
+      if (card) card.scrollTop = prevScroll;
+      return;
+    }
+
+    if (activeModal.type === 'perfil') {
+      const user = Store.user || {};
+      const st = Store.getState() || {};
+      const avatarDraft = activeModal.avatar !== undefined ? activeModal.avatar : ((st.perfil && st.perfil.avatar) || '');
+      const nombreDraft = activeModal.nombre !== undefined ? activeModal.nombre : (user.displayName || '');
+      overlay.innerHTML = `
+        <div class="modal-card" style="max-width: 420px;">
+          <div class="modal-header-sticky">
+            <h2 class="modal-title">Mi perfil</h2>
+            <button type="button" class="btn-close-modal" data-action="close-modal" title="Cerrar">${renderIcon('x')}</button>
+          </div>
+
+          <form data-action="submit-perfil" class="perfil-form">
+            <div class="perfil-avatar-edit">
+              ${renderAvatar({ displayName: nombreDraft || user.username }, { perfil: { avatar: avatarDraft } }, 104)}
+              <div class="perfil-avatar-actions">
+                <label class="btn-secondary btn-sm">
+                  ${renderIcon('camera')} ${avatarDraft ? 'Cambiar foto' : 'Subir foto'}
+                  <input type="file" accept="image/*" data-change="upload-avatar" hidden>
+                </label>
+                ${avatarDraft ? `<button type="button" class="btn-link" data-action="remove-avatar-draft">Quitar foto</button>` : ''}
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="perfil-nombre">Nombre</label>
+              <input type="text" id="perfil-nombre" class="form-input" value="${h(nombreDraft)}" maxlength="40" placeholder="Cómo querés que te llamemos" required autocomplete="name">
+            </div>
+
+            <p class="form-hint">Tu usuario para ingresar sigue siendo <strong>@${h(user.username || '')}</strong>.</p>
+
+            <div class="modal-actions">
+              <button type="button" class="btn-secondary" data-action="close-modal">Cancelar</button>
+              <button type="submit" class="btn-primary">Guardar</button>
+            </div>
+          </form>
+        </div>
+      `;
+      return;
+    }
+
     if (activeModal.type === 'sugerencias') {
       overlay.innerHTML = `
         <div class="modal-card" style="max-width: 460px; padding: 16px; gap: 12px;">
-          <div class="modal-header-sticky" style="padding: 2px 0 8px 0;">
+          <div class="modal-header-sticky">
             <div>
-              <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                <span class="badge badge-neon">Sincronización Nube</span>
-                <span class="online-status-indicator" style="display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; color: ${navigator.onLine ? '#22C55E' : '#F97316'};">
-                  <span style="width: 7px; height: 7px; border-radius: 50%; background: ${navigator.onLine ? '#22C55E' : '#F97316'}; display: inline-block;"></span>
-                  ${navigator.onLine ? 'Online' : 'Offline'}
-                </span>
-              </div>
-              <h2 class="card-title" style="font-size: 17px; margin-top: 3px; color: var(--text-main);">Enviar Sugerencia</h2>
+              <h2 class="modal-title">Enviar sugerencia</h2>
+              <span class="net-status ${navigator.onLine ? 'on' : 'off'}"><i></i>${navigator.onLine ? 'En línea' : 'Sin conexión: se envía al volver la señal'}</span>
             </div>
-            <button type="button" class="btn-close-modal" data-action="close-modal" title="Cerrar ventana">${renderIcon('x')}</button>
+            <button type="button" class="btn-close-modal" data-action="close-modal" title="Cerrar">${renderIcon('x')}</button>
           </div>
 
           <form data-action="submit-sugerencia" style="display: flex; flex-direction: column; gap: 10px;">
             <div class="form-group">
               <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
-                <label class="form-label" for="sug-mensaje">¿Qué te gustaría mejorar o agregar?</label>
+                <label class="form-label" for="sug-mensaje">¿Qué mejorarías?</label>
                 <button type="button" class="btn-dictar ${isDictatingSugerencia ? 'listening' : ''}" data-action="dictar-sugerencia" style="padding: 5px 10px; font-size: 12px !important; display:inline-flex; align-items:center; gap:5px;">
                   ${renderIcon('mic')} ${isDictatingSugerencia ? 'Detener' : 'Dictar'}
                 </button>
               </div>
-              <textarea id="sug-mensaje" class="form-input" rows="3" placeholder="Escribí o dictá tu sugerencia acá..." required>${h(draftSugerenciaTexto)}</textarea>
+              <textarea id="sug-mensaje" class="form-input" rows="4" placeholder="Escribí o dictá tu sugerencia..." required>${h(draftSugerenciaTexto)}</textarea>
             </div>
 
             <!-- Botón Único de Foto (despliega las 2 opciones: Adjuntar o Pegar) -->
             <div class="form-group">
               <button type="button" class="btn-secondary" data-action="toggle-photo-options" style="justify-content: center; gap: 6px;">
-                ${renderIcon('camera')} Foto: Adjuntar o Pegar${draftSugerenciaCapturas.length > 0 ? ` (${draftSugerenciaCapturas.length})` : ''} ${showPhotoOptions ? renderIcon('chevronUp') : renderIcon('chevronDown')}
+                ${renderIcon('camera')} Agregar foto${draftSugerenciaCapturas.length > 0 ? ` (${draftSugerenciaCapturas.length})` : ''} ${showPhotoOptions ? renderIcon('chevronUp') : renderIcon('chevronDown')}
               </button>
 
               ${showPhotoOptions ? `
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: var(--bg-elevated); padding: 8px; border-radius: var(--radius-md); border: 1px solid var(--border-subtle);">
                   <label class="btn-secondary btn-sm" style="cursor: pointer; width: 100% !important; justify-content: center;">
-                    ${renderIcon('camera')} Elegir / Cámara
+                    ${renderIcon('camera')} Galería o cámara
                     <input type="file" accept="image/*" multiple data-action="upload-sugerencia-capturas" style="display: none;">
                   </label>
                   <button type="button" class="btn-secondary btn-sm" data-action="paste-clipboard-image" style="width: 100% !important; justify-content: center;">
-                    ${renderIcon('clipboard')} Pegar Copiada
+                    ${renderIcon('clipboard')} Pegar copiada
                   </button>
                 </div>
               ` : ''}
@@ -3230,9 +3112,9 @@
               ` : ''}
             </div>
 
-            <div style="display: flex; justify-content: flex-end; gap: 8px; padding-top: 4px;">
-              <button type="button" class="btn-secondary" data-action="close-modal" style="width: auto;">Cancelar</button>
-              <button type="submit" class="btn-primary" style="width: auto;">✓ Enviar Sugerencia</button>
+            <div class="modal-actions">
+              <button type="button" class="btn-secondary" data-action="close-modal">Cancelar</button>
+              <button type="submit" class="btn-primary">Enviar</button>
             </div>
           </form>
         </div>
@@ -3247,6 +3129,12 @@
   function render() {
     const root = document.getElementById('app-root');
     if (!root) return;
+    // Nunca redibujar en medio de un arrastre: el aviso de sincronización que llega ~0,5 s después
+    // de guardar reemplazaba la tarjeta que el dedo estaba moviendo y el orden no se guardaba.
+    if (dragState) {
+      renderPendiente = true;
+      return;
+    }
 
     const user = Store.user;
     const state = Store.getState();
@@ -3308,7 +3196,6 @@
   // ==========================================
   // 10c. ARRASTRAR PARA ORDENAR (⋮⋮) — movilidad y ejercicios de la sesión
   // ==========================================
-  let dragState = null;
   function initDragSort() {
     document.querySelectorAll('[data-drag-handle]').forEach(handle => {
       if (handle.dataset.dragReady) return;
@@ -3363,8 +3250,10 @@
     });
     // Auto-scroll suave cerca de los bordes
     const margen = 70;
-    if (e.clientY < margen) window.scrollBy(0, -12);
-    else if (e.clientY > window.innerHeight - margen) window.scrollBy(0, 12);
+    const scroller = dragState.list.closest('.onepage-scroll-list') || dragState.list;
+    const sr = scroller.getBoundingClientRect();
+    if (e.clientY < sr.top + margen) scroller.scrollTop -= 10;
+    else if (e.clientY > sr.bottom - margen) scroller.scrollTop += 10;
   }
   function onDragEnd() {
     if (!dragState) return;
@@ -3375,11 +3264,20 @@
     items.forEach(x => { x.style.transform = ''; x.classList.remove('dragging'); });
     document.body.classList.remove('drag-active');
     dragState = null;
-    if (!moved || toIndex === fromIndex) return;
+    if (!moved || toIndex === fromIndex) {
+      if (renderPendiente) { renderPendiente = false; render(); }
+      return;
+    }
+    renderPendiente = false;
     const tipo = list.getAttribute('data-drag-list');
     const id = item.getAttribute('data-drag-id');
     if (tipo === 'movilidad') {
-      Store.commit(s => Engine.moverMovilidad(s, id, toIndex));
+      // La lista visible mezcla movilidad con fecha ("mov:") y agregados de la sesión ("ses:")
+      const ordenMov = items.map(x => x.getAttribute('data-drag-id'));
+      ordenMov.splice(fromIndex, 1);
+      ordenMov.splice(toIndex, 0, id);
+      const idsDe = pref => ordenMov.filter(x => x.startsWith(pref)).map(x => x.slice(pref.length));
+      Store.commit(s => Engine.reordenarPorIds(Engine.reordenarPorIds(s, 'movilidad', idsDe('mov:')), 'ejerciciosSesionHoy', idsDe('ses:')));
     } else if (tipo === 'sesion') {
       const orden = items.map(x => x.getAttribute('data-drag-id'));
       orden.splice(fromIndex, 1);
@@ -3422,51 +3320,21 @@
       if (Store.setThemePreference) {
         Store.setThemePreference(val);
       }
-      render();
-    },
-
-    'set-aesthetic-bg': el => {
-      const bg = el.getAttribute('data-bg') || 'zinc';
-      Store.setAestheticPreference({ bgStyle: bg });
-      render();
     },
 
     'set-aesthetic-pattern': el => {
       const pattern = el.getAttribute('data-pattern') || 'none';
       Store.setAestheticPreference({ bgPattern: pattern });
-      showToast('✓ Fondo actualizado');
-      render();
     },
 
     'set-aesthetic-accent': el => {
       const color = el.getAttribute('data-color') || '#3B82F6';
       Store.setAestheticPreference({ accentColor: color });
-      render();
-    },
-
-    'set-aesthetic-logo-dumbbell': el => {
-      const color = el.getAttribute('data-color') || '#3B82F6';
-      Store.setAestheticPreference({ logoDumbbell: color });
-      render();
-    },
-
-    'set-aesthetic-logo-bg': el => {
-      const color = el.getAttribute('data-color') || '#18181B';
-      Store.setAestheticPreference({ logoBg: color });
-      render();
     },
 
     'reset-aesthetic-pref': () => {
-      Store.setAestheticPreference({
-        bgStyle: 'zinc',
-        bgPattern: 'none',
-        accentColor: '#3B82F6',
-        accentName: 'Azul Eléctrico',
-        logoBg: '#18181B',
-        logoDumbbell: '#3B82F6'
-      });
-      showToast('✓ Colores y fondo restablecidos');
-      render();
+      Store.resetAestheticPreference();
+      showToast('Apariencia restablecida');
     },
 
     'check-app-update': () => {
@@ -4316,12 +4184,54 @@
       activeModal = { type: 'sugerencias' };
       renderModals();
       if (typeof Store.sincronizarSugerenciasNube === 'function') {
-        Store.sincronizarSugerenciasNube().then(() => {
-          if (activeModal && activeModal.type === 'sugerencias') {
-            renderModals();
-          }
-        }).catch(() => {});
+        Store.sincronizarSugerenciasNube().catch(() => {});
       }
+    },
+
+    // --- PERFIL Y APARIENCIA ---
+    'open-apariencia-modal': () => {
+      activeModal = { type: 'apariencia' };
+      renderModals();
+    },
+
+    'open-perfil-modal': () => {
+      activeModal = { type: 'perfil' };
+      renderModals();
+    },
+
+    'remove-avatar-draft': () => {
+      if (!activeModal || activeModal.type !== 'perfil') return;
+      const nombreEl = document.getElementById('perfil-nombre');
+      activeModal = { ...activeModal, avatar: '', nombre: nombreEl ? nombreEl.value : activeModal.nombre };
+      renderModals();
+    },
+
+    'submit-perfil': () => {
+      if (!activeModal || activeModal.type !== 'perfil') return;
+      const nombreEl = document.getElementById('perfil-nombre');
+      const res = Store.updateDisplayName(nombreEl ? nombreEl.value : '');
+      if (!res.ok) {
+        showToast(res.error);
+        return;
+      }
+      if (activeModal.avatar !== undefined) {
+        const avatar = activeModal.avatar;
+        Store.commit(state => Engine.actualizarPerfilVisual(state, { avatar }));
+      }
+      activeModal = null;
+      render();
+      showToast('Perfil actualizado');
+    },
+
+    'set-aesthetic-bgcolor': el => {
+      const color = el.getAttribute('data-color') || '';
+      const key = getEffectiveTheme() === 'light' ? 'bgColorLight' : 'bgColorDark';
+      Store.setAestheticPreference({ [key]: color });
+    },
+
+    'remove-bg-photo': () => {
+      Store.setBackgroundPhoto('');
+      Store.setAestheticPreference({ bgPattern: 'none' });
     },
 
     'dictar-sugerencia': () => {
@@ -4884,11 +4794,7 @@
     'toggle-salud-logs': () => {
       captureSaludDraftsFromDOM();
       isSaludLogsOpen = !isSaludLogsOpen;
-      render();
-    },
-
-    'toggle-ajustes-colors': () => {
-      isAjustesColorsOpen = !isAjustesColorsOpen;
+      if (isSaludLogsOpen) isPerfilOpen = false;
       render();
     },
 
@@ -5119,7 +5025,9 @@
     },
 
     'toggle-perfil-collapse': () => {
+      captureSaludDraftsFromDOM();
       isPerfilOpen = !isPerfilOpen;
+      if (isPerfilOpen) isSaludLogsOpen = false;
       render();
     },
 
@@ -5288,7 +5196,8 @@
     const actionName = target.getAttribute('data-action');
     if (typeof actions[actionName] === 'function') {
       e.preventDefault();
-      actions[actionName](target, e);
+      accionEnCurso = true;
+      try { actions[actionName](target, e); } finally { accionEnCurso = false; }
     }
   });
 
@@ -5298,7 +5207,8 @@
     e.preventDefault();
     const actionName = target.getAttribute('data-action');
     if (typeof actions[actionName] === 'function') {
-      actions[actionName](target, e);
+      accionEnCurso = true;
+      try { actions[actionName](target, e); } finally { accionEnCurso = false; }
     }
   });
 
@@ -5310,6 +5220,10 @@
     }
     if (e.target && e.target.id === 'sug-mensaje') {
       draftSugerenciaTexto = e.target.value;
+      return;
+    }
+    if (e.target && e.target.dataset && e.target.dataset.live === 'set-bg-dim') {
+      document.documentElement.style.setProperty('--bg-dim', `${Number(e.target.value) || 0}%`);
       return;
     }
     const target = e.target.closest('input[data-action="search-catalog"]');
@@ -5393,7 +5307,95 @@
     }
   });
 
+  /** Lee una imagen, la recorta/escala y la devuelve como JPEG comprimido (data URL). */
+  function comprimirImagen(file, { maxDim = 1280, calidad = 0.76, cuadrada = false } = {}) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = reject;
+      reader.onload = ev => {
+        const img = new Image();
+        img.onerror = reject;
+        img.onload = () => {
+          let sx = 0, sy = 0, sw = img.width, sh = img.height;
+          if (cuadrada) {
+            const lado = Math.min(sw, sh);
+            sx = Math.round((sw - lado) / 2);
+            sy = Math.round((sh - lado) / 2);
+            sw = sh = lado;
+          }
+          const escala = Math.min(1, maxDim / Math.max(sw, sh));
+          const w = Math.max(1, Math.round(sw * escala));
+          const hh = Math.max(1, Math.round(sh * escala));
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = hh;
+          canvas.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, w, hh);
+          resolve(canvas.toDataURL('image/jpeg', calidad));
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  const changeHandlers = {
+    'pick-accent-color': el => {
+      if (/^#[0-9a-fA-F]{6}$/.test(el.value)) Store.setAestheticPreference({ accentColor: el.value.toUpperCase() });
+    },
+    // Un fondo claro pide tema claro y uno oscuro, tema oscuro: se acomoda solo para que el texto siempre se lea.
+    'pick-bg-color': el => {
+      if (!/^#[0-9a-fA-F]{6}$/.test(el.value)) return;
+      const color = el.value.toUpperCase();
+      const claro = Store.colorLuminance(color) > 0.35;
+      Store.setAestheticPreference(claro ? { bgColorLight: color } : { bgColorDark: color });
+      const deseado = claro ? 'light' : 'dark';
+      if (getEffectiveTheme() !== deseado) {
+        Store.setThemePreference(deseado);
+        showToast(claro ? 'Fondo claro: pasamos al tema claro' : 'Fondo oscuro: pasamos al tema oscuro');
+      }
+    },
+    'set-bg-dim': el => {
+      Store.setAestheticPreference({ bgDim: Number(el.value) || 0 });
+    },
+    'upload-bg-photo': async el => {
+      const file = el.files && el.files[0];
+      if (!file) return;
+      try {
+        let data = await comprimirImagen(file, { maxDim: 1280, calidad: 0.72 });
+        if (!Store.setBackgroundPhoto(data)) {
+          data = await comprimirImagen(file, { maxDim: 800, calidad: 0.6 });
+          if (!Store.setBackgroundPhoto(data)) {
+            showToast('No hay espacio para guardar esa foto en este teléfono.');
+            return;
+          }
+        }
+        Store.setAestheticPreference({ bgPattern: 'foto' });
+      } catch (_) {
+        showToast('No se pudo leer esa imagen. Probá con otra.');
+      }
+    },
+    'upload-avatar': async el => {
+      const file = el.files && el.files[0];
+      if (!file || !activeModal || activeModal.type !== 'perfil') return;
+      try {
+        const data = await comprimirImagen(file, { maxDim: 320, calidad: 0.82, cuadrada: true });
+        const nombreEl = document.getElementById('perfil-nombre');
+        activeModal = { ...activeModal, avatar: data, nombre: nombreEl ? nombreEl.value : activeModal.nombre };
+        renderModals();
+      } catch (_) {
+        showToast('No se pudo leer esa imagen. Probá con otra.');
+      }
+    }
+  };
+
   document.addEventListener('change', e => {
+    const custom = e.target.closest('[data-change]');
+    if (custom && changeHandlers[custom.getAttribute('data-change')]) {
+      accionEnCurso = true;
+      try { changeHandlers[custom.getAttribute('data-change')](custom); } finally { accionEnCurso = false; }
+      return;
+    }
+
     const dateInput = e.target.closest('input[data-action="change-readiness-date"]');
     if (dateInput) {
       if (actions['change-readiness-date']) actions['change-readiness-date'](dateInput);
@@ -5512,8 +5514,30 @@
   // ==========================================
   // 13. INICIALIZACIÓN
   // ==========================================
+  // Los avisos del Store que llegan en segundo plano (sincronización, cambio de tema del sistema)
+  // no deben redibujar la pantalla mientras hay un campo de texto en foco: en el teléfono eso
+  // cierra el teclado. Se redibuja apenas el campo pierde el foco.
+  function estaEscribiendo() {
+    const el = document.activeElement;
+    if (!el || el === document.body) return false;
+    if (el.tagName === 'TEXTAREA') return true;
+    return el.tagName === 'INPUT' && !['checkbox', 'radio', 'range', 'color', 'file', 'button', 'submit'].includes(el.type);
+  }
   Store.subscribe(() => {
+    if (!accionEnCurso && estaEscribiendo()) {
+      renderPendiente = true;
+      return;
+    }
     render();
+  });
+  document.addEventListener('focusout', () => {
+    if (!renderPendiente) return;
+    setTimeout(() => {
+      if (renderPendiente && !estaEscribiendo()) {
+        renderPendiente = false;
+        render();
+      }
+    }, 60);
   });
 
   Timer.subscribe(() => {

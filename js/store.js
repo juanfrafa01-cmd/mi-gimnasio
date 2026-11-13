@@ -760,6 +760,7 @@
     if (typeof document !== 'undefined' && document.documentElement) {
       document.documentElement.setAttribute('data-theme', effective);
       document.documentElement.setAttribute('data-theme-pref', p);
+      if (typeof Store.applyAestheticPreference === 'function') Store.applyAestheticPreference();
     }
     return effective;
   };
@@ -775,30 +776,78 @@
   };
 
   // ==========================================
-  // 7. PERSONALIZACIÓN ESTÉTICA (FONDOS, COLORES, MINI LOGO)
+  // 7. PERSONALIZACIÓN ESTÉTICA (ACENTO, FONDO, FOTO DE FONDO)
   // ==========================================
+  // El CSS deriva todo de 3 variables: --accent, --on-accent y --bg-base.
+  // Acá solo se guardan las elecciones y se publican esas variables: ningún color queda "pegado".
   const AESTHETIC_PREF_KEY = 'gimnasio_aesthetic_pref';
+  const BG_PHOTO_KEY = 'gimnasio_bg_photo';
+  const AESTHETIC_DEFAULTS = {
+    accentColor: '#3B82F6',
+    bgPattern: 'none',     // none | aurora | grid | dots | hex | pesas | foto
+    bgColorDark: '',       // '' = grafito por defecto
+    bgColorLight: '',      // '' = niebla por defecto
+    bgDim: 55              // oscurecimiento de la foto de fondo (0-85)
+  };
+  const BG_PATTERNS_VALIDOS = ['none', 'aurora', 'grid', 'dots', 'hex', 'pesas', 'foto'];
+  const LEGACY_BG_STYLE = { oled: '#000000', navy: '#070B14', steel: '#131316' };
+  const LEGACY_PATTERN = { camo: 'aurora', basquet: 'aurora', carbon: 'dots' };
+
+  function isHexColor(v) {
+    return typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v);
+  }
+
+  function hexToRgb(hex) {
+    const num = parseInt(hex.slice(1), 16);
+    return [(num >> 16) & 255, (num >> 8) & 255, num & 255];
+  }
+
+  /** Luminancia relativa WCAG (0 = negro, 1 = blanco). */
+  Store.colorLuminance = function (hex) {
+    if (!isHexColor(hex)) return 0;
+    const [r, g, b] = hexToRgb(hex).map(v => {
+      const c = v / 255;
+      return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
 
   Store.getAestheticPreference = function () {
+    let raw = {};
     try {
-      const raw = localStorage.getItem(AESTHETIC_PREF_KEY);
-      return raw ? JSON.parse(raw) : {
-        bgStyle: 'zinc',
-        bgPattern: 'none',
-        accentColor: '#3B82F6',
-        accentName: 'Azul Eléctrico',
-        logoBg: '#18181B',
-        logoDumbbell: '#3B82F6'
-      };
+      raw = JSON.parse(localStorage.getItem(AESTHETIC_PREF_KEY) || '{}') || {};
     } catch {
-      return {
-        bgStyle: 'zinc',
-        bgPattern: 'none',
-        accentColor: '#3B82F6',
-        accentName: 'Azul Eléctrico',
-        logoBg: '#18181B',
-        logoDumbbell: '#3B82F6'
-      };
+      raw = {};
+    }
+    const pref = { ...AESTHETIC_DEFAULTS, ...raw };
+    // Migración de versiones anteriores (bgStyle zinc/oled/navy/steel y patrones retirados)
+    if (raw.bgStyle && !raw.bgColorDark && LEGACY_BG_STYLE[raw.bgStyle]) pref.bgColorDark = LEGACY_BG_STYLE[raw.bgStyle];
+    if (LEGACY_PATTERN[pref.bgPattern]) pref.bgPattern = LEGACY_PATTERN[pref.bgPattern];
+    if (!BG_PATTERNS_VALIDOS.includes(pref.bgPattern)) pref.bgPattern = 'none';
+    if (!isHexColor(pref.accentColor)) pref.accentColor = AESTHETIC_DEFAULTS.accentColor;
+    if (!isHexColor(pref.bgColorDark)) pref.bgColorDark = '';
+    if (!isHexColor(pref.bgColorLight)) pref.bgColorLight = '';
+    pref.bgDim = Math.min(85, Math.max(0, Number.isFinite(Number(pref.bgDim)) ? Number(pref.bgDim) : 55));
+    if (pref.bgPattern === 'foto' && !Store.getBackgroundPhoto()) pref.bgPattern = 'none';
+    return pref;
+  };
+
+  Store.getBackgroundPhoto = function () {
+    try {
+      return localStorage.getItem(BG_PHOTO_KEY) || '';
+    } catch {
+      return '';
+    }
+  };
+
+  /** Guarda (o borra con '') la foto de fondo ya comprimida. Devuelve false si no entra en el almacenamiento. */
+  Store.setBackgroundPhoto = function (dataUrl) {
+    try {
+      if (dataUrl) localStorage.setItem(BG_PHOTO_KEY, dataUrl);
+      else localStorage.removeItem(BG_PHOTO_KEY);
+      return true;
+    } catch {
+      return false;
     }
   };
 
@@ -806,75 +855,74 @@
     if (typeof document === 'undefined' || !document.documentElement) return;
     const p = prefs || Store.getAestheticPreference();
     const root = document.documentElement;
+    const theme = root.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
 
-    // 0. Patrón o textura de fondo (camo, basquet, pesas, carbon, grid, hex, none)
-    root.setAttribute('data-bg-pattern', p.bgPattern || 'none');
+    // 1. Acento: el CSS calcula hover, suaves, insignias y foco a partir de estas dos variables
+    const accent = isHexColor(p.accentColor) ? p.accentColor : AESTHETIC_DEFAULTS.accentColor;
+    root.style.setProperty('--accent', accent);
+    root.style.setProperty('--accent-rgb', hexToRgb(accent).join(', '));
+    root.style.setProperty('--on-accent', Store.colorLuminance(accent) > 0.42 ? '#0A0A0C' : '#FFFFFF');
 
-    // 1. Estilo de fondo
-    if (p.bgStyle === 'oled') {
-      root.style.setProperty('--bg-primary', '#000000');
-      root.style.setProperty('--bg-surface', '#09090b');
-      root.style.setProperty('--bg-card', '#0e0e11');
-      root.style.setProperty('--bg-elevated', '#141418');
-    } else if (p.bgStyle === 'navy') {
-      root.style.setProperty('--bg-primary', '#060B13');
-      root.style.setProperty('--bg-surface', '#0B1320');
-      root.style.setProperty('--bg-card', '#101C30');
-      root.style.setProperty('--bg-elevated', '#172640');
-    } else if (p.bgStyle === 'steel') {
-      root.style.setProperty('--bg-primary', '#121214');
-      root.style.setProperty('--bg-surface', '#18181B');
-      root.style.setProperty('--bg-card', '#202024');
-      root.style.setProperty('--bg-elevated', '#27272A');
-    } else { // 'zinc' default
-      root.style.removeProperty('--bg-primary');
-      root.style.removeProperty('--bg-surface');
-      root.style.removeProperty('--bg-card');
-      root.style.removeProperty('--bg-elevated');
-    }
+    // 2. Color de fondo propio del tema activo (las superficies se derivan en CSS)
+    const bg = theme === 'light' ? p.bgColorLight : p.bgColorDark;
+    if (bg) root.style.setProperty('--bg-base', bg);
+    else root.style.removeProperty('--bg-base');
 
-    // 2. Color de acento / principal y todas las insignias / botones
-    if (p.accentColor) {
-      function hexToRgba(hex, alpha) {
-        if (!hex || !hex.startsWith('#')) return `rgba(59, 130, 246, ${alpha})`;
-        const h = hex.replace('#', '');
-        const num = parseInt(h.length === 3 ? h.split('').map(c => c + c).join('') : h, 16);
-        const r = (num >> 16) & 255;
-        const g = (num >> 8) & 255;
-        const b = num & 255;
-        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-      }
+    // 3. Estilo de fondo y foto
+    const pattern = BG_PATTERNS_VALIDOS.includes(p.bgPattern) ? p.bgPattern : 'none';
+    const photo = pattern === 'foto' ? Store.getBackgroundPhoto() : '';
+    root.setAttribute('data-bg-pattern', pattern === 'foto' && !photo ? 'none' : pattern);
+    if (photo) root.style.setProperty('--bg-photo', `url("${photo}")`);
+    else root.style.removeProperty('--bg-photo');
+    root.style.setProperty('--bg-dim', `${p.bgDim}%`);
 
-      const softBg = hexToRgba(p.accentColor, 0.16);
-      root.style.setProperty('--cta-blue', p.accentColor);
-      root.style.setProperty('--cta-blue-hover', p.accentColor);
-      root.style.setProperty('--cta-blue-light', p.accentColor);
-      root.style.setProperty('--cta-blue-soft', softBg);
-      root.style.setProperty('--accent-blue', p.accentColor);
-      root.style.setProperty('--accent-neon', p.accentColor);
-      root.style.setProperty('--border-focus', p.accentColor);
-      root.style.setProperty('--badge-bg', softBg);
-      root.style.setProperty('--badge-text', p.accentColor);
-      root.style.setProperty('--steel-blue', p.accentColor);
-      root.style.setProperty('--steel-blue-light', p.accentColor);
-      root.style.setProperty('--neon-lime', p.accentColor);
-      root.style.setProperty('--logo-box-stroke', p.accentColor);
-    }
+    // 4. Barra del navegador / PWA acompaña al fondo
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', bg || (theme === 'light' ? '#F4F4F6' : '#0B0B0D'));
 
-    // 3. Mini logo
-    if (p.logoBg) root.style.setProperty('--logo-box-bg', p.logoBg);
-    if (p.logoDumbbell) root.style.setProperty('--logo-dumbbell', p.logoDumbbell);
+    // Limpieza de variables que versiones anteriores dejaban fijas en el <html>
+    ['--bg-primary', '--bg-surface', '--bg-card', '--bg-elevated', '--cta-blue', '--cta-blue-hover', '--cta-blue-light',
+      '--cta-blue-soft', '--accent-blue', '--accent-neon', '--border-focus', '--badge-bg', '--badge-text', '--steel-blue',
+      '--steel-blue-light', '--neon-lime', '--logo-box-stroke', '--logo-box-bg', '--logo-dumbbell'
+    ].forEach(v => root.style.removeProperty(v));
   };
 
   Store.setAestheticPreference = function (patch) {
-    const current = Store.getAestheticPreference();
-    const updated = { ...current, ...patch };
+    const updated = { ...Store.getAestheticPreference(), ...patch };
     try {
       localStorage.setItem(AESTHETIC_PREF_KEY, JSON.stringify(updated));
     } catch {}
     Store.applyAestheticPreference(updated);
     Store.notify();
     return updated;
+  };
+
+  Store.resetAestheticPreference = function () {
+    try {
+      localStorage.removeItem(AESTHETIC_PREF_KEY);
+    } catch {}
+    Store.setBackgroundPhoto('');
+    Store.applyAestheticPreference();
+    Store.notify();
+  };
+
+  // ==========================================
+  // 8. PERFIL (NOMBRE VISIBLE)
+  // ==========================================
+  /** Cambia el nombre visible del usuario activo (el usuario de ingreso no cambia). */
+  Store.updateDisplayName = function (displayName) {
+    if (!Store.user) return { ok: false, error: 'No hay sesión activa.' };
+    const clean = String(displayName || '').trim().replace(/\s+/g, ' ').slice(0, 40);
+    if (!clean) return { ok: false, error: 'Escribí un nombre.' };
+    const index = getUsersIndex();
+    const found = index.find(u => u.username.toLowerCase() === Store.user.username.toLowerCase());
+    if (found) {
+      found.displayName = clean;
+      saveUsersIndex(index);
+    }
+    Store.user.displayName = clean;
+    Store.notify();
+    return { ok: true, displayName: clean };
   };
 
   return Store;

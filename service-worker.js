@@ -8,7 +8,7 @@
  * - Versionado sincronizado con APP_VERSION de app.js.
  */
 
-const CACHE_VERSION = 'v3.2.0';
+const CACHE_VERSION = 'v3.3.0';
 const CACHE_NAME = `migimnasio-shell-${CACHE_VERSION}`;
 const STATIC_CACHE_NAME = `migimnasio-static-${CACHE_VERSION}`;
 

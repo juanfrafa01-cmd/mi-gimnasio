@@ -1915,6 +1915,31 @@
   };
 
   /**
+   * Actualiza la identidad visual del perfil (foto y color del avatar) sin tocar la ficha física
+   * ni marcarla como completada. `avatar` es un data URL ya comprimido o '' para quitar la foto.
+   */
+  Engine.actualizarPerfilVisual = function (state, datos) {
+    const ahora = Date.now();
+    const patch = {};
+    if (datos && typeof datos.avatar === 'string') patch.avatar = datos.avatar;
+    if (datos && typeof datos.avatarColor === 'string') patch.avatarColor = datos.avatarColor;
+    return {
+      ...state,
+      perfil: { ...(state.perfil || {}), ...patch, updatedAt: ahora },
+      updatedAt: ahora
+    };
+  };
+
+  /** Iniciales para el avatar sin foto: "Juan Pérez" -> "JP", "juan" -> "JU". */
+  Engine.inicialesDe = function (nombre) {
+    const limpio = String(nombre || '').replace(/\([^)]*\)/g, ' ').trim();
+    const partes = limpio.split(/\s+/).filter(Boolean);
+    if (partes.length === 0) return '?';
+    if (partes.length === 1) return partes[0].slice(0, 2).toUpperCase();
+    return (partes[0][0] + partes[partes.length - 1][0]).toUpperCase();
+  };
+
+  /**
    * Registra un Check-in de Salud Física y Psicológica (Readiness Diario).
    */
   Engine.registrarReadiness = function (state, data) {
@@ -3438,6 +3463,24 @@
     activos.splice(destino, 0, item);
     const borrados = state.movilidad.filter(m => m.deleted);
     return { ...state, movilidad: activos.concat(borrados), movilidadSesion: activos.concat(borrados), updatedAt: Date.now() };
+  };
+
+  /**
+   * Reordena, dentro de state[clave], solo los elementos cuyos id vienen en ordenIds,
+   * dejándolos en ese orden y ocupando los mismos lugares que ya tenían. El resto no se mueve.
+   * Sirve para ordenar lo visible de un día sin tocar el historial.
+   */
+  Engine.reordenarPorIds = function (state, clave, ordenIds) {
+    if (!state || !Array.isArray(state[clave]) || !Array.isArray(ordenIds)) return state;
+    const lista = state[clave];
+    const porId = new Map(lista.map(x => [x.id, x]));
+    const ids = ordenIds.filter(id => porId.has(id));
+    if (ids.length < 2) return state;
+    const enJuego = new Set(ids);
+    let i = 0;
+    const nueva = lista.map(x => (enJuego.has(x.id) ? porId.get(ids[i++]) : x));
+    if (nueva.every((x, k) => x === lista[k])) return state;
+    return { ...state, [clave]: nueva, updatedAt: Date.now() };
   };
 
   /** Orden manual de los ejercicios de la sesión activa (lista de ejercicioId). */
