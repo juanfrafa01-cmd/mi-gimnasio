@@ -19,7 +19,7 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '3.3.1';
+  const APP_VERSION = '3.4.0';
 
   /** Número válido o valor por defecto (a diferencia de `|| def`, respeta el 0: RIR 0 = serie al fallo). */
   const numOr = (v, def) => (Number.isFinite(v) ? v : def);
@@ -659,7 +659,10 @@
             <button type="button" class="btn-link" data-action="quick-demo-login" data-username="profe" data-mode="pc-profesor">profesor</button>
           </div>
         </div>
-        <p class="auth-foot">© JF Development · v${APP_VERSION}</p>
+        <p class="auth-foot">
+          © JF Development · v${APP_VERSION} ·
+          <button type="button" class="btn-link" data-action="open-legales-modal" style="font-size: 11px;">Bases, Privacidad y Aviso Médico</button>
+        </p>
       </div>
     `;
   }
@@ -2013,6 +2016,11 @@
             <span class="list-row-icon">${renderIcon('refresh')}</span>
             <span class="list-row-text"><strong>Buscar actualización</strong><small>Versión ${APP_VERSION}</small></span>
           </button>
+          <button type="button" class="list-row" data-action="open-legales-modal">
+            <span class="list-row-icon">${renderIcon('shield')}</span>
+            <span class="list-row-text"><strong>Bases, Privacidad y Aviso Médico</strong><small>Términos legales, Ley 25.326 y control de tus datos</small></span>
+            ${renderIcon('arrowRight')}
+          </button>
           <button type="button" class="list-row list-row-danger" data-action="logout">
             <span class="list-row-icon">${renderIcon('arrowLeft')}</span>
             <span class="list-row-text"><strong>Cerrar sesión</strong></span>
@@ -2499,6 +2507,10 @@
               <label class="form-label">Contraseña o PIN</label>
               <input type="password" id="reg-pin" class="form-input" placeholder="Elegí una contraseña" required>
             </div>
+            <label style="display: flex; align-items: flex-start; gap: 8px; font-size: 12px; color: var(--text-muted); line-height: 1.4; cursor: pointer;">
+              <input type="checkbox" id="reg-terms" required checked style="margin-top: 2px; width: 16px; height: 16px; accent-color: var(--accent);">
+              <span>Acepto las <button type="button" class="btn-link" data-action="open-legales-modal" style="font-size: 12px; padding: 0;">Bases y Condiciones, Política de Privacidad y Aviso Médico</button>.</span>
+            </label>
             <div style="display: flex; gap: 10px; margin-top: 6px;">
               <button type="button" class="btn-secondary" data-action="close-modal">Cancelar</button>
               <button type="submit" class="btn-primary">Crear cuenta</button>
@@ -2736,6 +2748,7 @@
         : (ejCatalog || { id: lookupId, nombre: 'Ejercicio', grupoMuscular: 'pecho', equipo: 'barra', notas: '' });
 
       const media = Engine.resolveEjercicioMedia(ej);
+      const viewMode = activeModal.mediaTab || 'lamina';
 
       overlay.innerHTML = `
         <div class="modal-card" style="max-width: 560px;">
@@ -2747,21 +2760,91 @@
             <button type="button" class="btn-close-modal" data-action="close-modal" title="Cerrar">${renderIcon('x')}</button>
           </div>
 
-          <div class="exercise-illustration-card">
-            ${media.illustrationUrl ? `
-              <img src="${h(media.illustrationUrl)}" alt="${h(ej.nombre)}: posición inicial y final" class="exercise-illustration-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
-              <div class="illustration-fallback" style="display: none;">${renderIcon('dumbbell')}<span>Sin lámina. Pedile la demostración a tu profe.</span></div>
-            ` : `
-              <div class="illustration-fallback">${renderIcon('dumbbell')}<span>Sin lámina. Pedile la demostración a tu profe.</span></div>
-            `}
+          <div class="media-tabs" role="tablist" aria-label="Modo de visualización del ejercicio">
+            <button type="button" class="media-tab-btn ${viewMode === 'lamina' ? 'active' : ''}" data-action="set-exercise-media-tab" data-tab="lamina">Lámina 1 → 2</button>
+            <button type="button" class="media-tab-btn ${viewMode === 'movimiento' ? 'active' : ''}" data-action="set-exercise-media-tab" data-tab="movimiento">Movimiento</button>
+            <button type="button" class="media-tab-btn ${viewMode === 'cuadros' ? 'active' : ''}" data-action="set-exercise-media-tab" data-tab="cuadros">Cuadros 1 y 2</button>
           </div>
+
+          ${viewMode === 'lamina' ? `
+            <div class="exercise-illustration-card">
+              ${media.illustrationUrl ? `
+                <img src="${h(media.illustrationUrl)}" alt="${h(ej.nombre)}: posición inicial y final" class="exercise-illustration-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+                <div class="illustration-fallback" style="display: none;">${renderIcon('dumbbell')}<span>Sin lámina. Pedile la demostración a tu profe.</span></div>
+              ` : `
+                <div class="illustration-fallback">${renderIcon('dumbbell')}<span>Sin lámina. Pedile la demostración a tu profe.</span></div>
+              `}
+            </div>
+          ` : ''}
+
+          ${viewMode === 'movimiento' ? `
+            <div class="exercise-illustration-card">
+              <img src="${h(media.gifUrl)}" alt="${h(ej.nombre)} en movimiento" class="exercise-illustration-img" onerror="this.src='${h(media.illustrationUrl || '')}';" />
+              <div class="media-caption">Ejecución continua · Controlá el tempo excéntrico y concéntrico</div>
+            </div>
+          ` : ''}
+
+          ${viewMode === 'cuadros' ? `
+            <div class="frames-compare">
+              <div class="frame-card">
+                <span class="frame-badge">1 · Inicio</span>
+                <img src="${h(media.startImgUrl)}" alt="${h(ej.nombre)} posición inicial" class="frame-img" onerror="this.src='${h(media.illustrationUrl || '')}';" />
+              </div>
+              <div class="frame-card">
+                <span class="frame-badge frame-badge-accent">2 · Final</span>
+                <img src="${h(media.endImgUrl)}" alt="${h(ej.nombre)} posición final" class="frame-img" onerror="this.src='${h(media.illustrationUrl || '')}';" />
+              </div>
+            </div>
+          ` : ''}
 
           <div class="tech-notes">
             ${ej.musculoActivo ? `<p><strong>Trabaja:</strong> ${h(ej.musculoActivo)}</p>` : ''}
+            ${ej.prescripcionSugerida ? `<p><strong>Dosificación sugerida:</strong> ${h(ej.prescripcionSugerida)}</p>` : ''}
             <p><strong>Técnica:</strong> ${h(ej.notas || 'Recorrido completo, bajada controlada y abdomen firme.')}</p>
           </div>
 
           <button type="button" class="btn-secondary" data-action="close-modal">Listo</button>
+        </div>
+      `;
+      return;
+    }
+
+    if (activeModal.type === 'legales') {
+      overlay.innerHTML = `
+        <div class="modal-card" style="max-width: 540px;">
+          <div class="modal-header-sticky">
+            <div>
+              <h2 class="modal-title" style="font-size: 17px;">Bases, Privacidad y Aviso Médico</h2>
+              <span class="net-status" style="margin: 2px 0 0;">Fitness MiniApp v${APP_VERSION} · © JF Development</span>
+            </div>
+            <button type="button" class="btn-close-modal" data-action="close-modal">${renderIcon('x')}</button>
+          </div>
+          <div class="legal-doc">
+            <div class="legal-section">
+              <h4>1. Aviso Médico y Deslinde de Responsabilidad Deportiva</h4>
+              <p><strong>Mi Gimnasio (Fitness MiniApp)</strong> es una herramienta digital de registro y organización de entrenamientos físicos. Su contenido, catálogo de ejercicios, láminas ilustrativas, estimaciones de 1RM e índices de recuperación (Readiness) tienen carácter exclusivamente informativo y educativo, y <strong>no reemplazan el diagnóstico, prescripción ni supervisión de un médico deportólogo, kinesiólogo o profesor de educación física matriculado</strong>.</p>
+              <p>Antes de iniciar cualquier programa de fuerza, movilidad o acondicionamiento metabólico (AMRAP), el usuario declara contar con apto físico vigente. Interrumpí el ejercicio de inmediato ante dolor articular agudo, mareos o disnea.</p>
+            </div>
+            <div class="legal-section">
+              <h4>2. Privacidad y Protección de Datos Personales (Ley 25.326)</h4>
+              <p>Conforme a la <strong>Ley N° 25.326 de Protección de los Datos Personales (República Argentina)</strong>, tus registros de entrenamiento, pesos, psicofísico y fotos de perfil o apariencia se almacenan de forma aislada en tu dispositivo (arquitectura <em>Offline-First</em> en <code>localStorage</code> bajo tu identificador de usuario).</p>
+              <p>La sincronización en la nube (Supabase Vault) utiliza tu código único de alumno (<code>GYM-XXXX</code>) exclusivamente para respaldar tu progreso y permitir que el profesor con quien compartas voluntariamente dicho código pueda prescribir o actualizar tu rutina. No comercializamos, cedemos ni rastreamos datos con fines publicitarios.</p>
+            </div>
+            <div class="legal-section">
+              <h4>3. Condiciones de Uso y Propiedad Intelectual</h4>
+              <p>El software, diseño de interfaz, motor biomecánico y láminas técnicas son propiedad intelectual de <strong>© JF Development</strong>. Se concede una licencia personal, gratuita y no exclusiva para uso deportivo individual o profesional entre profesor y alumno.</p>
+            </div>
+            <div class="legal-section">
+              <h4>4. Derechos ARCO (Acceso,Exportación y Supresión Total)</h4>
+              <p>Podés descargar una copia íntegra de tus datos en formato JSON desde <strong>Cuenta → Guardar respaldo</strong> o reiniciar tu cuenta a cero eliminando tus marcas locales cuando lo desees.</p>
+              ${Store.user ? `
+                <button type="button" class="btn-secondary" data-action="reset-account-zero" style="width: 100%; margin-top: 6px; color: var(--danger); border-color: rgba(239,68,68,0.35);">
+                  Reiniciar mi cuenta a cero (borrar entrenamientos y rutinas)
+                </button>
+              ` : ''}
+            </div>
+          </div>
+          <button type="button" class="btn-primary" data-action="close-modal">Entendido</button>
         </div>
       `;
       return;
@@ -4242,6 +4325,18 @@
 
     'open-share-app-modal': () => {
       activeModal = { type: 'share-app' };
+      renderModals();
+    },
+
+    'open-legales-modal': () => {
+      activeModal = { type: 'legales' };
+      renderModals();
+    },
+
+    'set-exercise-media-tab': el => {
+      if (!activeModal || activeModal.type !== 'view-ejercicio') return;
+      const tab = el.getAttribute('data-tab') || 'lamina';
+      activeModal = { ...activeModal, mediaTab: tab };
       renderModals();
     },
 

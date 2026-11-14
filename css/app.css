@@ -3487,3 +3487,107 @@ html[data-theme="dark"] .seg-btn.active { background: color-mix(in srgb, var(--b
   .list-row { min-height: 52px; padding: 8px 12px; }
   .profile-card { padding: 12px; }
 }
+
+/* ======================================================== */
+/* v3.4.0: VISOR DE EJERCICIO (LÁMINA / MOVIMIENTO / CUADROS) & LEGALES */
+/* ======================================================== */
+.media-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  padding: 4px;
+  background: var(--bg-elevated);
+  border-radius: 12px;
+}
+.media-tab-btn {
+  min-height: 36px;
+  padding: 0 8px;
+  border-radius: 9px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.18s var(--ease), color 0.18s var(--ease);
+}
+.media-tab-btn.active {
+  background: var(--bg-card);
+  color: var(--text-main);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.22);
+}
+.media-caption {
+  padding: 8px 12px;
+  background: #141418;
+  color: #D4D4DC;
+  font-size: 11.5px;
+  text-align: center;
+  font-weight: 500;
+}
+.frames-compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.frame-card {
+  position: relative;
+  background: #FFFFFF;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+}
+.frame-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 2;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(11, 11, 13, 0.82);
+  color: #FFFFFF;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.frame-badge-accent {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.frame-img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1 / 1;
+  object-fit: contain;
+}
+.legal-doc {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding-right: 4px;
+  -webkit-overflow-scrolling: touch;
+}
+.legal-section {
+  padding: 12px 14px;
+  background: var(--bg-elevated);
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.legal-section h4 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-main);
+}
+.legal-section p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}

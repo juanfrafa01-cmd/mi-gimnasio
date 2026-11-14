@@ -181,6 +181,26 @@
   };
 
   /**
+   * Hash determinístico con sal por usuario (formato h1$<hex>) para no guardar PINs/contraseñas en texto plano.
+   * Compatible hacia atrás con cuentas existentes ('1234').
+   */
+  Store.hashPin = function (username, rawPin) {
+    const cleanPin = String(rawPin || '');
+    if (cleanPin.startsWith('h1$')) return cleanPin;
+    const str = `jf_gym_v3::${String(username || '').trim().toLowerCase()}::${cleanPin}`;
+    let h1 = 0xdeadbeef ^ str.length;
+    let h2 = 0x41c6ce57 ^ str.length;
+    for (let i = 0; i < str.length; i++) {
+      const ch = str.charCodeAt(i);
+      h1 = Math.imul(h1 ^ ch, 2654435761);
+      h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return 'h1$' + (h2 >>> 0).toString(16).padStart(8, '0') + (h1 >>> 0).toString(16).padStart(8, '0');
+  };
+
+  /**
    * Inicia sesión con usuario y contraseña.
    */
   Store.login = function (username, password, isRestore = false) {
@@ -192,12 +212,25 @@
       return { ok: false, error: 'Usuario no encontrado. Creá tu cuenta nueva abajo.' };
     }
 
-    if (!isRestore && found.passwordHash && found.passwordHash !== password) {
+    const inputHash = Store.hashPin(found.username, password);
+    const storedHash = String(found.passwordHash || '');
+    const passwordMatches = storedHash === password || storedHash === inputHash;
+
+    if (!isRestore && storedHash && !passwordMatches) {
       return { ok: false, error: 'Contraseña o PIN incorrecto.' };
+    }
+
+    let indexUpdated = false;
+    if (storedHash && !storedHash.startsWith('h1$') && password && !String(password).startsWith('h1$')) {
+      found.passwordHash = inputHash;
+      indexUpdated = true;
     }
 
     if (!found.codigoAlumno) {
       found.codigoAlumno = Engine.generateAlumnoCode(found.username);
+      indexUpdated = true;
+    }
+    if (indexUpdated) {
       saveUsersIndex(index);
     }
 
@@ -223,8 +256,11 @@
     Store.loadState();
     Store.notify();
 
-    // Sincronizar sugerencias con la nube en segundo plano
+    // Sincronizar sugerencias y bóveda en la nube en segundo plano
     Store.sincronizarSugerenciasNube().catch(() => {});
+    if (typeof Store.sincronizarVaultUsuarioNube === 'function') {
+      Store.sincronizarVaultUsuarioNube().catch(() => {});
+    }
 
     return { ok: true, user: Store.user };
   };
@@ -250,16 +286,18 @@
       codigoAlumno = Engine.generateAlumnoCode(cleanUser + Math.random());
     }
 
+    const rawPass = password || '1234';
     const newUser = {
       username: cleanUser,
       displayName: displayName || cleanUser,
       email: email || '',
-      passwordHash: password || '1234',
+      passwordHash: Store.hashPin(cleanUser, rawPass),
       role: role === 'profesor' ? 'profesor' : 'alumno',
       codigoAlumno,
       alumnosVinculados: [],
       isAdmin: cleanUser === 'admin' || role === 'profesor',
       hasWebAuthn: false,
+      acceptedTermsAt: Date.now(),
       createdAt: Date.now()
     };
 
@@ -270,7 +308,7 @@
     const cleanState = Engine.seedInitialData(codigoAlumno);
     localStorage.setItem(getStorageKey(cleanUser), JSON.stringify(cleanState));
 
-    return Store.login(cleanUser, newUser.passwordHash, true);
+    return Store.login(cleanUser, rawPass, true);
   };
 
   /**
@@ -347,6 +385,10 @@
       }
       saveUsersIndex(index);
       Store.user.alumnosVinculados = [...profeRecord.alumnosVinculados];
+    }
+
+    if (typeof Store.descargarAlumnoPorCodigoNube === 'function') {
+      Store.descargarAlumnoPorCodigoNube(code, targetAlumno.username).catch(() => {});
     }
 
     Store.notify();
@@ -577,13 +619,91 @@
     }
   };
 
+  let vaultSyncTimer = null;
   Store.enqueueSync = function () {
     if (typeof navigator !== 'undefined' && navigator.onLine) {
       Store.isSyncing = true;
-      setTimeout(() => {
+      if (vaultSyncTimer) clearTimeout(vaultSyncTimer);
+      vaultSyncTimer = setTimeout(() => {
+        if (typeof Store.sincronizarVaultUsuarioNube === 'function') {
+          Store.sincronizarVaultUsuarioNube().catch(() => {});
+        }
         Store.isSyncing = false;
         Store.notify();
       }, 450);
+    }
+  };
+
+  /**
+   * Respaldo en la nube de la bóveda personal por código de alumno (Supabase Vault).
+   * Permite recuperar entrenamientos/rutinas y que un profesor sincronice al vincular el código GYM-XXXX.
+   */
+  Store.sincronizarVaultUsuarioNube = async function () {
+    if (typeof fetch !== 'function' || !Store.user || !Store.user.codigoAlumno) return;
+    try {
+      const st = Store.getState();
+      if (!st) return;
+      const code = String(Store.user.codigoAlumno).trim().toUpperCase();
+      const vaultId = 'vault_' + code.replace(/[^A-Z0-9]/gi, '').toLowerCase();
+      const snapshot = {
+        codigoAlumno: code,
+        username: Store.user.username,
+        displayName: Store.user.displayName,
+        updatedAt: Date.now(),
+        rutinas: Array.isArray(st.rutinas) ? st.rutinas : [],
+        entrenamientos: Array.isArray(st.entrenamientos) ? st.entrenamientos.slice(0, 60) : [],
+        series: Array.isArray(st.series) ? st.series.slice(-500) : [],
+        registrosSalud: Array.isArray(st.registrosSalud) ? st.registrosSalud.slice(0, 60) : [],
+        readiness: Array.isArray(st.readiness) ? st.readiness.slice(0, 60) : []
+      };
+      await fetch(`${SUPABASE_URL}/rest/v1/fin_records`, {
+        method: 'POST',
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+          'Content-Type': 'application/json',
+          'x-sync-key': SUGERENCIAS_SYNC_KEY,
+          'Prefer': 'resolution=merge-duplicates,return=minimal'
+        },
+        body: JSON.stringify({
+          sync_key: SUGERENCIAS_SYNC_KEY,
+          coleccion: 'user_vault',
+          id: vaultId,
+          data: snapshot,
+          updated_at: Date.now(),
+          deleted: false
+        })
+      });
+    } catch (_) {}
+  };
+
+  Store.descargarAlumnoPorCodigoNube = async function (rawCode, targetUsername) {
+    if (typeof fetch !== 'function' || !rawCode || !targetUsername) return null;
+    try {
+      const code = String(rawCode).trim().toUpperCase();
+      const vaultId = 'vault_' + code.replace(/[^A-Z0-9]/gi, '').toLowerCase();
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/fin_records?coleccion=eq.user_vault&id=eq.${encodeURIComponent(vaultId)}&deleted=eq.false&limit=1`, {
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+          'x-sync-key': SUGERENCIAS_SYNC_KEY
+        }
+      });
+      if (!res.ok) return null;
+      const rows = await res.json();
+      if (!Array.isArray(rows) || !rows[0] || !rows[0].data) return null;
+      const cloud = rows[0].data;
+      Store.commitForUser(targetUsername, s => ({
+        ...s,
+        rutinas: Array.isArray(cloud.rutinas) && cloud.rutinas.length ? cloud.rutinas : s.rutinas,
+        entrenamientos: Array.isArray(cloud.entrenamientos) && cloud.entrenamientos.length ? cloud.entrenamientos : s.entrenamientos,
+        series: Array.isArray(cloud.series) && cloud.series.length ? cloud.series : s.series,
+        registrosSalud: Array.isArray(cloud.registrosSalud) && cloud.registrosSalud.length ? cloud.registrosSalud : s.registrosSalud,
+        readiness: Array.isArray(cloud.readiness) && cloud.readiness.length ? cloud.readiness : s.readiness
+      }));
+      return cloud;
+    } catch (_) {
+      return null;
     }
   };
 
@@ -591,13 +711,22 @@
     try {
       const raw = localStorage.getItem(FEEDBACK_INBOX_KEY);
       const inbox = raw ? JSON.parse(raw) : [];
+      const cleanMsg = String(mensaje || '').trim();
+      const today = Engine.todayISO();
+      const userKey = Store.user ? Store.user.username : 'anónimo';
+      const dup = inbox.find(
+        it => it.fecha === today && it.usuario === userKey && String(it.mensaje || '').trim().toLowerCase() === cleanMsg.toLowerCase()
+      );
+      if (dup) {
+        return { ok: true, item: dup, deduplicated: true };
+      }
       const item = {
         id: 'fb-' + Date.now(),
-        fecha: Engine.todayISO(),
+        fecha: today,
         hora: Engine.timeNow(),
-        usuario: Store.user ? Store.user.username : 'anónimo',
+        usuario: userKey,
         tipo,
-        mensaje,
+        mensaje: cleanMsg,
         leido: false
       };
       inbox.unshift(item);
@@ -718,9 +847,14 @@
           Store.commit(s => {
             const current = Array.isArray(s.sugerencias) ? [...s.sugerencias] : [];
             const byId = new Map(current.map(item => [item.id, item]));
+            const seenSignature = new Set(
+              current.map(item => `${String(item.autor || '').trim().toLowerCase()}|${item.fecha || ''}|${String(item.mensaje || '').trim().toLowerCase()}`)
+            );
             for (const cs of cloudSugs) {
-              if (!byId.has(cs.id)) {
+              const sig = `${String(cs.autor || '').trim().toLowerCase()}|${cs.fecha || ''}|${String(cs.mensaje || '').trim().toLowerCase()}`;
+              if (!byId.has(cs.id) && !seenSignature.has(sig)) {
                 byId.set(cs.id, cs);
+                seenSignature.add(sig);
               }
             }
             return {

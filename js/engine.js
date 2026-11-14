@@ -1698,10 +1698,80 @@
   /**
    * Resuelve los recursos visuales del ejercicio (Lámina de Posición Inicial y Final).
    */
+  const SLUG_ILLUSTRATION_MAP = {
+    'cat-cow': './icons/ejercicios/ej-act-gato-camello.jpg',
+    't-spine-rotation': './icons/ejercicios/ej-act-rotacion-toracica.jpg',
+    'glute-bridge': './icons/ejercicios/ej-act-puente-iso.jpg',
+    'dead-bug': './icons/ejercicios/ej-act-deadbug.jpg',
+    'bird-dog': './icons/ejercicios/ej-act-birddog.jpg',
+    'plank': './icons/ejercicios/ej-plancha-abdominal.jpg',
+    'band-pull-apart': './icons/ejercicios/ej-act-pull-apart.jpg',
+    'scapular-pushup': './icons/ejercicios/ej-flexiones-suelo.jpg',
+    'hip-90-90': './icons/ejercicios/ej-mov-cadera-90-90.jpg',
+    'worlds-greatest-stretch': './icons/ejercicios/ej-mov-worlds-greatest.jpg',
+    'ankle-dorsiflexion': './icons/ejercicios/ej-mov-dorsiflexion-tobillo.jpg',
+    'deep-squat-hold': './icons/ejercicios/ej-mov-sentadilla-cosaca.jpg',
+    'shoulder-dislocates': './icons/ejercicios/ej-mov-dislocaciones-banda.jpg',
+    'couch-stretch': './icons/ejercicios/ej-mov-psoas-caballero.jpg',
+    'cossack-squat': './icons/ejercicios/ej-mov-sentadilla-cosaca.jpg',
+    'downward-dog': './icons/ejercicios/ej-mov-worlds-greatest.jpg',
+    'bench-press': './icons/ejercicios/ej-press-banca.jpg',
+    'incline-dumbbell-press': './icons/ejercicios/ej-press-plano-manc.jpg',
+    'chest-dips': './icons/ejercicios/ej-fondos-banco-triceps.jpg',
+    'cable-crossover': './icons/ejercicios/ej-aperturas-banco-plano.jpg',
+    'push-up': './icons/ejercicios/ej-flexiones-suelo.jpg',
+    'pull-up': './icons/ejercicios/ej-dominadas-pronas.jpg',
+    'lat-pulldown': './icons/ejercicios/ej-jalon-pecho.jpg',
+    'barbell-row': './icons/ejercicios/ej-remo-barra.jpg',
+    'seated-cable-row': './icons/ejercicios/ej-remo-polea-baja.jpg',
+    'dumbbell-row': './icons/ejercicios/ej-remo-mancuerna.jpg',
+    'barbell-squat': './icons/ejercicios/ej-sentadilla.jpg',
+    'leg-press': './icons/ejercicios/ej-prensa-inclinada.jpg',
+    'romanian-deadlift': './icons/ejercicios/ej-peso-muerto.jpg',
+    'hip-thrust': './icons/ejercicios/ej-hip-thrust.jpg',
+    'bulgarian-split-squat': './icons/ejercicios/ej-estocadas-bulgaras.jpg',
+    'leg-extension': './icons/ejercicios/ej-sillon-cuadriceps.jpg',
+    'leg-curl': './icons/ejercicios/ej-camilla-isquios.jpg',
+    'calf-raise': './icons/ejercicios/ej-gemelos-pie.jpg',
+    'overhead-press': './icons/ejercicios/ej-press-militar.jpg',
+    'db-shoulder-press': './icons/ejercicios/ej-press-hombro-manc.jpg',
+    'lateral-raise': './icons/ejercicios/ej-elevaciones-laterales.jpg',
+    'face-pull': './icons/ejercicios/ej-face-pull.jpg',
+    'barbell-curl': './icons/ejercicios/ej-curl-biceps.jpg',
+    'hammer-curl': './icons/ejercicios/ej-curl-martillo.jpg',
+    'tricep-pushdown': './icons/ejercicios/ej-triceps-polea.jpg',
+    'skull-crusher': './icons/ejercicios/ej-press-frances.jpg',
+    'hanging-leg-raise': './icons/ejercicios/ej-elevaciones-piernas-colgado.jpg',
+    'ab-wheel': './icons/ejercicios/ej-rueda-abdominal.jpg',
+    'pallof-press': './icons/ejercicios/ej-crunch-polea.jpg',
+    'cable-crunch': './icons/ejercicios/ej-crunch-polea.jpg',
+    'kettlebell-swing': './icons/ejercicios/ej-amrap-kb-swing.jpg',
+    'thruster': './icons/ejercicios/ej-amrap-thrusters.jpg',
+    'burpee': './icons/ejercicios/ej-amrap-burpees.jpg',
+    'burpees': './icons/ejercicios/ej-amrap-burpees.jpg',
+    'wall-ball': './icons/ejercicios/ej-amrap-thrusters.jpg',
+    'box-jump': './icons/ejercicios/ej-amrap-box-jumps.jpg',
+    'battle-ropes': './icons/ejercicios/ej-amrap-circuito.jpg',
+    'farmers-walk': './icons/ejercicios/ej-peso-muerto-kb.jpg',
+    'sled-push': './icons/ejercicios/ej-amrap-circuito.jpg'
+  };
+
+  const GROUP_ILLUSTRATION_FALLBACK = {
+    activacion: './icons/ejercicios/ej-act-gato-camello.jpg',
+    movilidad: './icons/ejercicios/ej-mov-cadera-90-90.jpg',
+    pecho: './icons/ejercicios/ej-press-banca.jpg',
+    espalda: './icons/ejercicios/ej-jalon-pecho.jpg',
+    piernas: './icons/ejercicios/ej-sentadilla.jpg',
+    hombros: './icons/ejercicios/ej-press-hombro-manc.jpg',
+    brazos: './icons/ejercicios/ej-curl-biceps.jpg',
+    core: './icons/ejercicios/ej-crunch-polea.jpg',
+    amrap: './icons/ejercicios/ej-amrap-burpees.jpg'
+  };
+
   Engine.resolveEjercicioMedia = function (ej) {
     if (!ej) {
       return {
-        illustrationUrl: null,
+        illustrationUrl: './icons/ejercicios/ej-press-banca.jpg',
         startImgUrl: './icons/gifs/bench-press-start.gif',
         endImgUrl: './icons/gifs/bench-press-end.gif',
         gifUrl: './icons/gifs/bench-press.gif'
@@ -1718,8 +1788,13 @@
 
     const catMatch = Engine.CATALOGO_EJERCICIOS.find(c => c.id === lookupId);
     if (catMatch) {
+      const resolvedIll = illustrationUrl
+        || catMatch.illustrationUrl
+        || (catMatch.gifSlug && SLUG_ILLUSTRATION_MAP[catMatch.gifSlug])
+        || GROUP_ILLUSTRATION_FALLBACK[catMatch.grupoMuscular]
+        || './icons/ejercicios/ej-press-banca.jpg';
       return {
-        illustrationUrl: illustrationUrl || catMatch.illustrationUrl || null,
+        illustrationUrl: resolvedIll,
         startImgUrl: catMatch.startImgUrl,
         endImgUrl: catMatch.endImgUrl,
         gifUrl: catMatch.gifUrl
