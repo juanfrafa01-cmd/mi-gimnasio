@@ -3842,6 +3842,8 @@
       hora: Engine.timeNow(),
       autor: data.autor || 'Usuario',
       rol: data.rol || 'alumno',
+      categoria: data.categoria || 'idea',
+      contexto: data.contexto || '',
       mensaje: msg,
       texto: msg,
       capturas: Array.isArray(data.capturas) ? data.capturas : [],
@@ -3860,7 +3862,134 @@
   };
 
   // ==========================================
-  // 8. ESTADO INICIAL LIMPIO CON CATÁLOGO ESTANDARIZADO
+  // 8. CATÁLOGO VISIBLE (SIN DUPLICADOS) Y PLANTILLAS DE INICIO
+  // ==========================================
+
+  /** IDs ocultos en selectores por solaparse semánticamente; se mantienen en CATALOGO_EJERCICIOS para historiales previos. */
+  Engine.HIDDEN_DUPLICATE_IDS = new Set([
+    'ej-dominadas-pronas',
+    'ej-mov-cat-camel',
+    'ej-camilla-isquios',
+    'ej-mov-wall-angels'
+  ]);
+
+  Engine.getCatalogoVisible = function (ejerciciosUsuario = []) {
+    const seen = new Set();
+    const out = [];
+    const merged = [...(Array.isArray(ejerciciosUsuario) ? ejerciciosUsuario : []), ...(Engine.CATALOGO_EJERCICIOS || [])];
+    for (const ej of merged) {
+      if (!ej || !ej.id || ej.deleted) continue;
+      if (Engine.HIDDEN_DUPLICATE_IDS.has(ej.id)) continue;
+      if (seen.has(ej.id)) continue;
+      seen.add(ej.id);
+      out.push(ej);
+    }
+    return out;
+  };
+
+  Engine.PLANTILLAS_INICIO = [
+    {
+      id: 'fullbody-3',
+      nombre: 'Full Body 3 días',
+      subtitulo: 'Lun · Mié · Vie · Cuerpo completo',
+      rutinas: [
+        {
+          nombre: 'Full Body · Base',
+          dias: ['Lunes', 'Miércoles', 'Viernes'],
+          horario: '19:00',
+          ejercicios: [
+            { ejercicioId: 'ej-sentadilla', bloque: 'A', seriesObjetivo: 3, repsObjetivo: '6-8' },
+            { ejercicioId: 'ej-press-banca', bloque: 'A', seriesObjetivo: 3, repsObjetivo: '8-10' },
+            { ejercicioId: 'ej-remo-barra', bloque: 'A', seriesObjetivo: 3, repsObjetivo: '8-10' },
+            { ejercicioId: 'ej-press-militar', bloque: 'B', seriesObjetivo: 3, repsObjetivo: '8-10' },
+            { ejercicioId: 'ej-plancha-abdominal', bloque: 'cierre', seriesObjetivo: 3, repsObjetivo: '30-45s' }
+          ]
+        }
+      ]
+    },
+    {
+      id: 'torso-pierna-4',
+      nombre: 'Torso / Pierna 4 días',
+      subtitulo: 'Lun/Jue Torso · Mar/Vie Piernas',
+      rutinas: [
+        {
+          nombre: 'Torso · Empuje y Tracción',
+          dias: ['Lunes', 'Jueves'],
+          horario: '19:00',
+          ejercicios: [
+            { ejercicioId: 'ej-press-inclinado-manc', bloque: 'A', seriesObjetivo: 3, repsObjetivo: '8-10' },
+            { ejercicioId: 'ej-jalon-pecho', bloque: 'A', seriesObjetivo: 3, repsObjetivo: '8-12' },
+            { ejercicioId: 'ej-elevaciones-laterales', bloque: 'B', seriesObjetivo: 3, repsObjetivo: '12-15' },
+            { ejercicioId: 'ej-curl-biceps', bloque: 'B', seriesObjetivo: 3, repsObjetivo: '10-12' },
+            { ejercicioId: 'ej-triceps-polea', bloque: 'B', seriesObjetivo: 3, repsObjetivo: '10-12' }
+          ]
+        },
+        {
+          nombre: 'Piernas y Core',
+          dias: ['Martes', 'Viernes'],
+          horario: '19:00',
+          ejercicios: [
+            { ejercicioId: 'ej-sentadilla', bloque: 'A', seriesObjetivo: 3, repsObjetivo: '6-8' },
+            { ejercicioId: 'ej-peso-muerto', bloque: 'A', seriesObjetivo: 3, repsObjetivo: '8-10' },
+            { ejercicioId: 'ej-prensa-inclinada', bloque: 'B', seriesObjetivo: 3, repsObjetivo: '10-12' },
+            { ejercicioId: 'ej-curl-femoral-sentado', bloque: 'B', seriesObjetivo: 3, repsObjetivo: '10-12' },
+            { ejercicioId: 'ej-gemelos-pie', bloque: 'cierre', seriesObjetivo: 3, repsObjetivo: '12-15' }
+          ]
+        }
+      ]
+    },
+    {
+      id: 'movilidad-diaria',
+      nombre: 'Movilidad Diaria',
+      subtitulo: 'Todos los días · Tobillo, cadera y columna',
+      rutinas: [
+        {
+          nombre: 'Movilidad y Activación Diaria',
+          dias: ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'],
+          horario: '09:00',
+          ejercicios: [
+            { ejercicioId: 'ej-mov-dorsiflexion-tobillo', bloque: 'movilidad', seriesObjetivo: 2, repsObjetivo: '12 c/l' },
+            { ejercicioId: 'ej-mov-ake', bloque: 'movilidad', seriesObjetivo: 2, repsObjetivo: '10 c/l' },
+            { ejercicioId: 'ej-mov-cadera-90-90', bloque: 'movilidad', seriesObjetivo: 2, repsObjetivo: '10 c/l' },
+            { ejercicioId: 'ej-act-gato-camello', bloque: 'activacion', seriesObjetivo: 2, repsObjetivo: '10' },
+            { ejercicioId: 'ej-mov-open-book', bloque: 'movilidad', seriesObjetivo: 2, repsObjetivo: '8 c/l' }
+          ]
+        }
+      ]
+    }
+  ];
+
+  Engine.aplicarPlantillaInicio = function (state, plantillaId) {
+    const tpl = Engine.PLANTILLAS_INICIO.find(p => p.id === plantillaId);
+    if (!tpl) return state;
+    const cat = Engine.CATALOGO_EJERCICIOS || [];
+    let next = state;
+    for (const rtDef of tpl.rutinas) {
+      const ejercicios = (rtDef.ejercicios || []).map(item => {
+        const ref = cat.find(c => c.id === item.ejercicioId);
+        return {
+          ejercicioId: item.ejercicioId,
+          nombre: ref ? ref.nombre : item.ejercicioId,
+          bloque: item.bloque || 'A',
+          seriesObjetivo: item.seriesObjetivo || 3,
+          repsObjetivo: item.repsObjetivo || '8-12',
+          descansoSegundos: 90,
+          notaProfesor: ''
+        };
+      });
+      next = Engine.crearRutina(next, {
+        nombre: rtDef.nombre,
+        dias: rtDef.dias,
+        horario: rtDef.horario,
+        creadaPor: 'Plantilla',
+        ejercicios
+      });
+    }
+    return next;
+  };
+
+  // ==========================================
+  // 9. ESTADO INICIAL LIMPIO CON CATÁLOGO ESTANDARIZADO
   // ==========================================
 
   Engine.seedInitialData = function (codigoAlumno = null) {

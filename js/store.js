@@ -25,10 +25,44 @@
   const FEEDBACK_INBOX_KEY = 'gimnasio_feedback_inbox';
   const THEME_PREF_KEY = 'gimnasio_theme_pref';
 
-  // --- CONFIGURACIÓN SUPABASE EN LA NUBE (SINCRONIZACIÓN DE SUGERENCIAS Y BUZÓN) ---
+  // --- CONFIGURACIÓN SUPABASE EN LA NUBE (SINCRONIZACIÓN DE SUGERENCIAS) ---
   const SUPABASE_URL = 'https://sktscjrrtvjwsgbtkrse.supabase.co';
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNrdHNjanJydHZqd3NnYnRrcnNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMzODc0MjUsImV4cCI6MjEwODk2MzQyNX0.Ko6K6eOY20-nJj0qAX8F6VS8stE1s3p-cghouSvmscg';
   const SUGERENCIAS_SYNC_KEY = 'gym_vault_sugerencias_master_key_2026';
+  const ADMIN_USERNAMES = new Set(['admin', 'juan']);
+  const LEGAL_TERMS_VERSION = '1.1';
+  const MAX_BACKUP_BYTES = 5 * 1024 * 1024;
+  const loginAttempts = new Map();
+
+  function generateRandomHex(bytes = 16) {
+    try {
+      if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+        const arr = new Uint8Array(bytes);
+        crypto.getRandomValues(arr);
+        return Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
+      }
+    } catch (_) {}
+    let out = '';
+    while (out.length < bytes * 2) {
+      out += Math.floor(Math.random() * 0xffffffff).toString(16).padStart(8, '0');
+    }
+    return out.slice(0, bytes * 2);
+  }
+
+  function generateVaultSyncKey() {
+    return 'vaultk_' + generateRandomHex(16);
+  }
+
+  function sanitizeObject(obj) {
+    if (obj === null || typeof obj !== 'object') return obj;
+    if (Array.isArray(obj)) return obj.map(sanitizeObject);
+    const clean = {};
+    for (const key of Object.keys(obj)) {
+      if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
+      clean[key] = sanitizeObject(obj[key]);
+    }
+    return clean;
+  }
 
   const Store = {
     user: null, // { username, displayName, email, role: 'alumno'|'profesor', codigoAlumno, alumnosVinculados: [], isAdmin, hasWebAuthn }
@@ -138,6 +172,7 @@
         passwordHash: '1234',
         role: 'alumno',
         codigoAlumno: 'GYM-1024',
+        vaultSyncKey: generateVaultSyncKey(),
         alumnosVinculados: [],
         isAdmin: true,
         hasWebAuthn: true,
@@ -150,8 +185,9 @@
         passwordHash: '1234',
         role: 'profesor',
         codigoAlumno: 'PROFE-01',
+        vaultSyncKey: generateVaultSyncKey(),
         alumnosVinculados: [],
-        isAdmin: true,
+        isAdmin: false,
         hasWebAuthn: true,
         createdAt: Date.now()
       };
@@ -176,13 +212,11 @@
     // Si no hay sesión iniciada en este dispositivo/navegador, pedir usuario, contraseña y rol (Alumno o Profesor)
     Store.user = null;
     Store.state = null;
-    Store.sincronizarSugerenciasNube().catch(() => {});
     return null;
   };
 
   /**
-   * Hash determinístico con sal por usuario (formato h1$<hex>) para no guardar PINs/contraseñas en texto plano.
-   * Compatible hacia atrás con cuentas existentes ('1234').
+   * Hash determinístico síncrono con sal por usuario (formato h1$<hex>).
    */
   Store.hashPin = function (username, rawPin) {
     const cleanPin = String(rawPin || '');
@@ -201,33 +235,77 @@
   };
 
   /**
-   * Inicia sesión con usuario y contraseña.
+   * Hash criptográfico con WebCrypto SHA-256 + sal aleatoria (formato s2$<salt>$<hex>).
    */
-  Store.login = function (username, password, isRestore = false) {
-    const cleanUser = (username || '').trim().toLowerCase();
-    const index = getUsersIndex();
-    const found = index.find(u => u.username.toLowerCase() === cleanUser);
-
-    if (!found) {
-      return { ok: false, error: 'Usuario no encontrado. Creá tu cuenta nueva abajo.' };
+  Store.hashPinSecure = async function (username, rawPin, existingSalt = null) {
+    const salt = existingSalt || generateRandomHex(8);
+    const payload = `jf_gym_s2::${salt}::${String(username || '').trim().toLowerCase()}::${String(rawPin || '')}`;
+    if (typeof crypto !== 'undefined' && crypto.subtle && typeof TextEncoder !== 'undefined') {
+      const buf = new TextEncoder().encode(payload);
+      const digest = await crypto.subtle.digest('SHA-256', buf);
+      const hex = Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
+      return `s2$${salt}$${hex}`;
     }
+    return Store.hashPin(username, rawPin);
+  };
 
-    const inputHash = Store.hashPin(found.username, password);
-    const storedHash = String(found.passwordHash || '');
-    const passwordMatches = storedHash === password || storedHash === inputHash;
-
-    if (!isRestore && storedHash && !passwordMatches) {
-      return { ok: false, error: 'Contraseña o PIN incorrecto.' };
+  function checkRateLimit(cleanUser) {
+    const rec = loginAttempts.get(cleanUser);
+    if (!rec) return null;
+    if (rec.blockedUntil && Date.now() < rec.blockedUntil) {
+      const secs = Math.ceil((rec.blockedUntil - Date.now()) / 1000);
+      return `Demasiados intentos fallidos. Esperá ${secs} s antes de reintentar.`;
     }
+    return null;
+  }
 
+  function recordFailedAttempt(cleanUser) {
+    const cur = loginAttempts.get(cleanUser) || { count: 0, blockedUntil: 0 };
+    cur.count += 1;
+    if (cur.count >= 5) {
+      cur.blockedUntil = Date.now() + 30000;
+      cur.count = 0;
+    }
+    loginAttempts.set(cleanUser, cur);
+  }
+
+  function clearAttempts(cleanUser) {
+    loginAttempts.delete(cleanUser);
+  }
+
+  function completeLoginSession(found, index, passwordForUpgrade = '') {
     let indexUpdated = false;
-    if (storedHash && !storedHash.startsWith('h1$') && password && !String(password).startsWith('h1$')) {
-      found.passwordHash = inputHash;
-      indexUpdated = true;
+    const unameLower = found.username.toLowerCase();
+
+    if (passwordForUpgrade && !String(passwordForUpgrade).startsWith('h1$')) {
+      const inputHash = Store.hashPin(found.username, passwordForUpgrade);
+      if (found.passwordHash && !String(found.passwordHash).startsWith('h1$')) {
+        found.passwordHash = inputHash;
+        indexUpdated = true;
+      }
+      if (typeof Store.hashPinSecure === 'function' && !found.passwordDigest) {
+        Store.hashPinSecure(found.username, passwordForUpgrade).then(digest => {
+          const idx = getUsersIndex();
+          const u = idx.find(x => x.username.toLowerCase() === unameLower);
+          if (u && digest.startsWith('s2$')) {
+            u.passwordDigest = digest;
+            saveUsersIndex(idx);
+          }
+        }).catch(() => {});
+      }
     }
 
     if (!found.codigoAlumno) {
       found.codigoAlumno = Engine.generateAlumnoCode(found.username);
+      indexUpdated = true;
+    }
+    if (!found.vaultSyncKey) {
+      found.vaultSyncKey = generateVaultSyncKey();
+      indexUpdated = true;
+    }
+    const normalizedAdmin = ADMIN_USERNAMES.has(unameLower);
+    if (Boolean(found.isAdmin) !== normalizedAdmin) {
+      found.isAdmin = normalizedAdmin;
       indexUpdated = true;
     }
     if (indexUpdated) {
@@ -240,29 +318,93 @@
       email: found.email || '',
       role: found.role || 'alumno',
       codigoAlumno: found.codigoAlumno,
+      vaultSyncKey: found.vaultSyncKey,
       alumnosVinculados: Array.isArray(found.alumnosVinculados) ? found.alumnosVinculados : [],
-      isAdmin: Boolean(found.isAdmin),
+      isAdmin: normalizedAdmin,
       hasWebAuthn: Boolean(found.hasWebAuthn)
     };
 
-    localStorage.setItem(
-      ACTIVE_USER_KEY,
-      JSON.stringify({
-        username: found.username,
-        passwordHash: found.passwordHash
-      })
-    );
+    try {
+      localStorage.setItem(
+        ACTIVE_USER_KEY,
+        JSON.stringify({
+          username: found.username,
+          passwordHash: found.passwordHash
+        })
+      );
+    } catch (_) {}
 
     Store.loadState();
     Store.notify();
 
-    // Sincronizar sugerencias y bóveda en la nube en segundo plano
+    // Sincronizar sugerencias (admin lee; usuario común solo sube) y bóveda privada en segundo plano
     Store.sincronizarSugerenciasNube().catch(() => {});
     if (typeof Store.sincronizarVaultUsuarioNube === 'function') {
       Store.sincronizarVaultUsuarioNube().catch(() => {});
     }
 
     return { ok: true, user: Store.user };
+  }
+
+  /**
+   * Inicia sesión con usuario y contraseña (síncrono, con bloqueo tras 5 intentos fallidos).
+   */
+  Store.login = function (username, password, isRestore = false) {
+    const cleanUser = (username || '').trim().toLowerCase();
+    if (!isRestore) {
+      const blockedMsg = checkRateLimit(cleanUser);
+      if (blockedMsg) return { ok: false, error: blockedMsg };
+    }
+
+    const index = getUsersIndex();
+    const found = index.find(u => u.username.toLowerCase() === cleanUser);
+
+    if (!found) {
+      if (!isRestore) recordFailedAttempt(cleanUser);
+      return { ok: false, error: 'Usuario no encontrado. Creá tu cuenta nueva abajo.' };
+    }
+
+    const inputHash = Store.hashPin(found.username, password);
+    const storedHash = String(found.passwordHash || '');
+    const passwordMatches = storedHash === password || storedHash === inputHash;
+
+    if (!isRestore && storedHash && !passwordMatches) {
+      recordFailedAttempt(cleanUser);
+      return { ok: false, error: 'Contraseña o PIN incorrecto.' };
+    }
+
+    clearAttempts(cleanUser);
+    return completeLoginSession(found, index, isRestore ? '' : password);
+  };
+
+  /**
+   * Inicia sesión verificando primero el digest SHA-256 con sal (WebCrypto) si existe.
+   */
+  Store.loginAsync = async function (username, password) {
+    const cleanUser = (username || '').trim().toLowerCase();
+    const blockedMsg = checkRateLimit(cleanUser);
+    if (blockedMsg) return { ok: false, error: blockedMsg };
+
+    const index = getUsersIndex();
+    const found = index.find(u => u.username.toLowerCase() === cleanUser);
+    if (!found) {
+      recordFailedAttempt(cleanUser);
+      return { ok: false, error: 'Usuario no encontrado. Creá tu cuenta nueva abajo.' };
+    }
+
+    if (found.passwordDigest && String(found.passwordDigest).startsWith('s2$')) {
+      const parts = String(found.passwordDigest).split('$');
+      const salt = parts[1];
+      const computed = await Store.hashPinSecure(found.username, password, salt);
+      if (computed !== found.passwordDigest) {
+        recordFailedAttempt(cleanUser);
+        return { ok: false, error: 'Contraseña o PIN incorrecto.' };
+      }
+      clearAttempts(cleanUser);
+      return completeLoginSession(found, index, password);
+    }
+
+    return Store.login(username, password, false);
   };
 
   /**
@@ -274,29 +416,35 @@
     if (!cleanUser || cleanUser.length < 3) {
       return { ok: false, error: 'El usuario debe tener al menos 3 caracteres.' };
     }
+    const rawPass = String(password || '');
+    if (rawPass.length < 4) {
+      return { ok: false, error: 'La contraseña o PIN debe tener al menos 4 caracteres (recomendado 6+).' };
+    }
 
     const index = getUsersIndex();
     if (index.some(u => u.username.toLowerCase() === cleanUser)) {
       return { ok: false, error: 'Ese nombre de usuario ya existe en este dispositivo.' };
     }
 
-    // Generar código único sencillo (ej. GYM-4821)
+    // Generar código único sencillo (ej. GYM-4821) + clave privada de bóveda
     let codigoAlumno = Engine.generateAlumnoCode(cleanUser);
     while (index.some(u => u.codigoAlumno === codigoAlumno)) {
       codigoAlumno = Engine.generateAlumnoCode(cleanUser + Math.random());
     }
 
-    const rawPass = password || '1234';
+    const cleanRole = role === 'profesor' ? 'profesor' : 'alumno';
     const newUser = {
       username: cleanUser,
       displayName: displayName || cleanUser,
       email: email || '',
       passwordHash: Store.hashPin(cleanUser, rawPass),
-      role: role === 'profesor' ? 'profesor' : 'alumno',
+      role: cleanRole,
       codigoAlumno,
+      vaultSyncKey: generateVaultSyncKey(),
       alumnosVinculados: [],
-      isAdmin: cleanUser === 'admin' || role === 'profesor',
+      isAdmin: ADMIN_USERNAMES.has(cleanUser),
       hasWebAuthn: false,
+      acceptedTermsVersion: LEGAL_TERMS_VERSION,
       acceptedTermsAt: Date.now(),
       createdAt: Date.now()
     };
@@ -306,9 +454,81 @@
 
     // Estado 100% limpio sin rutinas ni entrenamientos cargados
     const cleanState = Engine.seedInitialData(codigoAlumno);
-    localStorage.setItem(getStorageKey(cleanUser), JSON.stringify(cleanState));
+    try {
+      localStorage.setItem(getStorageKey(cleanUser), JSON.stringify(cleanState));
+    } catch (e) {
+      console.error('Error creando espacio local:', e);
+    }
 
-    return Store.login(cleanUser, rawPass, true);
+    const loginRes = Store.login(cleanUser, rawPass, true);
+    if (typeof Store.hashPinSecure === 'function') {
+      Store.hashPinSecure(cleanUser, rawPass).then(digest => {
+        const idx = getUsersIndex();
+        const u = idx.find(x => x.username.toLowerCase() === cleanUser);
+        if (u && digest.startsWith('s2$')) {
+          u.passwordDigest = digest;
+          saveUsersIndex(idx);
+        }
+      }).catch(() => {});
+    }
+    return loginRes;
+  };
+
+  /**
+   * Cambia el PIN / contraseña del usuario activo validando el actual.
+   */
+  Store.changePassword = async function (currentPin, newPin) {
+    if (!Store.user) return { ok: false, error: 'No hay sesión activa.' };
+    const cleanNew = String(newPin || '');
+    if (cleanNew.length < 4) {
+      return { ok: false, error: 'La nueva contraseña debe tener al menos 4 caracteres.' };
+    }
+
+    const index = getUsersIndex();
+    const found = index.find(u => u.username.toLowerCase() === Store.user.username.toLowerCase());
+    if (!found) return { ok: false, error: 'Usuario no encontrado.' };
+
+    let matches = false;
+    if (found.passwordDigest && String(found.passwordDigest).startsWith('s2$')) {
+      const salt = String(found.passwordDigest).split('$')[1];
+      const computed = await Store.hashPinSecure(found.username, currentPin, salt);
+      matches = computed === found.passwordDigest;
+    } else {
+      const curHash = Store.hashPin(found.username, currentPin);
+      matches = found.passwordHash === currentPin || found.passwordHash === curHash;
+    }
+    if (!matches) {
+      return { ok: false, error: 'La contraseña actual no coincide.' };
+    }
+
+    found.passwordHash = Store.hashPin(found.username, cleanNew);
+    found.passwordDigest = await Store.hashPinSecure(found.username, cleanNew);
+    saveUsersIndex(index);
+    try {
+      localStorage.setItem(
+        ACTIVE_USER_KEY,
+        JSON.stringify({ username: found.username, passwordHash: found.passwordHash })
+      );
+    } catch (_) {}
+    return { ok: true };
+  };
+
+  /**
+   * Genera un código de vinculación temporal alfanumérico de 8 caracteres válido por 24 h.
+   */
+  Store.generarCodigoVinculacionTemporal = function () {
+    if (!Store.user) return null;
+    const raw = generateRandomHex(4).toUpperCase();
+    const code = `GYM-${raw.slice(0, 4)}-${raw.slice(4, 8)}`;
+    const expiresAt = Date.now() + 24 * 60 * 60 * 1000;
+    const index = getUsersIndex();
+    const found = index.find(u => u.username.toLowerCase() === Store.user.username.toLowerCase());
+    if (found) {
+      found.tempLinkCode = code;
+      found.tempLinkExpiresAt = expiresAt;
+      saveUsersIndex(index);
+    }
+    return { code, expiresAt, vaultSyncKey: Store.user.vaultSyncKey };
   };
 
   /**
@@ -608,8 +828,14 @@
 
   Store.importBackupJSON = function (jsonString) {
     try {
-      const parsed = JSON.parse(jsonString);
-      if (!parsed || !parsed.state) {
+      if (typeof jsonString !== 'string' || !jsonString.trim()) {
+        return { ok: false, error: 'Archivo vacío.' };
+      }
+      if (jsonString.length > MAX_BACKUP_BYTES) {
+        return { ok: false, error: 'El respaldo supera el límite permitido de 5 MB.' };
+      }
+      const parsed = sanitizeObject(JSON.parse(jsonString));
+      if (!parsed || !parsed.state || typeof parsed.state !== 'object' || Array.isArray(parsed.state)) {
         return { ok: false, error: 'El archivo JSON no tiene un formato válido.' };
       }
       Store.commit(() => normalizeState(parsed.state, Store.user ? Store.user.codigoAlumno : null));
@@ -635,15 +861,16 @@
   };
 
   /**
-   * Respaldo en la nube de la bóveda personal por código de alumno (Supabase Vault).
-   * Permite recuperar entrenamientos/rutinas y que un profesor sincronice al vincular el código GYM-XXXX.
+   * Respaldo en la nube de la bóveda personal aislado por clave privada del usuario (`vaultSyncKey`).
+   * Nunca usa la clave compartida de sugerencias.
    */
   Store.sincronizarVaultUsuarioNube = async function () {
-    if (typeof fetch !== 'function' || !Store.user || !Store.user.codigoAlumno) return;
+    if (typeof fetch !== 'function' || !Store.user || !Store.user.codigoAlumno || !Store.user.vaultSyncKey) return;
     try {
       const st = Store.getState();
       if (!st) return;
       const code = String(Store.user.codigoAlumno).trim().toUpperCase();
+      const userVaultKey = String(Store.user.vaultSyncKey);
       const vaultId = 'vault_' + code.replace(/[^A-Z0-9]/gi, '').toLowerCase();
       const snapshot = {
         codigoAlumno: code,
@@ -662,11 +889,11 @@
           'apikey': SUPABASE_ANON_KEY,
           'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
           'Content-Type': 'application/json',
-          'x-sync-key': SUGERENCIAS_SYNC_KEY,
+          'x-sync-key': userVaultKey,
           'Prefer': 'resolution=merge-duplicates,return=minimal'
         },
         body: JSON.stringify({
-          sync_key: SUGERENCIAS_SYNC_KEY,
+          sync_key: userVaultKey,
           coleccion: 'user_vault',
           id: vaultId,
           data: snapshot,
@@ -677,22 +904,27 @@
     } catch (_) {}
   };
 
-  Store.descargarAlumnoPorCodigoNube = async function (rawCode, targetUsername) {
+  Store.descargarAlumnoPorCodigoNube = async function (rawCode, targetUsername, syncKey = '') {
     if (typeof fetch !== 'function' || !rawCode || !targetUsername) return null;
     try {
+      const index = getUsersIndex();
+      const targetUserObj = index.find(u => u.username.toLowerCase() === String(targetUsername).toLowerCase());
+      const effectiveKey = syncKey || (targetUserObj && targetUserObj.vaultSyncKey) || '';
+      if (!effectiveKey) return null;
+
       const code = String(rawCode).trim().toUpperCase();
       const vaultId = 'vault_' + code.replace(/[^A-Z0-9]/gi, '').toLowerCase();
       const res = await fetch(`${SUPABASE_URL}/rest/v1/fin_records?coleccion=eq.user_vault&id=eq.${encodeURIComponent(vaultId)}&deleted=eq.false&limit=1`, {
         headers: {
           'apikey': SUPABASE_ANON_KEY,
           'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
-          'x-sync-key': SUGERENCIAS_SYNC_KEY
+          'x-sync-key': effectiveKey
         }
       });
       if (!res.ok) return null;
       const rows = await res.json();
       if (!Array.isArray(rows) || !rows[0] || !rows[0].data) return null;
-      const cloud = rows[0].data;
+      const cloud = sanitizeObject(rows[0].data);
       Store.commitForUser(targetUsername, s => ({
         ...s,
         rutinas: Array.isArray(cloud.rutinas) && cloud.rutinas.length ? cloud.rutinas : s.rutinas,
@@ -707,34 +939,59 @@
     }
   };
 
-  Store.enviarFeedback = function ({ mensaje, tipo = 'sugerencia' }) {
+  /**
+   * Buzón unificado sobre `state.sugerencias` (fuente única de verdad) con deduplicación diaria.
+   */
+  Store.enviarFeedback = function ({ mensaje, tipo = 'idea', categoria = '', contexto = '', capturas = [] }) {
     try {
+      const cleanMsg = String(mensaje || '').trim();
+      if (!cleanMsg) return { ok: false, error: 'Escribí un mensaje antes de enviar.' };
+      const today = Engine.todayISO();
+      const userKey = Store.user ? Store.user.displayName || Store.user.username : 'Anónimo';
+      const cat = categoria || tipo || 'idea';
+
+      const st = Store.getState();
+      if (st && Store.user) {
+        const current = Array.isArray(st.sugerencias) ? st.sugerencias : [];
+        const dup = current.find(
+          it => !it.deleted && it.fecha === today && String(it.mensaje || '').trim().toLowerCase() === cleanMsg.toLowerCase()
+        );
+        if (dup) {
+          return { ok: true, item: dup, deduplicated: true };
+        }
+        const updated = Store.commit(s => Engine.agregarSugerencia(s, {
+          autor: userKey,
+          rol: Store.user ? Store.user.role : 'alumno',
+          categoria: cat,
+          contexto,
+          mensaje: cleanMsg,
+          capturas
+        }));
+        const created = updated && updated.sugerencias ? updated.sugerencias[0] : null;
+        if (created) Store.enviarSugerenciaNube(created).catch(() => {});
+        return { ok: true, item: created };
+      }
+
       const raw = localStorage.getItem(FEEDBACK_INBOX_KEY);
       const inbox = raw ? JSON.parse(raw) : [];
-      const cleanMsg = String(mensaje || '').trim();
-      const today = Engine.todayISO();
-      const userKey = Store.user ? Store.user.username : 'anónimo';
       const dup = inbox.find(
         it => it.fecha === today && it.usuario === userKey && String(it.mensaje || '').trim().toLowerCase() === cleanMsg.toLowerCase()
       );
-      if (dup) {
-        return { ok: true, item: dup, deduplicated: true };
-      }
+      if (dup) return { ok: true, item: dup, deduplicated: true };
+
       const item = {
         id: 'fb-' + Date.now(),
         fecha: today,
         hora: Engine.timeNow(),
         usuario: userKey,
-        tipo,
+        tipo: cat,
+        contexto,
         mensaje: cleanMsg,
         leido: false
       };
       inbox.unshift(item);
       localStorage.setItem(FEEDBACK_INBOX_KEY, JSON.stringify(inbox));
-
-      // Sincronizar automáticamente en la nube de Supabase en segundo plano
       Store.enviarSugerenciaNube(item).catch(() => {});
-
       return { ok: true, item };
     } catch (e) {
       return { ok: false, error: e.message };
@@ -743,12 +1000,8 @@
 
   Store.getFeedbackInbox = function () {
     if (!Store.user || !Store.user.isAdmin) return [];
-    try {
-      const raw = localStorage.getItem(FEEDBACK_INBOX_KEY);
-      return raw ? JSON.parse(raw) : [];
-    } catch {
-      return [];
-    }
+    const st = Store.getState();
+    return st && Array.isArray(st.sugerencias) ? st.sugerencias.filter(s => !s.deleted) : [];
   };
 
   /**
@@ -764,6 +1017,8 @@
         data: {
           id: String(sugItem.id || ('sug-' + Date.now())),
           mensaje: sugItem.mensaje || sugItem.texto || '',
+          categoria: sugItem.categoria || sugItem.tipo || 'idea',
+          contexto: sugItem.contexto || '',
           autor: sugItem.autor || (Store.user ? Store.user.displayName : 'Usuario'),
           rol: sugItem.rol || (Store.user ? Store.user.role : 'alumno'),
           fecha: sugItem.fecha || Engine.todayISO(),
@@ -793,16 +1048,20 @@
   };
 
   /**
-   * Sincronización bidireccional de sugerencias con Supabase:
-   * 1. Sube todas las sugerencias locales que aún no subieron a la nube.
-   * 2. Descarga sugerencias de la nube para fusionarlas con el estado local.
+   * Sincronización de sugerencias con Supabase:
+   * - Todos los usuarios pueden hacer PUSH de sus sugerencias locales.
+   * - Solo administradores (`Store.user.isAdmin`) descargan (PULL) el buzón completo.
    */
   Store.sincronizarSugerenciasNube = async function () {
     if (typeof fetch !== 'function') return;
     try {
-      // 1. PUSH: Subir sugerencias locales a la nube
       const st = Store.getState();
       const localSugs = Array.isArray(st?.sugerencias) ? st.sugerencias : [];
+      const localSigs = new Set(
+        localSugs.map(it => `${String(it.fecha || '')}|${String(it.mensaje || '').trim().toLowerCase()}`)
+      );
+
+      // 1. PUSH: Subir sugerencias locales aún no sincronizadas
       for (const s of localSugs) {
         if (!s.syncedCloud) {
           await Store.enviarSugerenciaNube(s);
@@ -810,15 +1069,19 @@
         }
       }
 
-      // También revisar FEEDBACK_INBOX_KEY por sugerencias históricas
+      // Migrar elementos históricos de FEEDBACK_INBOX_KEY sin duplicar los ya presentes en state.sugerencias
       try {
         const rawInbox = localStorage.getItem(FEEDBACK_INBOX_KEY);
         const inbox = rawInbox ? JSON.parse(rawInbox) : [];
+        let changed = false;
         for (const item of inbox) {
-          if (!item.syncedCloud) {
+          const sig = `${String(item.fecha || '')}|${String(item.mensaje || '').trim().toLowerCase()}`;
+          if (!item.syncedCloud && !localSigs.has(sig)) {
             await Store.enviarSugerenciaNube({
               id: item.id,
               mensaje: item.mensaje,
+              categoria: item.tipo || 'sugerencia',
+              contexto: item.contexto || '',
               autor: item.usuario,
               rol: 'alumno',
               fecha: item.fecha,
@@ -826,12 +1089,15 @@
               capturas: []
             });
             item.syncedCloud = true;
+            changed = true;
           }
         }
-        localStorage.setItem(FEEDBACK_INBOX_KEY, JSON.stringify(inbox));
+        if (changed) localStorage.setItem(FEEDBACK_INBOX_KEY, JSON.stringify(inbox));
       } catch (_) {}
 
-      // 2. PULL: Descargar sugerencias de la nube
+      // 2. PULL: Solo el dueño/admin lee las sugerencias globales de la nube
+      if (!Store.user || !Store.user.isAdmin) return;
+
       const res = await fetch(`${SUPABASE_URL}/rest/v1/fin_records?coleccion=eq.sugerencias&deleted=eq.false&order=server_ts.desc&limit=100`, {
         headers: {
           'apikey': SUPABASE_ANON_KEY,
@@ -843,7 +1109,7 @@
       if (res.ok) {
         const rows = await res.json();
         if (Array.isArray(rows) && rows.length > 0) {
-          const cloudSugs = rows.map(r => ({ ...r.data, syncedCloud: true, deleted: r.deleted }));
+          const cloudSugs = rows.map(r => ({ ...sanitizeObject(r.data), syncedCloud: true, deleted: r.deleted }));
           Store.commit(s => {
             const current = Array.isArray(s.sugerencias) ? [...s.sugerencias] : [];
             const byId = new Map(current.map(item => [item.id, item]));

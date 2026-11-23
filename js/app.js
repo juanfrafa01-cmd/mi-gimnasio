@@ -19,7 +19,7 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '3.4.0';
+  const APP_VERSION = '3.5.0';
 
   /** Número válido o valor por defecto (a diferencia de `|| def`, respeta el 0: RIR 0 = serie al fallo). */
   const numOr = (v, def) => (Number.isFinite(v) ? v : def);
@@ -39,10 +39,9 @@
   let activeTab = 'hoy'; // 'hoy' | 'rutinas' | 'historico' | 'salud' | 'evolucion' | 'ajustes'
   let activeModal = null; // null | { type, ... }
   let previousModal = null; // Para volver al modal anterior al cerrar el visor de ejercicio
-  let lastDeletedSerie = null;
-  let lastDeletedBatchIds = null;
   let draftSugerenciaCapturas = [];
   let draftSugerenciaTexto = '';
+  let draftSugerenciaCategoria = 'idea';
   let isDictatingSugerencia = false;
   let activeSpeechRecognition = null;
 
@@ -414,7 +413,8 @@
       chevronDown: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>',
       chevronUp: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>',
       play: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>',
-      shield: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>'
+      shield: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>',
+      lock: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>'
     };
     return `<span class="ui-icon">${svgs[name] || svgs.bolt}</span>`;
   }
@@ -1390,9 +1390,10 @@
   // 6.2 Pestaña MIS RUTINAS & CATÁLOGO ESTANDARIZADO COMPLETO (One-Page con pestañas internas)
   function renderAlumnoRutinasSection(state) {
     const rutinas = (state.rutinas || []).filter(r => !r.deleted);
-    const catalogo = (state.ejercicios || []).filter(e => !e.deleted);
+    const catalogo = Engine.getCatalogoVisible(state.ejercicios || []);
     const catalogoFiltrado = catalogo.filter(e => catalogoFiltroGrupo === 'todos' || e.grupoMuscular === catalogoFiltroGrupo);
     const nombreGrupo = g => (g === 'todos' ? 'Todos' : g === 'activacion' ? 'Activación' : g === 'amrap' ? 'AMRAP' : g.charAt(0).toUpperCase() + g.slice(1));
+    const plantillas = Engine.PLANTILLAS_INICIO || [];
 
     return `
       <div class="onepage-view">
@@ -1414,8 +1415,16 @@
             <div class="empty-state">
               <span class="empty-state-icon">${renderIcon('clipboard')}</span>
               <strong>Todavía no tenés rutinas</strong>
-              <p>Armá tu plan con días y ejercicios, o entrená libre y guardalo al terminar.</p>
-              <button type="button" class="btn-secondary" data-action="open-rutina-builder" style="width: auto;">Crear mi primera rutina</button>
+              <p>Empezá en 1 toque con una plantilla base o armá la tuya desde cero.</p>
+              <div class="starter-tpl-grid">
+                ${plantillas.map(tpl => `
+                  <button type="button" class="starter-tpl-btn" data-action="apply-starter-template" data-template-id="${h(tpl.id)}">
+                    <strong>${h(tpl.nombre)}</strong>
+                    <small>${h(tpl.subtitulo)}</small>
+                  </button>
+                `).join('')}
+              </div>
+              <button type="button" class="btn-secondary" data-action="open-rutina-builder" style="width: auto; margin-top: 4px;">Crear rutina personalizada</button>
             </div>
           ` : `
             <div class="onepage-scroll-list">
@@ -2016,9 +2025,14 @@
             <span class="list-row-icon">${renderIcon('refresh')}</span>
             <span class="list-row-text"><strong>Buscar actualización</strong><small>Versión ${APP_VERSION}</small></span>
           </button>
+          <button type="button" class="list-row" data-action="open-change-pin-modal">
+            <span class="list-row-icon">${renderIcon('lock')}</span>
+            <span class="list-row-text"><strong>Cambiar contraseña / PIN</strong><small>Reforzá el acceso en este dispositivo</small></span>
+            ${renderIcon('arrowRight')}
+          </button>
           <button type="button" class="list-row" data-action="open-legales-modal">
             <span class="list-row-icon">${renderIcon('shield')}</span>
-            <span class="list-row-text"><strong>Bases, Privacidad y Aviso Médico</strong><small>Términos legales, Ley 25.326 y control de tus datos</small></span>
+            <span class="list-row-text"><strong>Bases, Privacidad y Aviso Médico</strong><small>Beta v1.1 · Ley 25.326 y control de tus datos</small></span>
             ${renderIcon('arrowRight')}
           </button>
           <button type="button" class="list-row list-row-danger" data-action="logout">
@@ -2505,11 +2519,11 @@
             </div>
             <div class="form-group">
               <label class="form-label">Contraseña o PIN</label>
-              <input type="password" id="reg-pin" class="form-input" placeholder="Elegí una contraseña" required>
+              <input type="password" id="reg-pin" class="form-input" placeholder="Mínimo 4 caracteres (recomendado 6+)" minlength="4" required>
             </div>
             <label style="display: flex; align-items: flex-start; gap: 8px; font-size: 12px; color: var(--text-muted); line-height: 1.4; cursor: pointer;">
-              <input type="checkbox" id="reg-terms" required checked style="margin-top: 2px; width: 16px; height: 16px; accent-color: var(--accent);">
-              <span>Acepto las <button type="button" class="btn-link" data-action="open-legales-modal" style="font-size: 12px; padding: 0;">Bases y Condiciones, Política de Privacidad y Aviso Médico</button>.</span>
+              <input type="checkbox" id="reg-terms" required style="margin-top: 2px; width: 16px; height: 16px; accent-color: var(--accent);">
+              <span>Declaro ser mayor de 18 años (o contar con autorización) y acepto las <button type="button" class="btn-link" data-action="open-legales-modal" style="font-size: 12px; padding: 0;">Bases y Condiciones Beta, Privacidad (datos de salud/fotos locales) y Aviso Médico</button>.</span>
             </label>
             <div style="display: flex; gap: 10px; margin-top: 6px;">
               <button type="button" class="btn-secondary" data-action="close-modal">Cancelar</button>
@@ -2603,7 +2617,7 @@
 
     // MODAL 3: Catálogo Total de Ejercicios (Activación, Movilidad, Fuerza y AMRAP)
     if (activeModal.type === 'catalog-picker') {
-      const ejercicios = (state.ejercicios || []).filter(e => !e.deleted);
+      const ejercicios = Engine.getCatalogoVisible(state.ejercicios || []);
       const filtrados = ejercicios.filter(e => {
         const matchGrupo = catalogoFiltroGrupo === 'todos' || e.grupoMuscular === catalogoFiltroGrupo;
         const matchTexto = !catalogoBusqueda || e.nombre.toLowerCase().includes(catalogoBusqueda.toLowerCase());
@@ -2769,7 +2783,7 @@
           ${viewMode === 'lamina' ? `
             <div class="exercise-illustration-card">
               ${media.illustrationUrl ? `
-                <img src="${h(media.illustrationUrl)}" alt="${h(ej.nombre)}: posición inicial y final" class="exercise-illustration-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+                <img src="${h(media.illustrationUrl)}" alt="${h(ej.nombre)}: posición inicial y final" class="exercise-illustration-img" data-fallback-sibling="true" />
                 <div class="illustration-fallback" style="display: none;">${renderIcon('dumbbell')}<span>Sin lámina. Pedile la demostración a tu profe.</span></div>
               ` : `
                 <div class="illustration-fallback">${renderIcon('dumbbell')}<span>Sin lámina. Pedile la demostración a tu profe.</span></div>
@@ -2779,7 +2793,7 @@
 
           ${viewMode === 'movimiento' ? `
             <div class="exercise-illustration-card">
-              <img src="${h(media.gifUrl)}" alt="${h(ej.nombre)} en movimiento" class="exercise-illustration-img" onerror="this.src='${h(media.illustrationUrl || '')}';" />
+              <img src="${h(media.gifUrl)}" alt="${h(ej.nombre)} en movimiento" class="exercise-illustration-img" data-fallback-src="${h(media.illustrationUrl || '')}" />
               <div class="media-caption">Ejecución continua · Controlá el tempo excéntrico y concéntrico</div>
             </div>
           ` : ''}
@@ -2788,11 +2802,11 @@
             <div class="frames-compare">
               <div class="frame-card">
                 <span class="frame-badge">1 · Inicio</span>
-                <img src="${h(media.startImgUrl)}" alt="${h(ej.nombre)} posición inicial" class="frame-img" onerror="this.src='${h(media.illustrationUrl || '')}';" />
+                <img src="${h(media.startImgUrl)}" alt="${h(ej.nombre)} posición inicial" class="frame-img" data-fallback-src="${h(media.illustrationUrl || '')}" />
               </div>
               <div class="frame-card">
                 <span class="frame-badge frame-badge-accent">2 · Final</span>
-                <img src="${h(media.endImgUrl)}" alt="${h(ej.nombre)} posición final" class="frame-img" onerror="this.src='${h(media.illustrationUrl || '')}';" />
+                <img src="${h(media.endImgUrl)}" alt="${h(ej.nombre)} posición final" class="frame-img" data-fallback-src="${h(media.illustrationUrl || '')}" />
               </div>
             </div>
           ` : ''}
@@ -2815,28 +2829,30 @@
           <div class="modal-header-sticky">
             <div>
               <h2 class="modal-title" style="font-size: 17px;">Bases, Privacidad y Aviso Médico</h2>
-              <span class="net-status" style="margin: 2px 0 0;">Fitness MiniApp v${APP_VERSION} · © JF Development</span>
+              <span class="net-status" style="margin: 2px 0 0;">Versión Legal 1.1 (Beta Piloto) · © JF Development</span>
             </div>
             <button type="button" class="btn-close-modal" data-action="close-modal">${renderIcon('x')}</button>
           </div>
           <div class="legal-doc">
             <div class="legal-section">
-              <h4>1. Aviso Médico y Deslinde de Responsabilidad Deportiva</h4>
-              <p><strong>Mi Gimnasio (Fitness MiniApp)</strong> es una herramienta digital de registro y organización de entrenamientos físicos. Su contenido, catálogo de ejercicios, láminas ilustrativas, estimaciones de 1RM e índices de recuperación (Readiness) tienen carácter exclusivamente informativo y educativo, y <strong>no reemplazan el diagnóstico, prescripción ni supervisión de un médico deportólogo, kinesiólogo o profesor de educación física matriculado</strong>.</p>
-              <p>Antes de iniciar cualquier programa de fuerza, movilidad o acondicionamiento metabólico (AMRAP), el usuario declara contar con apto físico vigente. Interrumpí el ejercicio de inmediato ante dolor articular agudo, mareos o disnea.</p>
+              <h4>1. Versión Beta / Prueba con Usuarios Invitados y Respaldo Local</h4>
+              <p>Estás utilizando una <strong>versión de prueba piloto (Beta v${APP_VERSION})</strong> pensada para evaluar usabilidad junto a amigos, alumnos y entrenadores. Durante esta etapa pueden aplicarse mejoras visuales o de estructura.</p>
+              <p>Como la app funciona 100% <em>Offline-First</em> en la memoria de tu navegador, <strong>borrar la caché/datos de Safari o Chrome o desinstalar la PWA elimina los registros locales</strong> si no descargaste antes un archivo de respaldo desde <strong>Cuenta → Guardar respaldo</strong>.</p>
             </div>
             <div class="legal-section">
-              <h4>2. Privacidad y Protección de Datos Personales (Ley 25.326)</h4>
-              <p>Conforme a la <strong>Ley N° 25.326 de Protección de los Datos Personales (República Argentina)</strong>, tus registros de entrenamiento, pesos, psicofísico y fotos de perfil o apariencia se almacenan de forma aislada en tu dispositivo (arquitectura <em>Offline-First</em> en <code>localStorage</code> bajo tu identificador de usuario).</p>
-              <p>La sincronización en la nube (Supabase Vault) utiliza tu código único de alumno (<code>GYM-XXXX</code>) exclusivamente para respaldar tu progreso y permitir que el profesor con quien compartas voluntariamente dicho código pueda prescribir o actualizar tu rutina. No comercializamos, cedemos ni rastreamos datos con fines publicitarios.</p>
+              <h4>2. Aviso Médico, Edad Mínima (+18) y Deslinde Deportivo</h4>
+              <p><strong>Mi Gimnasio (Fitness MiniApp)</strong> es una herramienta de registro deportivo. Sus rutinas base, láminas, estimaciones de 1RM e índices de recuperación (Readiness) tienen fines informativos y <strong>no reemplazan el diagnóstico ni la supervisión de un médico deportólogo, kinesiólogo o profesor matriculado</strong>.</p>
+              <p>Al registrarte declarás ser mayor de 18 años (o contar con autorización de padre/tutor) y poseer apto físico vigente. Interrumpí el ejercicio de inmediato ante dolor agudo, mareos o falta de aire.</p>
             </div>
             <div class="legal-section">
-              <h4>3. Condiciones de Uso y Propiedad Intelectual</h4>
-              <p>El software, diseño de interfaz, motor biomecánico y láminas técnicas son propiedad intelectual de <strong>© JF Development</strong>. Se concede una licencia personal, gratuita y no exclusiva para uso deportivo individual o profesional entre profesor y alumno.</p>
+              <h4>3. Privacidad y Datos Sensibles (Ley N° 25.326 · Arts. 2, 6, 7 y 14)</h4>
+              <p>De conformidad con la <strong>Ley N° 25.326 de Protección de los Datos Personales (República Argentina)</strong>, tus datos físicos (peso, sueño, lesiones, marcas) y tus <strong>fotos de perfil, fondo o progreso permanecen exclusivamente en tu dispositivo</strong> bajo clave aislada y nunca se envían a servidores externos.</p>
+              <p>La bóveda opcional en la nube (Supabase Vault) usa una clave privada generada en tu dispositivo para resguardar rutinas y series; solo vos decidís con quién compartir tu código de vinculación. Si enviás capturas voluntariamente en el <strong>Buzón de Sugerencias</strong>, se usan únicamente para corregir errores reportados y se eliminan tras resolverlos. No vendemos ni cedemos datos ni usamos cookies de rastreo publicitario.</p>
             </div>
             <div class="legal-section">
-              <h4>4. Derechos ARCO (Acceso,Exportación y Supresión Total)</h4>
-              <p>Podés descargar una copia íntegra de tus datos en formato JSON desde <strong>Cuenta → Guardar respaldo</strong> o reiniciar tu cuenta a cero eliminando tus marcas locales cuando lo desees.</p>
+              <h4>4. Derechos ARCO, Órgano de Control (AAIP) y Contacto</h4>
+              <p>El titular de los datos tiene derecho de acceso, rectificación, actualización y supresión (Ley 25.326). Contacto directo del responsable: <strong>privacidad@jfdevelopment.app</strong> · Jurisdicción: República Argentina.</p>
+              <p style="font-size: 11px;">La <em>Agencia de Acceso a la Información Pública (AAIP)</em>, en su carácter de Órgano de Control de la Ley N° 25.326, tiene la atribución de atender las denuncias y reclamos que interpongan quienes resulten afectados en sus derechos por incumplimiento de las normas vigentes en materia de protección de datos personales.</p>
               ${Store.user ? `
                 <button type="button" class="btn-secondary" data-action="reset-account-zero" style="width: 100%; margin-top: 6px; color: var(--danger); border-color: rgba(239,68,68,0.35);">
                   Reiniciar mi cuenta a cero (borrar entrenamientos y rutinas)
@@ -2845,6 +2861,39 @@
             </div>
           </div>
           <button type="button" class="btn-primary" data-action="close-modal">Entendido</button>
+        </div>
+      `;
+      return;
+    }
+
+    if (activeModal.type === 'change-pin') {
+      overlay.innerHTML = `
+        <div class="modal-card" style="max-width: 420px;">
+          <div class="modal-header-sticky">
+            <div>
+              <h2 class="modal-title" style="font-size: 17px;">Cambiar contraseña / PIN</h2>
+              <span class="net-status" style="margin: 2px 0 0;">Cifrado local SHA-256 con sal por usuario</span>
+            </div>
+            <button type="button" class="btn-close-modal" data-action="close-modal">${renderIcon('x')}</button>
+          </div>
+          <form data-action="submit-change-pin" style="display: flex; flex-direction: column; gap: 12px;">
+            <div class="form-group">
+              <label class="form-label" for="pin-actual">Contraseña o PIN actual</label>
+              <input type="password" id="pin-actual" class="form-input" placeholder="Tu contraseña actual" required autocomplete="current-password">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="pin-nuevo">Nueva contraseña o PIN</label>
+              <input type="password" id="pin-nuevo" class="form-input" placeholder="Mínimo 4 caracteres (recomendado 6+)" minlength="4" required autocomplete="new-password">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="pin-confirm">Repetir nueva contraseña</label>
+              <input type="password" id="pin-confirm" class="form-input" placeholder="Repetí la nueva contraseña" minlength="4" required autocomplete="new-password">
+            </div>
+            <div class="modal-actions">
+              <button type="button" class="btn-secondary" data-action="close-modal">Cancelar</button>
+              <button type="submit" class="btn-primary">Guardar contraseña</button>
+            </div>
+          </form>
         </div>
       `;
       return;
@@ -3202,13 +3251,26 @@
 
           <form data-action="submit-sugerencia" style="display: flex; flex-direction: column; gap: 10px;">
             <div class="form-group">
+              <span class="form-label">Tipo de comentario</span>
+              <div class="sug-cat-chips">
+                ${[
+                  ['bug', 'Error / Bug'],
+                  ['ejercicio', 'Falta ejercicio'],
+                  ['idea', 'Idea'],
+                  ['confuso', 'Algo confuso']
+                ].map(([catId, catLabel]) => `
+                  <button type="button" class="chip chip-filter ${draftSugerenciaCategoria === catId ? 'active' : ''}" data-action="set-sugerencia-cat" data-cat="${catId}">${catLabel}</button>
+                `).join('')}
+              </div>
+            </div>
+            <div class="form-group">
               <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
                 <label class="form-label" for="sug-mensaje">¿Qué mejorarías?</label>
                 <button type="button" class="btn-dictar ${isDictatingSugerencia ? 'listening' : ''}" data-action="dictar-sugerencia" style="padding: 5px 10px; font-size: 12px !important; display:inline-flex; align-items:center; gap:5px;">
                   ${renderIcon('mic')} ${isDictatingSugerencia ? 'Detener' : 'Dictar'}
                 </button>
               </div>
-              <textarea id="sug-mensaje" class="form-input" rows="4" placeholder="Escribí o dictá tu sugerencia..." required>${h(draftSugerenciaTexto)}</textarea>
+              <textarea id="sug-mensaje" class="form-input" rows="4" placeholder="Escribí o dictá tu sugerencia... (adjuntamos versión y pantalla para ayudarte rápido)" required>${h(draftSugerenciaTexto)}</textarea>
             </div>
 
             <!-- Botón Único de Foto (despliega las 2 opciones: Adjuntar o Pegar) -->
@@ -3426,14 +3488,6 @@
   // 11. ACCIONES POR DELEGACIÓN (PROHIBIDO ONCLICK INLINE)
   // ==========================================
   const actions = {
-    'set-layout-mode': el => {
-      const mode = el.getAttribute('data-mode');
-      if (mode) {
-        layoutMode = mode;
-        render();
-      }
-    },
-
     'switch-tab': el => {
       const tab = el.getAttribute('data-tab');
       if (tab) {
@@ -3496,10 +3550,10 @@
       }
     },
 
-    'submit-login': () => {
+    'submit-login': async () => {
       const u = document.getElementById('login-username').value;
       const p = document.getElementById('login-pin').value;
-      const res = Store.login(u, p);
+      const res = typeof Store.loginAsync === 'function' ? await Store.loginAsync(u, p) : Store.login(u, p);
       if (res.ok) {
         syncSaludDraftsWithState(Store.getState(), true);
         layoutMode = res.user.role === 'profesor'
@@ -3547,6 +3601,11 @@
     },
 
     'submit-register': () => {
+      const termsEl = document.getElementById('reg-terms');
+      if (termsEl && !termsEl.checked) {
+        showToast('Debés aceptar las Bases, Privacidad y Aviso Médico para continuar.');
+        return;
+      }
       const role = document.getElementById('reg-role').value;
       const username = document.getElementById('reg-username').value;
       const displayName = document.getElementById('reg-display').value;
@@ -3692,10 +3751,12 @@
       renderModals();
     },
 
-    'open-catalog-for-workout': () => {
-      catalogoFiltroGrupo = 'todos';
-      activeModal = { type: 'catalog-picker', mode: 'workout' };
-      renderModals();
+    'apply-starter-template': el => {
+      const tplId = el.getAttribute('data-template-id');
+      if (!tplId) return;
+      Store.commit(s => Engine.aplicarPlantillaInicio(s, tplId));
+      showToast('✓ Plantilla agregada a tus rutinas');
+      render();
     },
 
     'save-today-as-routine': () => {
@@ -3971,53 +4032,9 @@
     },
 
     // --- EJECUCIÓN DE ENTRENAMIENTO ---
-    'start-today-session': () => {
-      Store.commit(s => Engine.iniciarEntrenamiento(s, null));
-      activeTab = 'hoy';
-      showToast('Sesión iniciada. Sumá ejercicios y guardá cada serie.');
-      render();
-    },
-
     'repeat-last-movilidad': () => {
       Store.commit(s => Engine.repetirUltimaMovilidad(s));
       showToast('↻ Movilidad de la última vez copiada a hoy');
-      render();
-    },
-
-    'set-rir': el => {
-      const ejId = el.getAttribute('data-ejercicio-id');
-      const v = parseInt(el.getAttribute('data-value'), 10);
-      const hidden = document.getElementById(`select-rir-${ejId}`);
-      const rpe = document.getElementById(`select-rpe-${ejId}`);
-      if (hidden) hidden.value = String(v);
-      if (rpe) rpe.value = String(10 - v); // RPE ≈ 10 − RIR
-      el.parentElement.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === el));
-    },
-
-    'quick-add-reps': el => {
-      const input = document.getElementById(el.getAttribute('data-target-input'));
-      if (!input) return;
-      const amount = parseInt(el.getAttribute('data-amount'), 10) || 0;
-      input.value = String(Math.max(1, (parseInt(input.value, 10) || 0) + amount));
-    },
-
-    'apply-sugerencia': el => {
-      const ejId = el.getAttribute('data-ejercicio-id');
-      const peso = el.getAttribute('data-peso'), reps = el.getAttribute('data-reps');
-      const ip = document.getElementById(`input-peso-${ejId}`), ir = document.getElementById(`input-reps-${ejId}`);
-      if (ip && peso !== 'null') { ip.value = peso; ip.dispatchEvent(new Event('input', { bubbles: true })); }
-      if (ir && reps) ir.value = reps;
-      showToast(el.getAttribute('title') || 'Sugerencia aplicada');
-    },
-
-    'set-descanso': el => {
-      const seg = parseInt(el.getAttribute('data-seconds'), 10);
-      Store.commit(s => Engine.setKV(s, 'descansoSeg', seg));
-      render();
-    },
-    'toggle-descanso-auto': () => {
-      const actual = Engine.getDescanso(Store.getState()).automatico;
-      Store.commit(s => Engine.setKV(s, 'descansoAuto', !actual));
       render();
     },
 
@@ -4067,23 +4084,6 @@
       renderModals();
     },
 
-    'toggle-ejercicio-vista-modo': () => {
-      if (activeModal && activeModal.type === 'view-ejercicio') {
-        activeModal.fullSheet = !activeModal.fullSheet;
-        renderModals();
-      }
-    },
-
-    'toggle-activacion': el => {
-      const actId = el.getAttribute('data-act-id');
-      Store.commit(s => Engine.toggleActivacion(s, actId));
-    },
-
-    'open-add-movilidad': () => {
-      activeModal = { type: 'add-movilidad' };
-      renderModals();
-    },
-
     'submit-movilidad': () => {
       const selectEl = document.getElementById('mov-catalogo-select');
       const ejercicioId = selectEl?.value || 'ej-mov-puente-gluteo-uni';
@@ -4099,46 +4099,10 @@
       render();
     },
 
-    'save-movilidad-serie-completa': el => {
-      const movId = el.getAttribute('data-mov-id');
-      const trId = el.getAttribute('data-entrenamiento-id');
-      const st = Store.getState();
-      const mov = (st.movilidad || []).find(m => m.id === movId && !m.deleted);
-      if (!mov) return;
-
-      const cantSeries = Number(mov.series) || 2;
-      const repsNum = parseInt(mov.reps, 10) || 15;
-      const pesoNum = parseFloat(mov.pesoKg) || 0;
-      const ejId = mov.ejercicioId || 'ej-mov-puente-gluteo-uni';
-
-      Store.commit(s =>
-        Engine.guardarMultiplesSeries(s, {
-          entrenamientoId: trId,
-          ejercicioId: ejId,
-          cantidadSeries: cantSeries,
-          pesoKg: pesoNum,
-          reps: repsNum,
-          rir: 2,
-          rpe: 7,
-          tipo: 'efectiva'
-        })
-      );
-      showToast(`✓✓ Serie completa de ${mov.nombre} registrada (${cantSeries} series × ${repsNum} reps)`);
-      render();
-    },
-
     'delete-movilidad': el => {
       const movId = el.getAttribute('data-mov-id');
       Store.commit(s => Engine.borrarMovilidad(s, movId));
       showToast('Ejercicio de movilidad eliminado');
-      render();
-    },
-
-    'reorder-movilidad': el => {
-      const movId = el.getAttribute('data-mov-id');
-      const dir = el.getAttribute('data-dir');
-      if (!movId || !dir) return;
-      Store.commit(s => Engine.reordenarMovilidad(s, movId, dir));
       render();
     },
 
@@ -4189,14 +4153,6 @@
       renderModals();
     },
 
-    'remove-ej-from-live-amrap': el => {
-      const amrapId = el.getAttribute('data-amrap-id');
-      const idx = Number(el.getAttribute('data-index'));
-      Store.commit(s => Engine.quitarEjercicioDeBloqueAmrap(s, amrapId, idx));
-      showToast('Ejercicio quitado de la rutina AMRAP.');
-      render();
-    },
-
     'save-amrap-block': () => {
       const nombre = document.getElementById('amrap-nombre')?.value?.trim() || 'Rutina AMRAP del Día';
       const tiempoTrabajoSeg = Number(document.getElementById('amrap-trabajo-seg')?.value) || 40;
@@ -4227,44 +4183,11 @@
       render();
     },
 
-    'delete-amrap': el => {
-      const amrapId = el.getAttribute('data-amrap-id');
-      Store.commit(s => Engine.borrarBloqueAmrap(s, amrapId));
-      showToast('Rutina AMRAP quitada del día');
-      render();
-    },
-
-    'start-amrap-timer': el => {
-      const seconds = parseInt(el.getAttribute('data-seconds'), 10) || 40;
-      const label = el.getAttribute('data-label') || 'AMRAP';
-      Timer.start(seconds);
-      showToast(`Cronómetro iniciado: ${label}`);
-      renderFloatingTimer();
-    },
-
     'complete-amrap-round': el => {
       const amrapId = el.getAttribute('data-amrap-id');
       Store.commit(s => Engine.registrarRondaAmrap(s, amrapId));
       showToast('✓ ¡Ronda de AMRAP registrada!');
       render();
-    },
-
-    // --- EDITAR / QUITAR EJERCICIO DE LA SESIÓN DE HOY ---
-    'open-edit-sesion-ej': el => {
-      const ejId = el.getAttribute('data-ejercicio-id');
-      const trId = el.getAttribute('data-entrenamiento-id');
-      const series = Number(el.getAttribute('data-series')) || 3;
-      const reps = el.getAttribute('data-reps') || '8-10';
-      const notas = el.getAttribute('data-notas') || '';
-      activeModal = {
-        type: 'edit-sesion-ej',
-        ejercicioId: ejId,
-        entrenamientoId: trId,
-        series,
-        reps,
-        notas
-      };
-      renderModals();
     },
 
     'submit-edit-sesion-ej': () => {
@@ -4331,6 +4254,39 @@
     'open-legales-modal': () => {
       activeModal = { type: 'legales' };
       renderModals();
+    },
+
+    'open-change-pin-modal': () => {
+      activeModal = { type: 'change-pin' };
+      renderModals();
+    },
+
+    'submit-change-pin': async () => {
+      const actual = document.getElementById('pin-actual')?.value || '';
+      const nuevo = document.getElementById('pin-nuevo')?.value || '';
+      const confirm = document.getElementById('pin-confirm')?.value || '';
+      if (nuevo !== confirm) {
+        showToast('Las contraseñas nuevas no coinciden.');
+        return;
+      }
+      const res = await Store.changePassword(actual, nuevo);
+      if (res.ok) {
+        activeModal = null;
+        renderModals();
+        showToast('✓ Contraseña actualizada de forma segura.');
+      } else {
+        showToast(res.error || 'No se pudo actualizar la contraseña.');
+      }
+    },
+
+    'set-sugerencia-cat': el => {
+      const cat = el.getAttribute('data-cat');
+      if (cat) {
+        const curTextarea = document.getElementById('sug-mensaje');
+        if (curTextarea) draftSugerenciaTexto = curTextarea.value;
+        draftSugerenciaCategoria = cat;
+        renderModals();
+      }
     },
 
     'set-exercise-media-tab': el => {
@@ -4542,88 +4498,23 @@
       }
 
       const capturasCopy = [...draftSugerenciaCapturas];
-      Store.commit(s =>
-        Engine.agregarSugerencia(s, {
-          mensaje: mensaje || '(Captura adjunta)',
-          autor: Store.user?.displayName || 'Usuario',
-          rol: Store.user?.role || 'alumno',
-          capturas: capturasCopy
-        })
-      );
+      const contexto = `v${APP_VERSION} · ${activeTab} · ${window.innerWidth}x${window.innerHeight}`;
+      const res = Store.enviarFeedback({
+        mensaje: mensaje || '(Captura adjunta)',
+        categoria: draftSugerenciaCategoria || 'idea',
+        contexto,
+        capturas: capturasCopy
+      });
       draftSugerenciaTexto = '';
       draftSugerenciaCapturas = [];
+      draftSugerenciaCategoria = 'idea';
       showPhotoOptions = false;
-
-      const latestSug = (Store.getState().sugerencias || [])[0];
-      if (latestSug && typeof Store.enviarSugerenciaNube === 'function') {
-        Store.enviarSugerenciaNube(latestSug).catch(() => {});
-      }
 
       activeModal = null;
       renderModals();
-      showToast('✓ ¡Sugerencia enviada y sincronizada en la nube!');
-    },
-
-    'delete-sugerencia': el => {
-      const sugId = el.getAttribute('data-sug-id');
-      if (!sugId) return;
-      const curTextarea = document.getElementById('sug-mensaje');
-      if (curTextarea) draftSugerenciaTexto = curTextarea.value;
-      Store.commit(s => Engine.borrarSugerencia(s, sugId));
-      if (typeof Store.enviarSugerenciaNube === 'function') {
-        Store.enviarSugerenciaNube({ id: sugId, deleted: true }).catch(() => {});
-      }
-      showToast('Sugerencia eliminada.');
-      renderModals();
-    },
-
-    'share-sugerencias': async () => {
-      const st = Store.getState();
-      const sugs = (st.sugerencias || []).filter(s => !s.deleted);
-      if (sugs.length === 0) {
-        showToast('No hay sugerencias guardadas para enviar.');
-        return;
-      }
-      const textoExport = sugs
-        .map((s, idx) => `${idx + 1}. [${s.fecha || Engine.todayISO()}] (${s.autor || 'Usuario'}): ${s.mensaje || s.texto || ''}${Array.isArray(s.capturas) && s.capturas.length ? ` [${s.capturas.length} captura(s)]` : ''}`)
-        .join('\n');
-
-      if (navigator.share) {
-        try {
-          await navigator.share({
-            title: 'Sugerencias Fitness MiniApp',
-            text: textoExport
-          });
-          showToast('✓ Sugerencias compartidas.');
-          return;
-        } catch (_) {}
-      }
-
-      if (navigator.clipboard) {
-        try {
-          await navigator.clipboard.writeText(textoExport);
-          showToast('✓ Sugerencias copiadas al portapapeles. ¡Ya podés pegarlas!');
-          return;
-        } catch (_) {}
-      }
-      showToast('Sugerencias listas.');
-    },
-
-    'toggle-gif-preview': el => {
-      const ejId = el.getAttribute('data-ejercicio-id');
-      activeGifPreviewId = activeGifPreviewId === ejId ? null : ejId;
-      render();
-    },
-
-    'quick-add-weight': el => {
-      const targetId = el.getAttribute('data-target-input');
-      const amount = parseFloat(el.getAttribute('data-amount')) || 0;
-      const input = document.getElementById(targetId);
-      if (input) {
-        const curr = parseFloat(input.value) || 0;
-        input.value = Math.max(0, Math.round((curr + amount) * 100) / 100).toString();
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-      }
+      showToast(res.deduplicated
+        ? '✓ Ya recibimos esa misma sugerencia hoy.'
+        : '✓ ¡Sugerencia enviada y sincronizada!');
     },
 
     // --- CHECK-IN DE GIMNASIO Y FLUJO MODULAR PASO A PASO (v3.2.0) ---
@@ -4708,19 +4599,6 @@
         if (!ent) return state;
         const key = mod === 'activacion' ? 'activacionActiva' : 'movilidadActiva';
         return Engine.setConfigBloqueSesion(state, ent.id, { [key]: active });
-      });
-      render();
-    },
-
-    'toggle-module-enabled': el => {
-      const mod = el.getAttribute('data-module');
-      if (mod !== 'activacion' && mod !== 'movilidad') return;
-      Store.commit(state => {
-        const ent = Engine.getEntrenamientoActivo(state);
-        if (!ent) return state;
-        const cfg = ent.modulosConfig || {};
-        const key = mod === 'activacion' ? 'activacionActiva' : 'movilidadActiva';
-        return Engine.setConfigBloqueSesion(state, ent.id, { [key]: cfg[key] === false });
       });
       render();
     },
@@ -4864,20 +4742,6 @@
       render();
     },
 
-    // --- CHECK-IN RÁPIDO AL LLEGAR AL GYM ---
-    'quick-checkin': el => {
-      const estado = el.getAttribute('data-estado');
-      const energia = Number(el.getAttribute('data-energia')) || 4;
-      const estres = Number(el.getAttribute('data-estres')) || 2;
-      Store.commit(state => Engine.registrarReadiness(state, {
-        energia,
-        estres,
-        observacionAlumno: estado
-      }));
-      showToast(`✓ Estado registrado: ${estado}`);
-      render();
-    },
-
     // --- GUARDAR SERIES JUNTAS (SOLO KG Y REPES) ---
     'save-ejercicio-completo': el => {
       const ejId = el.getAttribute('data-ejercicio-id');
@@ -4987,116 +4851,9 @@
     'toggle-expand-historial-ej': el => {
       const ejId = el.getAttribute('data-ejercicio-id');
       if (!ejId) return;
-      if (expandedHistorialEjIds.has(ejId)) {
-        expandedHistorialEjIds.delete(ejId);
-      } else {
-        expandedHistorialEjIds.add(ejId);
-      }
-      render();
-    },
-
-    // --- CARGAR 1 SERIE (SIN CRONÓMETRO DE DESCANSO) ---
-    'save-serie': el => {
-      const ejId = el.getAttribute('data-ejercicio-id');
-      const trId = el.getAttribute('data-entrenamiento-id');
-
-      const peso = parseFloat(document.getElementById(`input-peso-${ejId}`)?.value) || 0;
-      const reps = parseInt(document.getElementById(`input-reps-${ejId}`)?.value, 10) || 0;
-      const rir = numOr(parseInt(document.getElementById(`select-rir-${ejId}`)?.value, 10), 2);
-      const rpe = numOr(parseInt(document.getElementById(`select-rpe-${ejId}`)?.value, 10), 8);
-      const tipo = document.getElementById(`select-tipo-${ejId}`)?.value || 'efectiva';
-
-      const prCheck = Engine.checkIfNewPR(Store.getState(), ejId, peso, reps);
-
-      Store.commit(s => {
-        const previas = (s.series || []).filter(
-          item => item.entrenamientoId === trId && item.ejercicioId === ejId && !item.deleted
-        );
-        return Engine.guardarSerie(s, {
-          entrenamientoId: trId,
-          ejercicioId: ejId,
-          pesoKg: peso,
-          reps,
-          rir,
-          rpe,
-          tipo,
-          numeroSerie: previas.length + 1
-        });
-      });
-
-      if (navigator.vibrate) {
-        try { navigator.vibrate([80, 40, 80]); } catch (_) {}
-      }
-
-      if (prCheck.isNew1RMPR && prCheck.previous1RM > 0) {
-        showToast(`Nuevo récord: 1RM estimado ${prCheck.new1RM} kg (antes ${prCheck.previous1RM})`, { duration: 5000 });
-      } else {
-        showToast(`${peso} kg × ${reps} · RIR ${rir}`);
-      }
-      render();
-    },
-
-    // --- CARGAR SERIE COMPLETA (TODAS LAS SERIES CON LOS MISMOS DATOS DE UNA VEZ) ---
-    'save-serie-completa': el => {
-      const ejId = el.getAttribute('data-ejercicio-id');
-      const trId = el.getAttribute('data-entrenamiento-id');
-
-      const cantSeries = Math.max(1, parseInt(document.getElementById(`input-cant-series-${ejId}`)?.value, 10) || 3);
-      const peso = parseFloat(document.getElementById(`input-peso-${ejId}`)?.value) || 0;
-      const reps = parseInt(document.getElementById(`input-reps-${ejId}`)?.value, 10) || 0;
-      const rir = numOr(parseInt(document.getElementById(`select-rir-${ejId}`)?.value, 10), 2);
-      const rpe = numOr(parseInt(document.getElementById(`select-rpe-${ejId}`)?.value, 10), 8);
-      const tipo = document.getElementById(`select-tipo-${ejId}`)?.value || 'efectiva';
-
-      const beforeIds = new Set((Store.getState().series || []).map(s => s.id));
-
-      Store.commit(s =>
-        Engine.guardarMultiplesSeries(s, {
-          entrenamientoId: trId,
-          ejercicioId: ejId,
-          cantidadSeries: cantSeries,
-          pesoKg: peso,
-          reps,
-          rir,
-          rpe,
-          tipo
-        })
-      );
-
-      const afterSeries = Store.getState().series || [];
-      lastDeletedBatchIds = afterSeries.filter(s => !beforeIds.has(s.id)).map(s => s.id);
-
-      if (navigator.vibrate) {
-        try { navigator.vibrate([100, 50, 100]); } catch (_) {}
-      }
-
-      showToast(`✓ ${cantSeries} serie${cantSeries === 1 ? '' : 's'} guardada${cantSeries === 1 ? '' : 's'}: ${peso} kg × ${reps}`, {
-        action: 'Deshacer',
-        fn: () => {
-          if (lastDeletedBatchIds && lastDeletedBatchIds.length > 0) {
-            Store.commit(s => Engine.borrarMultiplesSeries(s, lastDeletedBatchIds));
-            render();
-          }
-        }
-      });
-      render();
-    },
-
-    'delete-serie': el => {
-      const sId = el.getAttribute('data-serie-id');
-      const st = Store.getState();
-      lastDeletedSerie = (st.series || []).find(s => s.id === sId);
-      Store.commit(s => Engine.borrarSerie(s, sId));
-
-      showToast('Serie borrada', {
-        action: 'Deshacer',
-        fn: () => {
-          if (lastDeletedSerie) {
-            Store.commit(s => Engine.restaurarSerie(s, lastDeletedSerie.id));
-            render();
-          }
-        }
-      });
+      expandedHistorialEjIds.has(ejId)
+        ? expandedHistorialEjIds.delete(ejId)
+        : expandedHistorialEjIds.add(ejId);
       render();
     },
 
@@ -5245,23 +5002,6 @@
       render();
     },
 
-    'add-alumno-observacion': () => {
-      captureSaludDraftsFromDOM();
-      const inputEl = document.getElementById('alumno-obs-input');
-      const texto = inputEl ? inputEl.value.trim() : '';
-      if (!texto) return;
-      Store.commit(s =>
-        Engine.agregarObservacion(s, {
-          autor: Store.user.displayName,
-          rolAutor: 'alumno',
-          categoria: 'Nota del Alumno',
-          texto
-        })
-      );
-      showToast('✓ Observación agregada a tu historial.');
-      render();
-    },
-
     // --- ACCIONES EXCLUSIVAS DEL PROFESOR ---
     'trainer-link-alumno': () => {
       const code = document.getElementById('trainer-code-input').value.trim();
@@ -5302,6 +5042,7 @@
     // --- CUENTA Y BACKUP ---
     'reset-account-zero': () => {
       Store.resetCurrentAccountToZero();
+      activeModal = null;
       syncSaludDraftsWithState(Store.getState(), true);
       showToast('Cuenta reiniciada a cero (Catálogo de ejercicios conservado).');
       render();
@@ -5317,15 +5058,6 @@
       a.click();
       URL.revokeObjectURL(url);
       showToast('✓ Backup descargado.');
-    },
-
-    'timer-add': el => {
-      Timer.addSeconds(parseInt(el.getAttribute('data-seconds'), 10) || 30);
-    },
-
-    'timer-stop': () => {
-      Timer.stop();
-      renderFloatingTimer();
     }
   };
 
@@ -5749,6 +5481,25 @@
       navigator.serviceWorker.addEventListener('controllerchange', () => {
         showToast(`✓ ¡Fitness MiniApp actualizada a v${APP_VERSION}!`, { duration: 5000 });
       });
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./service-worker.js')
+          .then(reg => console.log('[SW] Service Worker registrado en:', reg.scope))
+          .catch(err => console.warn('[SW] Error al registrar Service Worker:', err));
+      });
     }
   });
+
+  // Fallback delegado para imágenes sin handlers inline (habilita CSP estricta sin 'unsafe-inline')
+  document.addEventListener('error', e => {
+    const img = e.target;
+    if (!img || img.tagName !== 'IMG') return;
+    if (img.dataset.fallbackHandled) return;
+    img.dataset.fallbackHandled = '1';
+    if (img.dataset.fallbackSibling === 'true') {
+      img.style.display = 'none';
+      if (img.nextElementSibling) img.nextElementSibling.style.display = 'flex';
+    } else if (img.dataset.fallbackSrc) {
+      img.src = img.dataset.fallbackSrc;
+    }
+  }, true);
 })();

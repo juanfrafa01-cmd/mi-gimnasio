@@ -3591,3 +3591,45 @@ html[data-theme="dark"] .seg-btn.active { background: color-mix(in srgb, var(--b
   line-height: 1.5;
   color: var(--text-muted);
 }
+
+/* ======================================================== */
+/* v3.5.0: PLANTILLAS INICIALES DE 1 TOQUE & CATEGORÍAS BETA */
+/* ======================================================== */
+.starter-tpl-grid {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 6px 0;
+}
+.starter-tpl-btn {
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  cursor: pointer;
+  transition: border-color 0.16s var(--ease), background 0.16s var(--ease);
+}
+.starter-tpl-btn:hover,
+.starter-tpl-btn:focus-visible {
+  border-color: var(--accent);
+}
+.starter-tpl-btn strong {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-main);
+}
+.starter-tpl-btn small {
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+.sug-cat-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
