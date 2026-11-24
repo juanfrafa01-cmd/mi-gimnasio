@@ -1326,5 +1326,154 @@
     return { ok: true, displayName: clean };
   };
 
+  // ==========================================
+  // 9. CURACIÓN DE EJERCICIOS PROPUESTOS (BASE GLOBAL ADMIN)
+  // ==========================================
+  const EJ_PROPUESTOS_CACHE_KEY = 'gimnasio_ej_propuestos_cache';
+
+  function getCachedPropuestos() {
+    try {
+      const raw = localStorage.getItem(EJ_PROPUESTOS_CACHE_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function saveCachedPropuestos(list) {
+    try {
+      localStorage.setItem(EJ_PROPUESTOS_CACHE_KEY, JSON.stringify((list || []).slice(0, 100)));
+    } catch (_) {}
+  }
+
+  /**
+   * Envía un ejercicio creado por el usuario a la base de curación del administrador.
+   */
+  Store.enviarEjercicioPropuestoNube = async function (ejItem) {
+    if (!ejItem || !ejItem.nombre) return { ok: false };
+    const similares = typeof Engine.buscarEjerciciosSimilares === 'function'
+      ? Engine.buscarEjerciciosSimilares(ejItem.nombre, [], 3).map(e => e.nombre)
+      : [];
+    const propData = {
+      id: String(ejItem.id || Engine.generateId('ejprop')),
+      nombre: String(ejItem.nombre).trim(),
+      grupoMuscular: ejItem.grupoMuscular || 'pecho',
+      equipo: ejItem.equipo || 'barra',
+      musculoActivo: ejItem.musculoActivo || '',
+      patronMovimiento: ejItem.patronMovimiento || '',
+      notas: ejItem.notas || '',
+      autor: Store.user ? (Store.user.displayName || Store.user.username) : 'Usuario',
+      fecha: Engine.todayISO(),
+      estado: ejItem.estado || 'pendiente',
+      coincidenciasCatalogo: similares,
+      updatedAt: Date.now()
+    };
+
+    const cached = getCachedPropuestos();
+    const idx = cached.findIndex(x => x.id === propData.id);
+    if (idx >= 0) cached[idx] = propData;
+    else cached.unshift(propData);
+    saveCachedPropuestos(cached);
+
+    try {
+      if (typeof fetch === 'function') {
+        await fetch(`${SUPABASE_URL}/rest/v1/fin_records`, {
+          method: 'POST',
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+            'Content-Type': 'application/json',
+            'x-sync-key': SUGERENCIAS_SYNC_KEY,
+            'Prefer': 'resolution=merge-duplicates,return=minimal'
+          },
+          body: JSON.stringify({
+            sync_key: SUGERENCIAS_SYNC_KEY,
+            coleccion: 'ejercicios_propuestos',
+            id: propData.id,
+            data: propData,
+            updated_at: Date.now(),
+            deleted: false
+          })
+        });
+      }
+    } catch (_) {}
+    return { ok: true, item: propData };
+  };
+
+  /**
+   * Lee la cola global de ejercicios propuestos (solo Administrador).
+   */
+  Store.obtenerEjerciciosPropuestosAdmin = async function () {
+    if (!Store.user || !Store.user.isAdmin) return [];
+    const mergedMap = new Map();
+    getCachedPropuestos().forEach(p => { if (p && p.id) mergedMap.set(p.id, p); });
+
+    try {
+      if (typeof fetch === 'function') {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/fin_records?coleccion=eq.ejercicios_propuestos&deleted=eq.false&order=updated_at.desc&limit=100`, {
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+            'x-sync-key': SUGERENCIAS_SYNC_KEY
+          }
+        });
+        if (res.ok) {
+          const rows = await res.json();
+          if (Array.isArray(rows)) {
+            for (const r of rows) {
+              const d = sanitizeObject(r.data || {});
+              if (d && d.id) mergedMap.set(d.id, d);
+            }
+          }
+        }
+      }
+    } catch (_) {}
+
+    const list = Array.from(mergedMap.values()).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    saveCachedPropuestos(list);
+    return list;
+  };
+
+  /**
+   * Actualiza el estado de curación de un ejercicio propuesto (solo Administrador).
+   */
+  Store.actualizarEstadoEjercicioPropuestoAdmin = async function (propId, nuevoEstado) {
+    if (!Store.user || !Store.user.isAdmin || !propId) return { ok: false };
+    const cached = getCachedPropuestos();
+    let target = cached.find(x => x.id === propId);
+    if (!target) {
+      target = { id: propId, estado: nuevoEstado, updatedAt: Date.now() };
+      cached.unshift(target);
+    } else {
+      target.estado = nuevoEstado;
+      target.updatedAt = Date.now();
+    }
+    saveCachedPropuestos(cached);
+
+    try {
+      if (typeof fetch === 'function') {
+        await fetch(`${SUPABASE_URL}/rest/v1/fin_records`, {
+          method: 'POST',
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+            'Content-Type': 'application/json',
+            'x-sync-key': SUGERENCIAS_SYNC_KEY,
+            'Prefer': 'resolution=merge-duplicates,return=minimal'
+          },
+          body: JSON.stringify({
+            sync_key: SUGERENCIAS_SYNC_KEY,
+            coleccion: 'ejercicios_propuestos',
+            id: String(propId),
+            data: target,
+            updated_at: Date.now(),
+            deleted: nuevoEstado === 'descartado'
+          })
+        });
+      }
+    } catch (_) {}
+    return { ok: true, item: target };
+  };
+
   return Store;
 });

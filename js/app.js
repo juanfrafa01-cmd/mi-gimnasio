@@ -19,7 +19,7 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '3.5.0';
+  const APP_VERSION = '3.6.0';
 
   /** Número válido o valor por defecto (a diferencia de `|| def`, respeta el 0: RIR 0 = serie al fallo). */
   const numOr = (v, def) => (Number.isFinite(v) ? v : def);
@@ -49,10 +49,17 @@
   let editingEjercicios = new Set();
   let historialBusqueda = '';
   let expandedHistorialEjIds = new Set();
-  let historicoModo = 'clases'; // 'clases' | 'ejercicios'
+  let historicoModo = 'clases'; // 'clases' | 'ejercicios' | 'evolucion'
+  let evolucionEjercicioId = null;
+  let evolucionPeriodoDias = 30;
   let rutinasSubTab = 'rutinas'; // 'rutinas' | 'catalogo'
   let showPhotoOptions = false;
   let isSaludLogsOpen = false;
+  let isEditingSaludHoy = false;
+  let lastRenderedModalType = null;
+  let resetPickerScroll = false;
+  let adminEjPropuestos = [];
+  let adminEjPropuestosLoaded = false;
 
   // Estado persistente de formularios de Salud y Ficha Física para que guardar uno NUNCA modifique ni reinicie el otro
   let draftReadiness = {
@@ -764,6 +771,10 @@
             const defaultPeso = ultimaHoy ? ultimaHoy.pesoKg : (sug.pesoKg != null ? sug.pesoKg : (prev ? prev.mejor.pesoKg : 20));
             const defaultReps = ultimaHoy ? ultimaHoy.reps : (sug.reps || (prev ? prev.mejor.reps : 10));
             const defaultSeriesCant = seriesDelEj.length > 0 ? seriesDelEj.length : (item.targetSets || ej.seriesSugeridas || 3);
+            const defaultRpe = ultimaHoy && ultimaHoy.rpe != null ? String(ultimaHoy.rpe) : '';
+            const rpeOptsHtml = [['', '—'], ['6', '6'], ['6.5', '6.5'], ['7', '7'], ['7.5', '7.5'], ['8', '8'], ['8.5', '8.5'], ['9', '9'], ['9.5', '9.5'], ['10', '10']]
+              .map(([val, lbl]) => `<option value="${val}" ${defaultRpe === val ? 'selected' : ''}>${lbl}</option>`)
+              .join('');
             const yaGuardado = !esVertical && seriesDelEj.length > 0 && !editingEjercicios.has(ej.id);
 
             return `
@@ -799,7 +810,7 @@
                     ${Array.from({ length: Math.max(rondasObj, seriesDelEj.length) }, (_, rIdx) => {
                       const sDone = seriesDelEj[rIdx];
                       return sDone
-                        ? `<span class="badge badge-emerald" style="font-size: 10px; font-family: var(--font-mono);">V${rIdx + 1}: ${sDone.pesoKg}x${sDone.reps}</span>`
+                        ? `<span class="badge badge-emerald" style="font-size: 10px; font-family: var(--font-mono);">V${rIdx + 1}: ${sDone.pesoKg}×${sDone.reps}${sDone.rpe ? ` · RPE ${sDone.rpe}` : ''}</span>`
                         : `<span class="badge" style="font-size: 10px; opacity: 0.65;">V${rIdx + 1}: pend.</span>`;
                     }).join('')}
                     ${seriesDelEj.length > 0 ? `
@@ -809,7 +820,7 @@
                     ` : ''}
                   </div>
 
-                  <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 6px; align-items: end;">
+                  <div style="display: grid; grid-template-columns: 1fr 1fr 0.85fr auto; gap: 5px; align-items: end;">
                     <div class="ej-input-col">
                       <label class="ej-input-label" for="vert-peso-${bloqueKey}-${h(ej.id)}">KG</label>
                       <input type="number" step="0.5" id="vert-peso-${bloqueKey}-${h(ej.id)}" class="ej-val-input" value="${defaultPeso}" inputmode="decimal">
@@ -818,7 +829,11 @@
                       <label class="ej-input-label" for="vert-reps-${bloqueKey}-${h(ej.id)}">REPES</label>
                       <input type="number" id="vert-reps-${bloqueKey}-${h(ej.id)}" class="ej-val-input" value="${defaultReps}" inputmode="numeric">
                     </div>
-                    <button type="button" class="btn-primary" data-action="save-serie-vertical" data-bloque="${bloqueKey}" data-ejercicio-id="${h(ej.id)}" data-entrenamiento-id="${h(entActivo.id)}" style="height: 40px; min-height: 40px; padding: 0 12px; width: auto; font-size: 12px !important;">
+                    <div class="ej-input-col">
+                      <label class="ej-input-label" for="vert-rpe-${bloqueKey}-${h(ej.id)}">RPE</label>
+                      <select id="vert-rpe-${bloqueKey}-${h(ej.id)}" class="ej-val-input ej-rpe-select">${rpeOptsHtml}</select>
+                    </div>
+                    <button type="button" class="btn-primary" data-action="save-serie-vertical" data-bloque="${bloqueKey}" data-ejercicio-id="${h(ej.id)}" data-entrenamiento-id="${h(entActivo.id)}" style="height: 40px; min-height: 40px; padding: 0 11px; width: auto; font-size: 12px !important;">
                       + V${seriesDelEj.length + 1}
                     </button>
                   </div>
@@ -831,6 +846,7 @@
                           <span style="color: var(--accent-emerald);">Hoy: ${seriesDelEj.length} × ${ultimaHoy.pesoKg} kg</span>
                           <span style="color: var(--text-dim); margin: 0 3px;">·</span>
                           <span>${ultimaHoy.reps} reps</span>
+                          ${ultimaHoy.rpe ? `<span style="color: var(--text-dim); margin: 0 3px;">·</span><span>RPE ${ultimaHoy.rpe}</span>` : ''}
                         </div>
                       </div>
                       <div class="ej-saved-actions">
@@ -840,7 +856,7 @@
                     </div>
                   ` : `
                     <div class="ej-input-box">
-                      <div class="ej-inputs-3col">
+                      <div class="ej-inputs-4col">
                         <div class="ej-input-col">
                           <label class="ej-input-label" for="bulk-peso-${h(ej.id)}">KG</label>
                           <input type="number" step="0.5" id="bulk-peso-${h(ej.id)}" class="ej-val-input" value="${defaultPeso}" inputmode="decimal" placeholder="0">
@@ -852,6 +868,10 @@
                         <div class="ej-input-col">
                           <label class="ej-input-label" for="bulk-series-${h(ej.id)}">SERIES</label>
                           <input type="number" id="bulk-series-${h(ej.id)}" class="ej-val-input" value="${defaultSeriesCant}" inputmode="numeric" min="1" max="10">
+                        </div>
+                        <div class="ej-input-col">
+                          <label class="ej-input-label" for="bulk-rpe-${h(ej.id)}">RPE</label>
+                          <select id="bulk-rpe-${h(ej.id)}" class="ej-val-input ej-rpe-select">${rpeOptsHtml}</select>
                         </div>
                       </div>
                       <button type="button" class="btn-primary btn-save-bulk" data-action="save-ejercicio-completo" data-ejercicio-id="${h(ej.id)}" data-entrenamiento-id="${h(entActivo.id)}">
@@ -1236,6 +1256,12 @@
     if (cfg.pasoActual === 'rutina') {
       stepBodyHtml = `
         <div class="onepage-scroll-list">
+          <div class="salud-hoy-strip">
+            <span>${readinessHoy
+              ? `Salud hoy: <strong>${h(readinessHoy.estadoGeneral || 'Bien')}</strong> · Energía ${readinessHoy.energia || 4}/5`
+              : 'Salud hoy: sin registrar'}</span>
+            <button type="button" class="btn-link" data-action="set-workout-step" data-step="psicofisico">${readinessHoy ? 'Editar' : 'Cargar'}</button>
+          </div>
           <div class="card modulo-card ${cfg.activacionActiva ? '' : 'off'}">
             <div class="row-between">
               <button type="button" class="modulo-switch" data-action="set-module-active" data-module="activacion" data-active="${cfg.activacionActiva ? '0' : '1'}" role="switch" aria-checked="${cfg.activacionActiva}" title="${cfg.activacionActiva ? 'Hoy no hago activación' : 'Sumar activación'}">
@@ -1637,9 +1663,10 @@
         <div class="seg">
           <button type="button" class="seg-btn ${historicoModo === 'clases' ? 'active' : ''}" data-action="set-historico-modo" data-modo="clases">Por clase</button>
           <button type="button" class="seg-btn ${historicoModo === 'ejercicios' ? 'active' : ''}" data-action="set-historico-modo" data-modo="ejercicios">Por ejercicio</button>
+          <button type="button" class="seg-btn ${historicoModo === 'evolucion' ? 'active' : ''}" data-action="set-historico-modo" data-modo="evolucion">Evolución</button>
         </div>
 
-        ${clasesRealizadas.length > 3 || historialBusqueda ? `
+        ${historicoModo !== 'evolucion' && (clasesRealizadas.length > 3 || historialBusqueda) ? `
           <div class="search-box">
             ${renderIcon('search')}
             <input type="text" id="historial-search-input" class="form-input" placeholder="${historicoModo === 'clases' ? 'Buscar clase o ejercicio' : 'Buscar ejercicio'}" value="${h(historialBusqueda)}" data-action="search-historial">
@@ -1648,7 +1675,7 @@
         ` : ''}
 
         <div class="onepage-scroll-list">
-          ${historicoModo === 'clases' ? (
+          ${historicoModo === 'evolucion' ? renderPerformanceDashboard(state) : (historicoModo === 'clases' ? (
             clasesFiltradas.length === 0 ? (clasesRealizadas.length === 0 ? `
               <div class="empty-state">
                 <span class="empty-state-icon">${renderIcon('chart')}</span>
@@ -1711,8 +1738,146 @@
                 </div>
               `;
             }).join('')
-          )}
+          ))}
         </div>
+      </div>
+    `;
+  }
+
+  /**
+   * Tablero Evolutivo de Performance del Alumno (usado en Histórico → Evolución y vista Profesor).
+   */
+  function renderPerformanceDashboard(state) {
+    const perf = Engine.computePerformanceAlumno(state, {
+      ejercicioId: evolucionEjercicioId,
+      dias: evolucionPeriodoDias
+    });
+
+    const pts = perf.serieEjercicio || [];
+    const ejSelected = perf.ejerciciosDisponibles.find(e => e.id === perf.ejercicioSeleccionadoId);
+
+    let svgChart = '';
+    if (pts.length > 0) {
+      const w = 320, ht = 132, pL = 28, pR = 14, pT = 16, pB = 22;
+      const pw = w - pL - pR, ph = ht - pT - pB;
+      const rms = pts.map(p => p.est1RM || 0);
+      const minRm = Math.max(0, Math.min(...rms) - 5);
+      const maxRm = Math.max(minRm + 10, Math.max(...rms) + 5);
+      const gx = i => pts.length === 1 ? pL + pw / 2 : pL + (i / (pts.length - 1)) * pw;
+      const gy = v => pT + ph - ((v - minRm) / Math.max(1, maxRm - minRm)) * ph;
+      const poly = pts.map((p, i) => `${gx(i).toFixed(1)},${gy(p.est1RM).toFixed(1)}`).join(' ');
+      svgChart = `
+        <svg viewBox="0 0 ${w} ${ht}" class="perf-svg" role="img" aria-label="Evolución de fuerza 1RM">
+          <line x1="${pL}" y1="${pT}" x2="${pL}" y2="${ht - pB}" stroke="var(--border-subtle)" stroke-width="1"/>
+          <line x1="${pL}" y1="${ht - pB}" x2="${w - pR}" y2="${ht - pB}" stroke="var(--border-subtle)" stroke-width="1"/>
+          <text x="2" y="${pT + 6}" font-size="9" fill="var(--text-dim)">${Math.round(maxRm)}</text>
+          <text x="2" y="${ht - pB}" font-size="9" fill="var(--text-dim)">${Math.round(minRm)}</text>
+          <polyline fill="none" stroke="var(--accent)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" points="${poly}" />
+          ${pts.map((p, i) => `
+            <circle cx="${gx(i).toFixed(1)}" cy="${gy(p.est1RM).toFixed(1)}" r="${p.isPR ? 4.2 : 3}" fill="${p.isPR ? 'var(--accent-emerald)' : 'var(--accent)'}" />
+            <text x="${gx(i).toFixed(1)}" y="${(gy(p.est1RM) - 6).toFixed(1)}" font-size="8.5" text-anchor="middle" fill="var(--text-main)">${Math.round(p.est1RM)}</text>
+          `).join('')}
+          <text x="${pL}" y="${ht - 5}" font-size="8.5" fill="var(--text-dim)">${h(pts[0].fecha.slice(5))}</text>
+          ${pts.length > 1 ? `<text x="${w - pR}" y="${ht - 5}" font-size="8.5" text-anchor="end" fill="var(--text-dim)">${h(pts[pts.length - 1].fecha.slice(5))}</text>` : ''}
+        </svg>
+      `;
+    }
+
+    return `
+      <div class="perf-dashboard">
+        <div class="row-between">
+          <span class="section-title">Performance</span>
+          <div class="date-picker-row">
+            ${[[30, '30 d'], [90, '90 d'], [0, 'Todo']].map(([dVal, dLbl]) => `
+              <button type="button" class="chip chip-filter ${Number(evolucionPeriodoDias) === dVal ? 'active' : ''}" data-action="set-evolucion-periodo" data-dias="${dVal}">${dLbl}</button>
+            `).join('')}
+          </div>
+        </div>
+
+        <div class="perf-kpi-grid">
+          <div class="perf-kpi">
+            <span>Sesiones</span>
+            <strong>${perf.sesiones}</strong>
+            <small>Constancia ${perf.consistenciaPct}%</small>
+          </div>
+          <div class="perf-kpi">
+            <span>Volumen</span>
+            <strong>${Math.round(perf.volumenKg).toLocaleString('es-AR')} kg</strong>
+            <small>${perf.volumenDeltaPct != null ? `${perf.volumenDeltaPct >= 0 ? '+' : ''}${perf.volumenDeltaPct}% vs previo` : 'Sin período previo'}</small>
+          </div>
+          <div class="perf-kpi">
+            <span>RPE medio</span>
+            <strong>${perf.rpePromedio != null ? perf.rpePromedio : '—'}</strong>
+            <small>${perf.rpePromedio != null ? 'Esfuerzo percibido' : 'Cargá RPE en series'}</small>
+          </div>
+          <div class="perf-kpi">
+            <span>Energía</span>
+            <strong>${perf.readinessPromedio != null ? `${perf.readinessPromedio}/5` : '—'}</strong>
+            <small>Bienestar promedio</small>
+          </div>
+        </div>
+
+        <div class="card card-flat" style="gap: 10px;">
+          <div class="row-between">
+            <span class="section-title">Curva de fuerza (1RM est.)</span>
+            ${ejSelected ? `<span class="section-meta">PR ${Math.round(ejSelected.pr1RM)} kg</span>` : ''}
+          </div>
+          ${perf.ejerciciosDisponibles.length === 0 ? `
+            <p class="empty-hint">Todavía no hay series registradas en este período.</p>
+          ` : `
+            <select class="form-input" data-change="select-evolucion-ej" aria-label="Elegir ejercicio para ver evolución">
+              ${perf.ejerciciosDisponibles.map(e => `
+                <option value="${h(e.id)}" ${e.id === perf.ejercicioSeleccionadoId ? 'selected' : ''}>${h(e.nombre)} (${e.sesiones} ses.)</option>
+              `).join('')}
+            </select>
+            ${pts.length > 0 ? `
+              ${svgChart}
+              <div class="perf-history-mini">
+                ${pts.slice(-4).reverse().map(p => `
+                  <div class="perf-mini-row">
+                    <span>${h(p.fecha.split('-').reverse().join('/'))}${p.isPR ? ' · <strong>PR</strong>' : ''}</span>
+                    <span>${p.maxPeso} kg × ${p.mejorReps}${p.rpePromedio ? ` · RPE ${p.rpePromedio}` : ''} → <strong>1RM ${Math.round(p.est1RM)} kg</strong></span>
+                  </div>
+                `).join('')}
+              </div>
+            ` : `<p class="empty-hint">Sin registros de este ejercicio en el período elegido.</p>`}
+          `}
+        </div>
+
+        ${perf.volumenPorMusculo.length > 0 ? `
+          <div class="card card-flat" style="gap: 8px;">
+            <span class="section-title">Volumen por grupo muscular</span>
+            <div class="perf-bars">
+              ${perf.volumenPorMusculo.slice(0, 6).map(m => `
+                <div class="perf-bar-row">
+                  <div class="perf-bar-head">
+                    <span style="text-transform: capitalize;">${h(m.grupo)}</span>
+                    <span>${m.series} series · ${Math.round(m.volumen).toLocaleString('es-AR')} kg</span>
+                  </div>
+                  <div class="perf-bar-track"><i style="width: ${m.pct}%;"></i></div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        ` : ''}
+
+        ${perf.correlacionSalud ? `
+          <div class="card card-flat" style="gap: 6px;">
+            <span class="section-title">Bienestar vs Rendimiento</span>
+            <div class="perf-corr-grid">
+              <div>
+                <small>Energía alta (4–5)</small>
+                <strong>${perf.correlacionSalud.diasEnergiaAlta.sesiones} ses.</strong>
+                <span>${perf.correlacionSalud.diasEnergiaAlta.volumenPromedio ? `${perf.correlacionSalud.diasEnergiaAlta.volumenPromedio.toLocaleString('es-AR')} kg prom.` : '—'}</span>
+              </div>
+              <div>
+                <small>Energía baja (1–3)</small>
+                <strong>${perf.correlacionSalud.diasEnergiaBaja.sesiones} ses.</strong>
+                <span>${perf.correlacionSalud.diasEnergiaBaja.volumenPromedio ? `${perf.correlacionSalud.diasEnergiaBaja.volumenPromedio.toLocaleString('es-AR')} kg prom.` : '—'}</span>
+              </div>
+            </div>
+          </div>
+        ` : ''}
       </div>
     `;
   }
@@ -1748,6 +1913,20 @@
 
     return `
       <div class="onepage-view">
+        ${selFecha === hoyISO && logDeEstaFecha && !isEditingSaludHoy ? `
+          <div class="card card-flat salud-hoy-summary">
+            <div class="row-between">
+              <div>
+                <span class="eyebrow">Check-in de hoy listo</span>
+                <strong style="display: block; font-size: 16px; margin-top: 2px;">${h(logDeEstaFecha.estadoGeneral || 'Bien')} · Energía ${logDeEstaFecha.energia}/5</strong>
+                <small style="color: var(--text-muted); font-size: 12px;">
+                  Estrés ${logDeEstaFecha.estres <= 1 ? 'Bajo' : (logDeEstaFecha.estres <= 3 ? 'Medio' : 'Alto')} · Sueño ${logDeEstaFecha.sueno >= 4 ? '7 h+' : (logDeEstaFecha.sueno === 3 ? '6 h' : '≤ 5 h')}${logDeEstaFecha.zonaDolor ? ` · Molestia: ${h(logDeEstaFecha.zonaDolor)}` : ''}
+                </small>
+              </div>
+              <button type="button" class="btn-secondary btn-sm" data-action="toggle-edit-salud-hoy">${renderIcon('edit')} Editar</button>
+            </div>
+          </div>
+        ` : `
         <div class="card card-flat">
           <div class="row-between">
             <span class="section-title">¿Cómo estás?${logDeEstaFecha ? ' <em>guardado</em>' : ''}</span>
@@ -1799,10 +1978,14 @@
             <input type="text" id="rd-obs" class="form-input" value="${h(draftReadiness.observacionAlumno || '')}" placeholder="Nota (opcional)">
           </div>
 
-          <button type="button" class="btn-primary" data-action="submit-readiness">
-            Guardar ${selFecha === hoyISO ? 'cómo estoy hoy' : `(${h(fechaDisplay)})`}
-          </button>
+          <div style="display: flex; gap: 8px;">
+            ${isEditingSaludHoy ? `<button type="button" class="btn-secondary" data-action="toggle-edit-salud-hoy" style="width: auto;">Cancelar</button>` : ''}
+            <button type="button" class="btn-primary" data-action="submit-readiness" style="flex: 1;">
+              Guardar ${selFecha === hoyISO ? 'cómo estoy hoy' : `(${h(fechaDisplay)})`}
+            </button>
+          </div>
         </div>
+        `}
 
         <div class="seg seg-sm">
           <button type="button" class="seg-btn ${isSaludLogsOpen ? 'active' : ''}" data-action="toggle-salud-logs">Registros (${logs.length})</button>
@@ -2030,6 +2213,13 @@
             <span class="list-row-text"><strong>Cambiar contraseña / PIN</strong><small>Reforzá el acceso en este dispositivo</small></span>
             ${renderIcon('arrowRight')}
           </button>
+          ${user && user.isAdmin ? `
+            <button type="button" class="list-row" data-action="open-admin-ejercicios-modal">
+              <span class="list-row-icon">${renderIcon('sliders')}</span>
+              <span class="list-row-text"><strong>Ejercicios propuestos (Admin)</strong><small>Curación global de ejercicios nuevos</small></span>
+              ${renderIcon('arrowRight')}
+            </button>
+          ` : ''}
           <button type="button" class="list-row" data-action="open-legales-modal">
             <span class="list-row-icon">${renderIcon('shield')}</span>
             <span class="list-row-text"><strong>Bases, Privacidad y Aviso Médico</strong><small>Beta v1.1 · Ley 25.326 y control de tus datos</small></span>
@@ -2283,11 +2473,11 @@
                 </div>
               </div>
 
-              <!-- Fila Inferior: Curva Histórica del Alumno + Bitácora de Fotos (el Profesor también puede adjuntar fotos) -->
+              <!-- Fila Inferior: Tablero Evolutivo de Performance + Bitácora de Fotos -->
               <div class="pc-grid-2">
                 <div class="card">
-                  <h3 class="card-title">Evolución Histórica del Alumno (Fuerza 1RM vs. Estrés)</h3>
-                  ${renderGraficoEvolucionSVG(stAlumno)}
+                  <h3 class="card-title">Performance y Evolución del Alumno</h3>
+                  ${renderPerformanceDashboard(stAlumno)}
                 </div>
 
                 <div class="card">
@@ -2454,6 +2644,7 @@
   function renderModals() {
     let overlay = document.getElementById('modal-overlay');
     if (!activeModal) {
+      lastRenderedModalType = null;
       if (overlay) overlay.remove();
       if (document.body.style.position === 'fixed') {
         const top = document.body.style.top;
@@ -2486,6 +2677,9 @@
       }, { passive: false });
       document.body.appendChild(overlay);
     }
+
+    const isSameModalOpen = Boolean(overlay.firstElementChild && lastRenderedModalType === activeModal.type);
+    lastRenderedModalType = activeModal.type;
 
     const state = draftRutina.targetUsername
       ? Store.getUserState(draftRutina.targetUsername)
@@ -2631,9 +2825,11 @@
       const nombreGrupo = g => (g === 'todos' ? 'Todos' : g === 'activacion' ? 'Activación' : g === 'amrap' ? 'AMRAP' : g.charAt(0).toUpperCase() + g.slice(1));
       const prevList = overlay.querySelector('.picker-list');
       const prevScroll = prevList ? prevList.scrollTop : 0;
+      const prevChips = overlay.querySelector('.chip-scroller');
+      const prevChipScroll = prevChips ? prevChips.scrollLeft : 0;
 
       overlay.innerHTML = `
-        <div class="modal-card modal-picker" style="max-width: 560px;">
+        <div class="modal-card modal-picker ${isSameModalOpen ? 'modal-no-anim' : ''}" style="max-width: 560px;">
           <div class="modal-header-sticky">
             <div>
               <h2 class="modal-title">Agregar ejercicio</h2>
@@ -2647,7 +2843,7 @@
             <input type="text" id="catalog-search-input" class="form-input" value="${h(catalogoBusqueda)}" placeholder="Buscar ejercicio" data-action="search-catalog" autocomplete="off">
           </div>
 
-          <div class="chip-scroller" style="margin: 0 -20px; padding: 0 20px;">
+          <div class="chip-scroller">
             ${GRUPOS_CATALOGO.map(g => `
               <button type="button" class="chip chip-filter ${catalogoFiltroGrupo === g ? 'active' : ''}" data-action="filter-catalog-modal" data-group="${g}">${nombreGrupo(g)}</button>
             `).join('')}
@@ -2683,11 +2879,18 @@
         </div>
       `;
       const newList = overlay.querySelector('.picker-list');
-      if (newList) newList.scrollTop = prevScroll;
+      if (newList) {
+        newList.scrollTop = resetPickerScroll ? 0 : prevScroll;
+        resetPickerScroll = false;
+      }
+      const newChips = overlay.querySelector('.chip-scroller');
+      if (newChips) {
+        newChips.scrollLeft = prevChipScroll;
+      }
       return;
     }
 
-    // MODAL 4: Crear un Ejercicio Personalizado Nuevo en el Catálogo
+    // MODAL 4: Crear un Ejercicio Personalizado Nuevo en el Catálogo (con chequeo de similares y categorías completas)
     if (activeModal.type === 'create-custom-ejercicio') {
       const defGrupo = activeModal.defaultGrupo || (activeModal.targetBloque === 'activacion' ? 'activacion' : (activeModal.targetBloque === 'movilidad' ? 'movilidad' : (activeModal.targetBloque === 'cierre' ? 'brazos' : 'pecho')));
       const tieneDestino = Boolean(activeModal.targetBloque || activeModal.returnContext);
@@ -2702,6 +2905,15 @@
         ['core', 'Core'],
         ['amrap', 'AMRAP']
       ];
+      const opcionesPatron = [
+        ['empuje', 'Empuje (Press / Fondos)'],
+        ['traccion', 'Tracción (Remo / Dominadas)'],
+        ['rodilla', 'Dominante de rodilla (Sentadilla)'],
+        ['bisagra', 'Bisagra de cadera (Peso muerto / Thrust)'],
+        ['core', 'Core / Anti-rotación'],
+        ['movilidad', 'Movilidad / Activación'],
+        ['metabolico', 'Metabólico / Acondicionamiento']
+      ];
       overlay.innerHTML = `
         <div class="modal-card">
           <div class="card-header">
@@ -2711,20 +2923,21 @@
             </div>
             <button type="button" class="btn-close-modal" data-action="close-modal" title="Cerrar">${renderIcon('x')}</button>
           </div>
-          <form data-action="submit-custom-ejercicio" style="display: flex; flex-direction: column; gap: 12px;">
+          <form data-action="submit-custom-ejercicio" style="display: flex; flex-direction: column; gap: 10px;">
             <div class="form-group">
-              <label class="form-label">Nombre</label>
-              <input type="text" id="custom-ej-nombre" class="form-input" placeholder="Ej: Sentadilla hack" required>
+              <label class="form-label" for="custom-ej-nombre">Nombre</label>
+              <input type="text" id="custom-ej-nombre" class="form-input" placeholder="Ej: Sentadilla hack o Pallof con banda" required>
+              <div id="custom-ej-similares" class="similares-box" style="display: none;"></div>
             </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
               <div class="form-group">
-                <label class="form-label">Grupo</label>
+                <label class="form-label" for="custom-ej-grupo">Grupo</label>
                 <select id="custom-ej-grupo" class="form-input">
                   ${opcionesGrupo.map(([v, lbl]) => `<option value="${v}" ${defGrupo === v ? 'selected' : ''}>${lbl}</option>`).join('')}
                 </select>
               </div>
               <div class="form-group">
-                <label class="form-label">Equipo</label>
+                <label class="form-label" for="custom-ej-equipo">Equipo</label>
                 <select id="custom-ej-equipo" class="form-input">
                   <option value="barra">Barra</option>
                   <option value="mancuerna">Mancuerna</option>
@@ -2733,13 +2946,27 @@
                   <option value="maquina">Máquina</option>
                   <option value="corporal">Corporal</option>
                   <option value="banda">Banda</option>
+                  <option value="disco">Disco / Otros</option>
+                </select>
+              </div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+              <div class="form-group">
+                <label class="form-label" for="custom-ej-musculo">Músculo principal</label>
+                <input type="text" id="custom-ej-musculo" class="form-input" placeholder="Ej: Cuádriceps / Glúteos">
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="custom-ej-patron">Patrón</label>
+                <select id="custom-ej-patron" class="form-input">
+                  ${opcionesPatron.map(([v, lbl]) => `<option value="${v}">${lbl}</option>`).join('')}
                 </select>
               </div>
             </div>
             <div class="form-group">
-              <label class="form-label">Notas técnicas (opcional)</label>
+              <label class="form-label" for="custom-ej-notas">Notas técnicas (opcional)</label>
               <input type="text" id="custom-ej-notas" class="form-input" placeholder="Indicaciones de postura o recorrido">
             </div>
+            <p style="margin: 0; font-size: 11px; color: var(--text-dim);">Se guarda al instante en tu dispositivo y se envía al administrador para sumar imagen al catálogo global.</p>
             <button type="submit" class="btn-primary">${tieneDestino ? 'Guardar y sumar' : 'Guardar'}</button>
           </form>
         </div>
@@ -2894,6 +3121,46 @@
               <button type="submit" class="btn-primary">Guardar contraseña</button>
             </div>
           </form>
+        </div>
+      `;
+      return;
+    }
+
+    if (activeModal.type === 'admin-ejercicios') {
+      overlay.innerHTML = `
+        <div class="modal-card modal-picker" style="max-width: 540px;">
+          <div class="modal-header-sticky">
+            <div>
+              <h2 class="modal-title" style="font-size: 17px;">Ejercicios propuestos (Admin)</h2>
+              <span class="net-status" style="margin: 2px 0 0;">Base global de curación · ${adminEjPropuestos.length} enviados</span>
+            </div>
+            <button type="button" class="btn-close-modal" data-action="close-modal">${renderIcon('x')}</button>
+          </div>
+          <div class="picker-list" style="gap: 8px;">
+            ${!adminEjPropuestosLoaded ? `<p class="empty-hint">Cargando propuestos desde Supabase...</p>` : (
+              adminEjPropuestos.length === 0 ? `<p class="empty-hint">No hay ejercicios propuestos pendientes.</p>` : adminEjPropuestos.map(p => `
+                <div class="card card-flat" style="padding: 10px 12px; gap: 6px;">
+                  <div class="row-between">
+                    <strong>${h(p.nombre)}</strong>
+                    <span class="badge">${h(p.estado || 'pendiente')}</span>
+                  </div>
+                  <small style="color: var(--text-muted); text-transform: capitalize;">
+                    ${h(p.grupoMuscular || '')} · ${h(p.equipo || '')}${p.musculoActivo ? ` · ${h(p.musculoActivo)}` : ''}${p.patronMovimiento ? ` · ${h(p.patronMovimiento)}` : ''}
+                  </small>
+                  ${p.coincidenciasCatalogo && p.coincidenciasCatalogo.length ? `
+                    <small style="color: var(--accent-amber);">Similares en catálogo: ${p.coincidenciasCatalogo.map(h).join(', ')}</small>
+                  ` : ''}
+                  <small style="color: var(--text-dim);">Enviado por ${h(p.autor || 'Usuario')} · ${h(p.fecha || '')}</small>
+                  <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 2px;">
+                    <button type="button" class="chip chip-filter ${p.estado === 'necesita_imagen' ? 'active' : ''}" data-action="admin-set-ej-prop-estado" data-id="${h(p.id)}" data-estado="necesita_imagen">Falta imagen</button>
+                    <button type="button" class="chip chip-filter ${p.estado === 'agregado' ? 'active' : ''}" data-action="admin-set-ej-prop-estado" data-id="${h(p.id)}" data-estado="agregado">Agregado</button>
+                    <button type="button" class="chip chip-filter" data-action="admin-set-ej-prop-estado" data-id="${h(p.id)}" data-estado="descartado" style="color: var(--accent-rose);">Descartar</button>
+                  </div>
+                </div>
+              `).join('')
+            )}
+          </div>
+          <button type="button" class="btn-secondary" data-action="close-modal">Cerrar</button>
         </div>
       `;
       return;
@@ -3774,6 +4041,7 @@
 
     'filter-catalog-modal': el => {
       catalogoFiltroGrupo = el.getAttribute('data-group') || 'todos';
+      resetPickerScroll = true;
       renderModals();
     },
 
@@ -3951,14 +4219,19 @@
       if (!nombre) return;
       const grupoMuscular = document.getElementById('custom-ej-grupo').value;
       const equipo = document.getElementById('custom-ej-equipo').value;
+      const musculoActivo = (document.getElementById('custom-ej-musculo')?.value || '').trim();
+      const patronMovimiento = document.getElementById('custom-ej-patron')?.value || '';
       const notas = document.getElementById('custom-ej-notas').value;
 
       const ctx = activeModal && activeModal.returnContext;
       const targetBloqueAttr = activeModal && activeModal.targetBloque;
 
-      Store.commit(s => Engine.crearEjercicio(s, { nombre, grupoMuscular, equipo, notas }));
+      Store.commit(s => Engine.crearEjercicio(s, { nombre, grupoMuscular, equipo, musculoActivo, patronMovimiento, notas }));
       const stAfter = Store.getState();
       const newEjId = stAfter.lastCreatedEjercicioId || ((stAfter.ejercicios && stAfter.ejercicios[stAfter.ejercicios.length - 1]) || {}).id;
+      if (typeof Store.enviarEjercicioPropuestoNube === 'function') {
+        Store.enviarEjercicioPropuestoNube({ id: newEjId, nombre, grupoMuscular, equipo, musculoActivo, patronMovimiento, notas }).catch(() => {});
+      }
 
       // Si veníamos de un constructor, rutina, AMRAP o bloque de entrenamiento, sumarlo automáticamente
       if (newEjId && ctx && ctx.returnToBuilder) {
@@ -4517,15 +4790,86 @@
         : '✓ ¡Sugerencia enviada y sincronizada!');
     },
 
-    // --- CHECK-IN DE GIMNASIO Y FLUJO MODULAR PASO A PASO (v3.2.0) ---
+    'open-admin-ejercicios-modal': () => {
+      if (!Store.user || !Store.user.isAdmin) return;
+      activeModal = { type: 'admin-ejercicios' };
+      adminEjPropuestosLoaded = false;
+      renderModals();
+      if (typeof Store.obtenerEjerciciosPropuestosAdmin === 'function') {
+        Store.obtenerEjerciciosPropuestosAdmin().then(list => {
+          adminEjPropuestos = list || [];
+          adminEjPropuestosLoaded = true;
+          if (activeModal && activeModal.type === 'admin-ejercicios') renderModals();
+        }).catch(() => {
+          adminEjPropuestosLoaded = true;
+          if (activeModal && activeModal.type === 'admin-ejercicios') renderModals();
+        });
+      }
+    },
+
+    'admin-set-ej-prop-estado': el => {
+      if (!Store.user || !Store.user.isAdmin) return;
+      const propId = el.getAttribute('data-id');
+      const estado = el.getAttribute('data-estado');
+      if (!propId || !estado) return;
+      adminEjPropuestos = estado === 'descartado'
+        ? adminEjPropuestos.filter(p => p.id !== propId)
+        : adminEjPropuestos.map(p => p.id === propId ? { ...p, estado } : p);
+      renderModals();
+      if (typeof Store.actualizarEstadoEjercicioPropuestoAdmin === 'function') {
+        Store.actualizarEstadoEjercicioPropuestoAdmin(propId, estado).catch(() => {});
+      }
+      showToast(estado === 'descartado' ? 'Propuesta descartada' : `Estado actualizado: ${estado.replace('_', ' ')}`);
+    },
+
+    'pick-similar-ej': el => {
+      const ejId = el.getAttribute('data-ejercicio-id');
+      if (!ejId) return;
+      const ctx = activeModal && activeModal.returnContext;
+      const st = Store.getState();
+      const ejObj = Engine.getCatalogoVisible(st.ejercicios || []).find(e => e.id === ejId);
+      if (!ejObj) return;
+      if (ctx && ctx.mode === 'rutina-builder') {
+        draftRutina.ejercicios.push({ ejercicioId: ejObj.id, nombre: ejObj.nombre, seriesObjetivo: 3, repsObjetivo: '8-12' });
+        activeModal = { type: 'rutina-builder' };
+        renderModals();
+        showToast(`✓ "${ejObj.nombre}" sumado a la rutina`);
+        return;
+      }
+      const targetBloque = (activeModal && activeModal.targetBloque)
+        || (ctx && ctx.bloque)
+        || (ejObj.grupoMuscular === 'activacion' ? 'activacion' : (ejObj.grupoMuscular === 'movilidad' ? 'movilidad' : 'A'));
+      const targetSeg = targetBloque === 'activacion' ? 'activacion' : (targetBloque === 'movilidad' ? 'movilidad' : 'entrenamiento');
+      Store.commit(s => {
+        let next = s.entrenamientoActivoId ? s : Engine.iniciarEntrenamiento(s, null);
+        return Engine.agregarEjercicioASesion(next, next.entrenamientoActivoId, {
+          ejercicioId: ejObj.id,
+          segmento: targetSeg,
+          bloque: targetBloque,
+          seriesObjetivo: ejObj.seriesSugeridas || 3,
+          repsObjetivo: ejObj.repsSugeridas || '8-12',
+          notas: ejObj.notas || ''
+        });
+      });
+      activeModal = null;
+      activeTab = 'hoy';
+      showToast(`✓ "${ejObj.nombre}" existente sumado.`);
+      render();
+    },
+
     'checkin-gym-hoy': el => {
       const rutinaId = (el && el.getAttribute('data-rutina-id')) || null;
+      const curState = Store.getState();
+      const hoyISO = Engine.todayISO();
+      const yaTieneSaludHoy = (curState && curState.readinessLogs || []).some(r => r.fecha === hoyISO && !r.deleted);
       Store.commit(state => Engine.registrarCheckinGym(state, {
         rutinaId,
-        pasoInicial: 'psicofisico'
+        pasoInicial: yaTieneSaludHoy ? 'rutina' : 'psicofisico'
       }));
       activeTab = 'hoy';
-      showToast('Sesión iniciada. Completá tu estado psicofísico.');
+      showToast(yaTieneSaludHoy
+        ? '¡Sesión iniciada! Tu estado de Salud de hoy ya estaba cargado.'
+        : 'Sesión iniciada. Completá tu estado psicofísico.');
       render();
     },
 
@@ -4686,8 +5030,10 @@
       const entId = el.getAttribute('data-entrenamiento-id');
       const pesoEl = document.getElementById(`vert-peso-${bloque}-${ejId}`);
       const repsEl = document.getElementById(`vert-reps-${bloque}-${ejId}`);
+      const rpeEl = document.getElementById(`vert-rpe-${bloque}-${ejId}`);
       const pesoKg = pesoEl ? parseFloat(pesoEl.value) || 0 : 0;
       const reps = repsEl ? parseInt(repsEl.value, 10) || 0 : 0;
+      const rpe = rpeEl && rpeEl.value ? parseFloat(rpeEl.value) : null;
       if (reps <= 0) {
         showToast('Indicá al menos 1 repetición');
         if (repsEl) repsEl.focus();
@@ -4703,13 +5049,14 @@
           numeroSerie: previas.length + 1,
           tipo: 'efectiva',
           pesoKg,
-          reps
+          reps,
+          rpe
         });
       });
       if (navigator.vibrate) {
         try { navigator.vibrate([45]); } catch (_) {}
       }
-      showToast(`✓ Serie registrada (${pesoKg} kg × ${reps} reps)`);
+      showToast(`✓ Serie registrada (${pesoKg} kg × ${reps} reps${rpe ? ` · RPE ${rpe}` : ''})`);
       render();
     },
 
@@ -4721,10 +5068,12 @@
       const registros = repsInputs.map(rInput => {
         const ejId = rInput.id.slice(prefix.length);
         const pInput = document.getElementById(`vert-peso-${bloque}-${ejId}`);
+        const rpeInput = document.getElementById(`vert-rpe-${bloque}-${ejId}`);
         return {
           ejercicioId: ejId,
           pesoKg: pInput ? parseFloat(pInput.value) || 0 : 0,
           reps: parseInt(rInput.value, 10) || 0,
+          rpe: rpeInput && rpeInput.value ? parseFloat(rpeInput.value) : null,
           tipo: 'efectiva'
         };
       }).filter(r => r.reps > 0 || r.pesoKg > 0);
@@ -4742,17 +5091,19 @@
       render();
     },
 
-    // --- GUARDAR SERIES JUNTAS (SOLO KG Y REPES) ---
+    // --- GUARDAR SERIES JUNTAS (KG, REPES, SERIES Y RPE) ---
     'save-ejercicio-completo': el => {
       const ejId = el.getAttribute('data-ejercicio-id');
       const entId = el.getAttribute('data-entrenamiento-id');
       const pesoEl = document.getElementById(`bulk-peso-${ejId}`);
       const repsEl = document.getElementById(`bulk-reps-${ejId}`);
       const seriesEl = document.getElementById(`bulk-series-${ejId}`);
+      const rpeEl = document.getElementById(`bulk-rpe-${ejId}`);
 
       const pesoKg = pesoEl ? parseFloat(pesoEl.value) || 0 : 0;
       const reps = repsEl ? parseInt(repsEl.value, 10) || 0 : 0;
       const seriesCant = seriesEl ? parseInt(seriesEl.value, 10) || 3 : 3;
+      const rpe = rpeEl && rpeEl.value ? parseFloat(rpeEl.value) : null;
 
       if (reps <= 0) {
         showToast('Indicá al menos 1 repetición');
@@ -4774,6 +5125,7 @@
           cantidadSeries: seriesCant,
           pesoKg,
           reps,
+          rpe,
           tipo: 'efectiva'
         });
       });
@@ -4782,7 +5134,7 @@
       if (navigator.vibrate) {
         try { navigator.vibrate([60, 30, 60]); } catch (_) {}
       }
-      showToast(`✓ ${seriesCant} series guardadas (${pesoKg} kg × ${reps} reps)`);
+      showToast(`✓ ${seriesCant} series guardadas (${pesoKg} kg × ${reps} reps${rpe ? ` · RPE ${rpe}` : ''})`);
       render();
     },
 
@@ -4812,10 +5164,23 @@
     // --- HISTÓRICO Y BUSCADOR DE EJERCICIOS / CLASES ---
     'set-historico-modo': el => {
       const modo = el.getAttribute('data-modo');
-      if (modo === 'clases' || modo === 'ejercicios') {
+      if (modo === 'clases' || modo === 'ejercicios' || modo === 'evolucion') {
         historicoModo = modo;
         render();
       }
+    },
+
+    'set-evolucion-periodo': el => {
+      const d = Number(el.getAttribute('data-dias'));
+      if (Number.isFinite(d)) {
+        evolucionPeriodoDias = d;
+        render();
+      }
+    },
+
+    'toggle-edit-salud-hoy': () => {
+      isEditingSaludHoy = !isEditingSaludHoy;
+      render();
     },
 
     'set-rutinas-subtab': el => {
@@ -4939,6 +5304,7 @@
           observacionAlumno: draftReadiness.observacionAlumno || draftReadiness.estadoGeneral || ''
         })
       );
+      isEditingSaludHoy = false;
       const formattedDate = fecha.split('-').reverse().join('/');
       showToast(`✓ Estado psicofísico guardado (${formattedDate}).`);
       render();
@@ -5141,6 +5507,23 @@
       return;
     }
 
+    if (e.target && e.target.id === 'custom-ej-nombre') {
+      const simBox = document.getElementById('custom-ej-similares');
+      if (simBox && typeof Engine.buscarEjerciciosSimilares === 'function') {
+        const sims = Engine.buscarEjerciciosSimilares(e.target.value, (Store.getState()?.ejercicios) || [], 3);
+        if (sims.length > 0) {
+          simBox.style.display = 'flex';
+          simBox.innerHTML = `<small>¿Ya existe en el catálogo?</small>` + sims.map(s =>
+            `<button type="button" class="sim-ej-btn" data-action="pick-similar-ej" data-ejercicio-id="${h(s.id)}">${h(s.nombre)}</button>`
+          ).join('');
+        } else {
+          simBox.style.display = 'none';
+          simBox.innerHTML = '';
+        }
+      }
+      return;
+    }
+
     const histTarget = e.target.closest('input[data-action="search-historial"]');
     if (histTarget) {
       historialBusqueda = histTarget.value;
@@ -5242,6 +5625,10 @@
   }
 
   const changeHandlers = {
+    'select-evolucion-ej': el => {
+      evolucionEjercicioId = el.value || null;
+      render();
+    },
     'pick-accent-color': el => {
       if (/^#[0-9a-fA-F]{6}$/.test(el.value)) Store.setAestheticPreference({ accentColor: el.value.toUpperCase() });
     },

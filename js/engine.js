@@ -2340,7 +2340,7 @@
         pesoKg: Number(serieData.pesoKg) || 0,
         reps: Number(serieData.reps) || 0,
         rir: serieData.rir !== undefined ? Number(serieData.rir) : 2,
-        rpe: serieData.rpe !== undefined ? Number(serieData.rpe) : 8,
+        rpe: (serieData.rpe !== undefined && serieData.rpe !== null && serieData.rpe !== '') ? Number(serieData.rpe) : null,
         completada: serieData.completada !== undefined ? serieData.completada : true,
         deleted: false,
         updatedAt: ahora
@@ -2558,12 +2558,17 @@
       nombre: String(ejData.nombre || 'Nuevo Ejercicio').trim(),
       grupoMuscular: ejData.grupoMuscular || 'pecho',
       equipo: ejData.equipo || 'barra',
+      musculoActivo: String(ejData.musculoActivo || '').trim(),
+      patronMovimiento: ejData.patronMovimiento || '',
+      prescripcionSugerida: ejData.prescripcionSugerida || '',
       seriesSugeridas: Number(ejData.seriesSugeridas) || 3,
       repsSugeridas: ejData.repsSugeridas || '8-12',
       descansoSugerido: Number(ejData.descansoSugerido) || 90,
       gifUrl: ejData.gifUrl || '',
       notas: ejData.notas || '',
       esPersonalizado: true,
+      creadoPorUsuario: true,
+      estadoCuracion: ejData.estadoCuracion || 'pendiente',
       orden: ejData.orden || 99,
       deleted: false,
       updatedAt: ahora
@@ -2994,7 +2999,7 @@
         pesoKg: Number(payload.pesoKg) || 0,
         reps: Number(payload.reps) || 0,
         rir: payload.rir !== undefined ? Number(payload.rir) : 2,
-        rpe: payload.rpe !== undefined ? Number(payload.rpe) : 8,
+        rpe: (payload.rpe !== undefined && payload.rpe !== null && payload.rpe !== '') ? Number(payload.rpe) : null,
         completada: true,
         deleted: false,
         updatedAt: ahora + i
@@ -3143,7 +3148,8 @@
         tipo: reg.tipo || 'efectiva',
         pesoKg: pesoNum || 0,
         reps: repsNum || 0,
-        rir: reg.rir !== undefined ? Number(reg.rir) : 2
+        rir: reg.rir !== undefined ? Number(reg.rir) : 2,
+        rpe: (reg.rpe !== undefined && reg.rpe !== null && reg.rpe !== '') ? Number(reg.rpe) : null
       });
       if (s.series && s.series.length > 0) {
         const lastSr = s.series[s.series.length - 1];
@@ -3986,6 +3992,262 @@
       });
     }
     return next;
+  };
+
+  function normTextoBusqueda(s) {
+    return String(s || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9 ]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  /**
+   * Busca coincidencias parecidas en el catálogo global para evitar duplicados al crear un ejercicio.
+   */
+  Engine.buscarEjerciciosSimilares = function (query, ejerciciosUsuario = [], limit = 4) {
+    const q = normTextoBusqueda(query);
+    if (!q || q.length < 3) return [];
+    const tokens = q.split(' ').filter(t => t.length >= 3);
+    const catalogo = Engine.getCatalogoVisible(ejerciciosUsuario);
+    const scored = [];
+    for (const ej of catalogo) {
+      const nom = normTextoBusqueda(ej.nombre);
+      const mus = normTextoBusqueda(ej.musculoActivo || '');
+      let score = 0;
+      if (nom === q) score += 100;
+      else if (nom.includes(q) || q.includes(nom)) score += 50;
+      for (const t of tokens) {
+        if (nom.includes(t)) score += 15;
+        else if (mus.includes(t)) score += 6;
+      }
+      if (score >= 15) {
+        scored.push({ ej, score });
+      }
+    }
+    scored.sort((a, b) => b.score - a.score);
+    return scored.slice(0, limit).map(x => x.ej);
+  };
+
+  /**
+   * Calcula métricas evolutivas completas de performance del alumno para Histórico → Evolución y vista Profesor.
+   */
+  Engine.computePerformanceAlumno = function (state, options = {}) {
+    if (!state) {
+      return {
+        dias: 30,
+        sesiones: 0,
+        sesionesPrev: 0,
+        volumenKg: 0,
+        volumenDeltaPct: null,
+        rpePromedio: null,
+        readinessPromedio: null,
+        consistenciaPct: 0,
+        ejerciciosDisponibles: [],
+        ejercicioSeleccionadoId: null,
+        serieEjercicio: [],
+        volumenPorMusculo: [],
+        correlacionSalud: null
+      };
+    }
+
+    const dias = options.dias == null ? 30 : Number(options.dias);
+    const ahoraMs = Date.now();
+    const hoyISO = Engine.todayISO();
+    const parseDateMs = iso => {
+      if (!iso || typeof iso !== 'string') return 0;
+      const parts = iso.split('-').map(Number);
+      if (parts.length !== 3 || !parts[0]) return 0;
+      return new Date(parts[0], (parts[1] || 1) - 1, parts[2] || 1, 12, 0, 0).getTime();
+    };
+    const cutoffCur = dias > 0 ? ahoraMs - dias * 86400000 : 0;
+    const cutoffPrev = dias > 0 ? ahoraMs - dias * 2 * 86400000 : 0;
+
+    const entrenamientos = (state.entrenamientos || []).filter(t => !t.deleted);
+    const series = (state.series || []).filter(s => !s.deleted && s.completada !== false);
+    const readinessLogs = (state.readinessLogs || []).filter(r => !r.deleted);
+
+    const entById = new Map(entrenamientos.map(t => [t.id, t]));
+    const seriesConFecha = series.map(s => {
+      const ent = entById.get(s.entrenamientoId);
+      const fecha = (ent && ent.fecha) || s.fecha || hoyISO;
+      return { ...s, fecha, _ms: parseDateMs(fecha) };
+    });
+
+    const entConFecha = entrenamientos.map(t => ({ ...t, _ms: parseDateMs(t.fecha) }));
+    const entCur = entConFecha.filter(t => t._ms >= cutoffCur);
+    const entPrev = dias > 0 ? entConFecha.filter(t => t._ms >= cutoffPrev && t._ms < cutoffCur) : [];
+
+    const srCur = seriesConFecha.filter(s => s._ms >= cutoffCur);
+    const srPrev = dias > 0 ? seriesConFecha.filter(s => s._ms >= cutoffPrev && s._ms < cutoffCur) : [];
+
+    const volumenKg = Math.round(srCur.reduce((acc, s) => acc + Engine.computeVolumenSerie(s), 0));
+    const volumenPrevKg = Math.round(srPrev.reduce((acc, s) => acc + Engine.computeVolumenSerie(s), 0));
+    const volumenDeltaPct = volumenPrevKg > 0
+      ? Math.round(((volumenKg - volumenPrevKg) / volumenPrevKg) * 100)
+      : null;
+
+    const rpeVals = srCur.map(s => Number(s.rpe)).filter(v => Number.isFinite(v) && v > 0 && v <= 10);
+    const rpePromedio = rpeVals.length > 0
+      ? Math.round((rpeVals.reduce((a, b) => a + b, 0) / rpeVals.length) * 10) / 10
+      : null;
+
+    const readCur = readinessLogs.filter(r => parseDateMs(r.fecha) >= cutoffCur);
+    const energiaVals = readCur.map(r => Number(r.energia)).filter(v => Number.isFinite(v) && v >= 1);
+    const readinessPromedio = energiaVals.length > 0
+      ? Math.round((energiaVals.reduce((a, b) => a + b, 0) / energiaVals.length) * 10) / 10
+      : null;
+
+    const diasMetaSem = (state.perfil && Array.isArray(state.perfil.diasSemana) && state.perfil.diasSemana.length) || 3;
+    const semanas = dias > 0 ? Math.max(1, dias / 7) : 4;
+    const consistenciaPct = Math.min(100, Math.round((entCur.length / (diasMetaSem * semanas)) * 100));
+
+    // Catálogo indexado para nombres y músculos
+    const ejMap = new Map();
+    [...(Engine.CATALOGO_EJERCICIOS || []), ...(state.ejercicios || [])].forEach(e => {
+      if (e && e.id) ejMap.set(e.id, e);
+    });
+
+    // Ejercicios con series realizadas
+    const statsPorEj = new Map();
+    for (const s of seriesConFecha) {
+      if (s.tipo === 'calentamiento') continue;
+      if (!statsPorEj.has(s.ejercicioId)) {
+        statsPorEj.set(s.ejercicioId, { entIds: new Set(), pr1RM: 0, mejorPeso: 0 });
+      }
+      const st = statsPorEj.get(s.ejercicioId);
+      st.entIds.add(s.entrenamientoId);
+      const rm = Engine.compute1RM(s.pesoKg, s.reps);
+      if (rm > st.pr1RM) st.pr1RM = rm;
+      if (Number(s.pesoKg) > st.mejorPeso) st.mejorPeso = Number(s.pesoKg);
+    }
+
+    const ejerciciosDisponibles = [];
+    statsPorEj.forEach((st, ejId) => {
+      const ref = ejMap.get(ejId);
+      ejerciciosDisponibles.push({
+        id: ejId,
+        nombre: ref ? ref.nombre : ejId,
+        sesiones: st.entIds.size,
+        pr1RM: st.pr1RM,
+        mejorPeso: st.mejorPeso
+      });
+    });
+    ejerciciosDisponibles.sort((a, b) => b.sesiones - a.sesiones || b.pr1RM - a.pr1RM);
+
+    const ejercicioSeleccionadoId = (options.ejercicioId && statsPorEj.has(options.ejercicioId))
+      ? options.ejercicioId
+      : (ejerciciosDisponibles[0] ? ejerciciosDisponibles[0].id : null);
+
+    // Serie cronológica del ejercicio seleccionado
+    let serieEjercicio = [];
+    if (ejercicioSeleccionadoId) {
+      const porFecha = new Map();
+      const srEj = seriesConFecha.filter(
+        s => s.ejercicioId === ejercicioSeleccionadoId && s.tipo !== 'calentamiento' && s._ms >= cutoffCur
+      );
+      for (const s of srEj) {
+        if (!porFecha.has(s.fecha)) porFecha.set(s.fecha, []);
+        porFecha.get(s.fecha).push(s);
+      }
+      const fechasOrdenadas = Array.from(porFecha.keys()).sort();
+      let maxHistorico = 0;
+      serieEjercicio = fechasOrdenadas.map(fecha => {
+        const lista = porFecha.get(fecha);
+        let maxPeso = 0, mejorReps = 0, best1RM = 0, vol = 0;
+        const rpes = [];
+        for (const s of lista) {
+          const p = Number(s.pesoKg) || 0;
+          const rep = Number(s.reps) || 0;
+          const rm = Engine.compute1RM(p, rep);
+          vol += Engine.computeVolumenSerie(s);
+          if (rm > best1RM) { best1RM = rm; }
+          if (p > maxPeso || (p === maxPeso && rep > mejorReps)) { maxPeso = p; mejorReps = rep; }
+          if (s.rpe != null && Number(s.rpe) > 0) rpes.push(Number(s.rpe));
+        }
+        const isPR = best1RM > maxHistorico && maxHistorico > 0;
+        if (best1RM > maxHistorico) maxHistorico = best1RM;
+        return {
+          fecha,
+          maxPeso,
+          mejorReps,
+          est1RM: best1RM,
+          volumen: Math.round(vol),
+          rpePromedio: rpes.length ? Math.round((rpes.reduce((a, b) => a + b, 0) / rpes.length) * 10) / 10 : null,
+          isPR
+        };
+      });
+    }
+
+    // Volumen por grupo muscular en el período seleccionado
+    const volMusc = {};
+    for (const s of srCur) {
+      if (s.tipo === 'calentamiento') continue;
+      const ej = ejMap.get(s.ejercicioId);
+      const grupo = (ej && ej.grupoMuscular) || 'otros';
+      if (!volMusc[grupo]) volMusc[grupo] = { grupo, volumen: 0, series: 0 };
+      volMusc[grupo].volumen += Engine.computeVolumenSerie(s);
+      volMusc[grupo].series += 1;
+    }
+    const listaMusc = Object.values(volMusc).sort((a, b) => b.volumen - a.volumen || b.series - a.series);
+    const maxVolMusc = listaMusc[0] ? Math.max(1, listaMusc[0].volumen) : 1;
+    const volumenPorMusculo = listaMusc.map(m => ({
+      grupo: m.grupo,
+      volumen: Math.round(m.volumen),
+      series: m.series,
+      pct: Math.max(8, Math.round((m.volumen / maxVolMusc) * 100))
+    }));
+
+    // Correlación Bienestar vs Performance
+    const readByFecha = new Map();
+    readinessLogs.forEach(r => { if (r.fecha) readByFecha.set(r.fecha, r); });
+    const alta = { sesiones: 0, volSum: 0, rpeSum: 0, rpeCnt: 0 };
+    const baja = { sesiones: 0, volSum: 0, rpeSum: 0, rpeCnt: 0 };
+    for (const t of entCur) {
+      const rLog = readByFecha.get(t.fecha);
+      if (!rLog) continue;
+      const srEnt = srCur.filter(s => s.entrenamientoId === t.id);
+      if (!srEnt.length) continue;
+      const bucket = Number(rLog.energia) >= 4 ? alta : baja;
+      bucket.sesiones += 1;
+      bucket.volSum += srEnt.reduce((acc, s) => acc + Engine.computeVolumenSerie(s), 0);
+      srEnt.forEach(s => {
+        if (s.rpe != null && Number(s.rpe) > 0) {
+          bucket.rpeSum += Number(s.rpe);
+          bucket.rpeCnt += 1;
+        }
+      });
+    }
+    const correlacionSalud = (alta.sesiones + baja.sesiones) > 0 ? {
+      diasEnergiaAlta: {
+        sesiones: alta.sesiones,
+        volumenPromedio: alta.sesiones ? Math.round(alta.volSum / alta.sesiones) : 0,
+        rpePromedio: alta.rpeCnt ? Math.round((alta.rpeSum / alta.rpeCnt) * 10) / 10 : null
+      },
+      diasEnergiaBaja: {
+        sesiones: baja.sesiones,
+        volumenPromedio: baja.sesiones ? Math.round(baja.volSum / baja.sesiones) : 0,
+        rpePromedio: baja.rpeCnt ? Math.round((baja.rpeSum / baja.rpeCnt) * 10) / 10 : null
+      }
+    } : null;
+
+    return {
+      dias,
+      sesiones: entCur.length,
+      sesionesPrev: entPrev.length,
+      volumenKg,
+      volumenDeltaPct,
+      rpePromedio,
+      readinessPromedio,
+      consistenciaPct,
+      ejerciciosDisponibles,
+      ejercicioSeleccionadoId,
+      serieEjercicio,
+      volumenPorMusculo,
+      correlacionSalud
+    };
   };
 
   // ==========================================
