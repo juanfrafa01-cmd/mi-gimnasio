@@ -19,7 +19,7 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '3.6.0';
+  const APP_VERSION = '3.7.0';
 
   /** Número válido o valor por defecto (a diferencia de `|| def`, respeta el 0: RIR 0 = serie al fallo). */
   const numOr = (v, def) => (Number.isFinite(v) ? v : def);
@@ -55,6 +55,7 @@
   let rutinasSubTab = 'rutinas'; // 'rutinas' | 'catalogo'
   let showPhotoOptions = false;
   let isSaludLogsOpen = false;
+  let isSaludFotosOpen = false;
   let isEditingSaludHoy = false;
   let lastRenderedModalType = null;
   let resetPickerScroll = false;
@@ -472,7 +473,105 @@
   // ==========================================
   // 2. GENERADOR DE FOTOS CON MARCA DE AGUA (CANVAS)
   // ==========================================
-  function generarImagenConMarcaDeAgua(file, fechaTexto, pesoKg, autorTexto, callback) {
+  function formatFechaDMY(iso) {
+    const clean = String(iso || '').slice(0, 10);
+    const p = clean.split('-');
+    return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : (iso || '');
+  }
+
+  function parseExifDateString(str) {
+    const m = String(str || '').match(/^(\d{4}):(\d{2}):(\d{2})\s+(\d{2}):(\d{2})/);
+    if (!m) return null;
+    return { fechaISO: `${m[1]}-${m[2]}-${m[3]}`, hora: `${m[4]}:${m[5]}`, fuente: 'exif' };
+  }
+
+  function readExifDateFromBuffer(buf) {
+    try {
+      const view = new DataView(buf);
+      if (view.byteLength < 12 || view.getUint16(0, false) !== 0xFFD8) return null;
+      let offset = 2;
+      while (offset + 4 < view.byteLength) {
+        const marker = view.getUint16(offset, false);
+        offset += 2;
+        if (marker === 0xFFE1) {
+          const len = view.getUint16(offset, false);
+          const hdrStart = offset + 2;
+          if (hdrStart + 10 <= view.byteLength && view.getUint32(hdrStart, false) === 0x45786966) {
+            const tiffStart = hdrStart + 6;
+            const little = view.getUint16(tiffStart, false) === 0x4949;
+            const getStr = (valOff, count) => {
+              let out = '';
+              for (let i = 0; i < count - 1 && tiffStart + valOff + i < view.byteLength; i++) {
+                out += String.fromCharCode(view.getUint8(tiffStart + valOff + i));
+              }
+              return out;
+            };
+            const scanIfd = ifdRel => {
+              const abs = tiffStart + ifdRel;
+              if (abs + 2 > view.byteLength) return { date: null, exifOff: null };
+              const entries = view.getUint16(abs, little);
+              let fallbackDt = null;
+              let exifOff = null;
+              for (let i = 0; i < entries; i++) {
+                const eOff = abs + 2 + i * 12;
+                if (eOff + 12 > view.byteLength) break;
+                const tag = view.getUint16(eOff, little);
+                const count = view.getUint32(eOff + 4, little);
+                const val = view.getUint32(eOff + 8, little);
+                if (tag === 0x8769) exifOff = val;
+                if (tag === 0x9003 || tag === 0x9004) {
+                  const parsed = parseExifDateString(getStr(val, count));
+                  if (parsed) return { date: parsed, exifOff };
+                }
+                if (tag === 0x0132 && !fallbackDt) {
+                  fallbackDt = parseExifDateString(getStr(val, count));
+                }
+              }
+              return { date: fallbackDt, exifOff };
+            };
+            const firstIfdRel = view.getUint32(tiffStart + 4, little);
+            const r0 = scanIfd(firstIfdRel);
+            if (r0.exifOff) {
+              const rExif = scanIfd(r0.exifOff);
+              if (rExif.date) return rExif.date;
+            }
+            if (r0.date) return r0.date;
+          }
+          offset += len;
+        } else if ((marker & 0xFF00) !== 0xFF00) {
+          break;
+        } else {
+          offset += view.getUint16(offset, false);
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /**
+   * Obtiene la fecha/hora real en que se sacó la foto (EXIF DateTimeOriginal → lastModified local → fallback).
+   */
+  async function extractPhotoCaptureDate(file, fallbackISO) {
+    if (file && typeof file.slice === 'function') {
+      try {
+        const slice = file.slice(0, 65536);
+        if (typeof slice.arrayBuffer === 'function') {
+          const buf = await slice.arrayBuffer();
+          const exif = readExifDateFromBuffer(buf);
+          if (exif) return exif;
+        }
+      } catch (_) {}
+    }
+    if (file && Number.isFinite(file.lastModified) && file.lastModified > 0) {
+      const d = new Date(file.lastModified);
+      const fechaISO = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const hora = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+      return { fechaISO, hora, fuente: 'file' };
+    }
+    return { fechaISO: fallbackISO || Engine.todayISO(), hora: Engine.timeNow(), fuente: 'fallback' };
+  }
+
+  function generarImagenConMarcaDeAgua(file, fechaTexto, pesoKg, autorTexto, callback, options = {}) {
     const reader = new FileReader();
     reader.onload = function (ev) {
       const img = new Image();
@@ -487,21 +586,58 @@
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
         // Banda inferior oscura translúcida para la marca de agua
-        const bandH = Math.max(48, Math.round(canvas.height * 0.11));
-        ctx.fillStyle = 'rgba(7, 9, 14, 0.78)';
+        const bandH = Math.max(46, Math.round(canvas.height * 0.11));
+        ctx.fillStyle = 'rgba(7, 9, 14, 0.80)';
         ctx.fillRect(0, canvas.height - bandH, canvas.width, bandH);
 
-        // Sello cian metálico CER con Fecha + Peso
-        ctx.fillStyle = '#38bdf8';
-        ctx.font = `bold ${Math.max(14, Math.round(bandH * 0.36))}px monospace`;
-        const stamp = `${fechaTexto}  •  ${pesoKg ? pesoKg + ' kg' : 'S/P'}  •  ${autorTexto}`;
-        ctx.fillText(stamp, 16, canvas.height - Math.round(bandH * 0.34));
+        const fechaLegible = formatFechaDMY(fechaTexto);
+        const horaStr = options.hora ? ` · ${options.hora}` : '';
+        const pesoStr = pesoKg ? ` · ${pesoKg} kg` : '';
+        const soloLocalTag = options.soloLocalLabel !== false ? ' · Solo local' : ` · ${autorTexto || 'Alumno'}`;
 
-        callback(canvas.toDataURL('image/jpeg', 0.82));
+        ctx.fillStyle = '#38bdf8';
+        ctx.font = `bold ${Math.max(13, Math.round(bandH * 0.36))}px monospace`;
+        const stamp = `${fechaLegible}${horaStr}${pesoStr}${soloLocalTag}`;
+        ctx.fillText(stamp, 14, canvas.height - Math.round(bandH * 0.34));
+
+        callback(canvas.toDataURL('image/jpeg', 0.78));
       };
       img.src = ev.target.result;
     };
     reader.readAsDataURL(file);
+  }
+
+  function renderLocalPhotoBox(fotosDeFecha = [], { fecha, origin = 'salud', compact = false } = {}) {
+    const fechaISO = fecha || Engine.todayISO();
+    const list = Array.isArray(fotosDeFecha) ? fotosDeFecha : [];
+    return `
+      <div class="local-photo-box ${compact ? 'compact' : ''}">
+        <div class="local-photo-top">
+          <label class="btn-secondary local-photo-btn">
+            ${renderIcon('camera')}
+            <span>${list.length > 0 ? 'Agregar otra foto (con fecha)' : 'Adjuntar foto con fecha'}</span>
+            <input type="file" accept="image/*" hidden data-action="upload-local-checkin-photo" data-origin="${h(origin)}" data-fecha="${h(fechaISO)}">
+          </label>
+        </div>
+        ${list.length > 0 ? `
+          <div class="local-photo-thumbs">
+            ${list.map(f => `
+              <div class="local-thumb-wrap">
+                <button type="button" class="local-thumb-btn" data-action="view-local-photo" data-foto-id="${h(f.id)}" title="Ver foto (${h(formatFechaDMY(f.fecha))})">
+                  <img src="${f.dataUrl}" alt="Foto privada del ${h(formatFechaDMY(f.fecha))}" />
+                  <span>${h(formatFechaDMY(f.fecha))}</span>
+                </button>
+                <button type="button" class="local-thumb-del" data-action="delete-local-photo" data-foto-id="${h(f.id)}" aria-label="Borrar foto">${renderIcon('x')}</button>
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
+        <p class="local-privacy-note">
+          ${renderIcon('lock')}
+          <span><strong>Privada y 100% local:</strong> se guarda solo en tu teléfono, únicamente vos podés verla y nunca se envía a servidores ni a terceros.</span>
+        </p>
+      </div>
+    `;
   }
 
   // ==========================================
@@ -1112,6 +1248,7 @@
                 <input type="text" id="step-psico-dolor" class="form-input" value="${h(draftReadiness.zonaDolor || '')}" placeholder="¿Alguna molestia?">
                 <input type="text" id="step-psico-obs" class="form-input" value="${h(draftReadiness.observacionAlumno || '')}" placeholder="Nota (opcional)">
               </div>
+              ${renderLocalPhotoBox((state.fotos || []).filter(f => !f.deleted && f.fecha === hoyISO), { fecha: hoyISO, origin: 'checkin', compact: true })}
             </div>
 
             <button type="button" class="btn-primary btn-lg" data-action="submit-step-psicofisico">
@@ -1260,7 +1397,13 @@
             <span>${readinessHoy
               ? `Salud hoy: <strong>${h(readinessHoy.estadoGeneral || 'Bien')}</strong> · Energía ${readinessHoy.energia || 4}/5`
               : 'Salud hoy: sin registrar'}</span>
-            <button type="button" class="btn-link" data-action="set-workout-step" data-step="psicofisico">${readinessHoy ? 'Editar' : 'Cargar'}</button>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <label class="btn-link" style="display: inline-flex; align-items: center; gap: 4px; cursor: pointer;" title="Foto privada local con fecha (no se envía a ningún lado)">
+                ${renderIcon('camera')} Foto
+                <input type="file" accept="image/*" hidden data-action="upload-local-checkin-photo" data-origin="checkin" data-fecha="${hoyISO}">
+              </label>
+              <button type="button" class="btn-link" data-action="set-workout-step" data-step="psicofisico">${readinessHoy ? 'Editar' : 'Cargar'}</button>
+            </div>
           </div>
           <div class="card modulo-card ${cfg.activacionActiva ? '' : 'off'}">
             <div class="row-between">
@@ -1887,6 +2030,7 @@
     syncSaludDraftsWithState(state, Store.user);
     const diasSeleccionados = Array.isArray(draftPerfil.diasSemana) ? draftPerfil.diasSemana : [];
     const logs = (state.readinessLogs || []).filter(r => !r.deleted);
+    const fotosActivas = (state.fotos || []).filter(f => !f.deleted);
     const observaciones = (state.observaciones || []).filter(o => !o.deleted);
 
     const hoyISO = Engine.todayISO();
@@ -1895,6 +2039,12 @@
 
     const selFecha = draftReadiness.fecha || hoyISO;
     const logDeEstaFecha = logs.find(l => l.fecha === selFecha);
+    const fotosDeEstaFecha = fotosActivas.filter(f => f.fecha === selFecha);
+    const fotosPorFecha = new Map();
+    fotosActivas.forEach(f => {
+      if (!fotosPorFecha.has(f.fecha)) fotosPorFecha.set(f.fecha, []);
+      fotosPorFecha.get(f.fecha).push(f);
+    });
 
     const selEnergia = String(draftReadiness.energia || '4');
     const selEstres = String(draftReadiness.estres || '2');
@@ -1925,6 +2075,7 @@
               </div>
               <button type="button" class="btn-secondary btn-sm" data-action="toggle-edit-salud-hoy">${renderIcon('edit')} Editar</button>
             </div>
+            ${renderLocalPhotoBox(fotosDeEstaFecha, { fecha: selFecha, origin: 'salud', compact: true })}
           </div>
         ` : `
         <div class="card card-flat">
@@ -1978,6 +2129,8 @@
             <input type="text" id="rd-obs" class="form-input" value="${h(draftReadiness.observacionAlumno || '')}" placeholder="Nota (opcional)">
           </div>
 
+          ${renderLocalPhotoBox(fotosDeEstaFecha, { fecha: selFecha, origin: 'salud', compact: true })}
+
           <div style="display: flex; gap: 8px;">
             ${isEditingSaludHoy ? `<button type="button" class="btn-secondary" data-action="toggle-edit-salud-hoy" style="width: auto;">Cancelar</button>` : ''}
             <button type="button" class="btn-primary" data-action="submit-readiness" style="flex: 1;">
@@ -1989,6 +2142,7 @@
 
         <div class="seg seg-sm">
           <button type="button" class="seg-btn ${isSaludLogsOpen ? 'active' : ''}" data-action="toggle-salud-logs">Registros (${logs.length})</button>
+          <button type="button" class="seg-btn ${isSaludFotosOpen ? 'active' : ''}" data-action="toggle-salud-fotos">Fotos (${fotosActivas.length})</button>
           <button type="button" class="seg-btn ${isPerfilOpen ? 'active' : ''}" data-action="toggle-perfil-collapse">Mi ficha</button>
         </div>
 
@@ -2002,18 +2156,52 @@
 
           ${isSaludLogsOpen ? (logs.length === 0 ? `<p class="empty-hint">Todavía no guardaste ningún registro.</p>` : `
             <div class="card" style="padding: 6px 8px 6px 14px !important; gap: 0 !important;">
-              ${logs.map(l => `
-                <div class="catalog-row">
-                  <div class="check-row-text">
-                    <strong>${h(l.fecha.split('-').reverse().join('/'))} · energía ${l.energia}/5</strong>
-                    <small>${[l.estadoGeneral, l.zonaDolor ? `molestia: ${l.zonaDolor}` : '', l.observacionAlumno && l.observacionAlumno !== l.estadoGeneral ? l.observacionAlumno : ''].filter(Boolean).map(h).join(' · ') || 'Sin notas'}</small>
+              ${logs.map(l => {
+                const fotosDia = fotosPorFecha.get(l.fecha) || [];
+                return `
+                  <div class="catalog-row">
+                    ${fotosDia.length > 0 ? `
+                      <button type="button" class="salud-log-thumb" data-action="view-local-photo" data-foto-id="${h(fotosDia[0].id)}" title="Ver foto local de esta fecha">
+                        <img src="${fotosDia[0].dataUrl}" alt="Foto del ${h(l.fecha)}">
+                      </button>
+                    ` : ''}
+                    <div class="check-row-text">
+                      <strong>${h(l.fecha.split('-').reverse().join('/'))} · energía ${l.energia}/5</strong>
+                      <small>${[l.estadoGeneral, l.zonaDolor ? `molestia: ${l.zonaDolor}` : '', l.observacionAlumno && l.observacionAlumno !== l.estadoGeneral ? l.observacionAlumno : ''].filter(Boolean).map(h).join(' · ') || 'Sin notas'}</small>
+                    </div>
+                    <button type="button" class="btn-icon-action" data-action="set-readiness-date" data-date="${h(l.fecha)}" title="Editar">${renderIcon('edit')}</button>
+                    <button type="button" class="btn-icon-action danger" data-action="delete-readiness-log" data-log-id="${h(l.id)}" title="Borrar">${renderIcon('trash')}</button>
                   </div>
-                  <button type="button" class="btn-icon-action" data-action="set-readiness-date" data-date="${h(l.fecha)}" title="Editar">${renderIcon('edit')}</button>
-                  <button type="button" class="btn-icon-action danger" data-action="delete-readiness-log" data-log-id="${h(l.id)}" title="Borrar">${renderIcon('trash')}</button>
-                </div>
-              `).join('')}
+                `;
+              }).join('')}
             </div>
           `) : ''}
+
+          ${isSaludFotosOpen ? `
+            <div class="card card-flat" style="gap: 10px;">
+              <p class="local-privacy-note" style="margin: 0;">
+                ${renderIcon('lock')}
+                <span><strong>Galería 100% privada y local:</strong> solo se almacena en la memoria de este teléfono. Ningún profesor, administrador ni servidor externo puede verla ni recibirla.</span>
+              </p>
+              ${fotosActivas.length === 0 ? `
+                <p class="empty-hint">Todavía no adjuntaste ninguna foto. Podés cargar una al hacer check-in o desde la tarjeta de Salud.</p>
+              ` : `
+                <div class="photo-grid-local">
+                  ${fotosActivas.map(f => `
+                    <div class="photo-local-card">
+                      <button type="button" class="photo-local-open" data-action="view-local-photo" data-foto-id="${h(f.id)}">
+                        <img src="${f.dataUrl}" alt="Registro del ${h(formatFechaDMY(f.fecha))}">
+                      </button>
+                      <div class="photo-local-meta">
+                        <span>${h(formatFechaDMY(f.fecha))}${f.hora ? ` · ${h(f.hora)}` : ''}</span>
+                        <button type="button" class="btn-icon-action danger" data-action="delete-local-photo" data-foto-id="${h(f.id)}" title="Borrar foto">${renderIcon('trash')}</button>
+                      </div>
+                    </div>
+                  `).join('')}
+                </div>
+              `}
+            </div>
+          ` : ''}
 
           ${isPerfilOpen ? `
             <div class="card">
@@ -2483,36 +2671,12 @@
                 <div class="card">
                   <div class="card-header">
                     <div>
-                      <h3 class="card-title">Fotos Evolutivas y Posturales del Alumno</h3>
-                      <p style="font-size: 12px; color: var(--text-muted);">
-                        Podés ver las fotos subidas por el alumno o adjuntar fotos de evaluación postural con sello de fecha automático.
+                      <h3 class="card-title">Privacidad de Fotos del Alumno</h3>
+                      <p style="font-size: 12px; color: var(--text-muted); line-height: 1.5; margin-top: 4px;">
+                        Por ética, seguridad e integridad, las fotos personales que el alumno adjunta en su Check-in o en Salud histórico permanecen <strong>100% locales en su propio teléfono</strong>. Nunca se envían ni se visualizan en el panel del profesor ni en servidores externos.
                       </p>
                     </div>
                   </div>
-
-                  <div style="display: flex; gap: 8px; align-items: center; background: var(--bg-elevated); padding: 10px; border-radius: var(--radius-md); flex-wrap: wrap;">
-                    <input type="text" id="trainer-foto-nota" class="form-input" placeholder="Nota clínica de la foto (ej: Control postural sentadilla)" style="flex: 1; min-width: 180px;">
-                    <label class="btn-primary" style="width: auto; cursor: pointer;">
-                      ${renderIcon('camera')} Adjuntar Foto con Fecha
-                      <input type="file" accept="image/*" style="display: none;" data-action="upload-watermarked-photo" data-target-user="${h(alumnoActivo.username)}">
-                    </label>
-                  </div>
-
-                  ${(stAlumno.fotos || []).filter(f => !f.deleted).length === 0 ? `
-                    <p style="font-size: 12px; color: var(--text-dim);">Sin fotos registradas todavía.</p>
-                  ` : `
-                    <div class="photo-grid">
-                      ${(stAlumno.fotos || []).filter(f => !f.deleted).map(f => `
-                        <div class="photo-card">
-                          <img src="${f.dataUrl}" alt="Evaluación alumno" />
-                          <div class="photo-watermark">
-                            <span class="watermark-stamp">${h(f.fecha)} • ${f.pesoKg ? f.pesoKg + ' kg' : ''} • ${h(f.autor)}</span>
-                            ${f.nota ? `<p style="font-size: 11px; margin-top: 4px;">${h(f.nota)}</p>` : ''}
-                          </div>
-                        </div>
-                      `).join('')}
-                    </div>
-                  `}
                 </div>
               </div>
             </div>
@@ -3161,6 +3325,41 @@
             )}
           </div>
           <button type="button" class="btn-secondary" data-action="close-modal">Cerrar</button>
+        </div>
+      `;
+      return;
+    }
+
+    if (activeModal.type === 'view-local-photo') {
+      const foto = (state.fotos || []).find(f => f.id === activeModal.fotoId && !f.deleted);
+      if (!foto) {
+        activeModal = null;
+        overlay.remove();
+        lastRenderedModalType = null;
+        return;
+      }
+      overlay.innerHTML = `
+        <div class="modal-card" style="max-width: 480px;">
+          <div class="modal-header-sticky">
+            <div>
+              <h2 class="modal-title" style="font-size: 17px;">Foto privada · ${h(formatFechaDMY(foto.fecha))}</h2>
+              <span class="net-status" style="margin: 2px 0 0;">${foto.origen === 'checkin' ? 'Check-in gimnasio' : 'Registro de Salud'}${foto.hora ? ` · ${h(foto.hora)}` : ''}</span>
+            </div>
+            <button type="button" class="btn-close-modal" data-action="close-modal">${renderIcon('x')}</button>
+          </div>
+          <div style="border-radius: 14px; overflow: hidden; background: #0B0B0D;">
+            <img src="${foto.dataUrl}" alt="Foto privada del ${h(formatFechaDMY(foto.fecha))}" style="display: block; width: 100%; height: auto; max-height: 60vh; object-fit: contain;" />
+          </div>
+          <p class="local-privacy-note" style="margin: 0;">
+            ${renderIcon('lock')}
+            <span><strong>Privada y 100% local:</strong> guardada únicamente en la memoria de este teléfono. No se comparte ni se envía a ningún lado.</span>
+          </p>
+          <div class="modal-actions">
+            <button type="button" class="btn-secondary" data-action="delete-local-photo" data-foto-id="${h(foto.id)}" style="color: var(--accent-rose);">
+              ${renderIcon('trash')} Borrar
+            </button>
+            <button type="button" class="btn-primary" data-action="close-modal">Cerrar</button>
+          </div>
         </div>
       `;
       return;
@@ -5194,7 +5393,44 @@
     'toggle-salud-logs': () => {
       captureSaludDraftsFromDOM();
       isSaludLogsOpen = !isSaludLogsOpen;
-      if (isSaludLogsOpen) isPerfilOpen = false;
+      if (isSaludLogsOpen) {
+        isPerfilOpen = false;
+        isSaludFotosOpen = false;
+      }
+      render();
+    },
+
+    'toggle-salud-fotos': () => {
+      captureSaludDraftsFromDOM();
+      isSaludFotosOpen = !isSaludFotosOpen;
+      if (isSaludFotosOpen) {
+        isPerfilOpen = false;
+        isSaludLogsOpen = false;
+      }
+      render();
+    },
+
+    'view-local-photo': el => {
+      const fotoId = el.getAttribute('data-foto-id');
+      if (!fotoId) return;
+      activeModal = { type: 'view-local-photo', fotoId };
+      renderModals();
+    },
+
+    'delete-local-photo': el => {
+      const fotoId = el.getAttribute('data-foto-id');
+      if (!fotoId) return;
+      Store.commit(s => Engine.borrarFoto(s, fotoId));
+      if (activeModal && activeModal.type === 'view-local-photo' && activeModal.fotoId === fotoId) {
+        activeModal = null;
+      }
+      showToast('Foto privada eliminada de este dispositivo.', {
+        action: 'Deshacer',
+        fn: () => {
+          Store.commit(s => Engine.restaurarFoto(s, fotoId));
+          render();
+        }
+      });
       render();
     },
 
@@ -5321,7 +5557,10 @@
     'toggle-perfil-collapse': () => {
       captureSaludDraftsFromDOM();
       isPerfilOpen = !isPerfilOpen;
-      if (isPerfilOpen) isSaludLogsOpen = false;
+      if (isPerfilOpen) {
+        isSaludLogsOpen = false;
+        isSaludFotosOpen = false;
+      }
       render();
     },
 
@@ -5755,6 +5994,37 @@
           img.src = ev.target.result;
         };
         reader.readAsDataURL(file);
+      });
+      return;
+    }
+
+    if (actionName === 'upload-local-checkin-photo') {
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) return;
+      const origin = fileInput.getAttribute('data-origin') || 'salud';
+      const fallbackFecha = fileInput.getAttribute('data-fecha') || Engine.todayISO();
+      fileInput.value = '';
+      const st = Store.getState();
+      const pesoKg = (st && st.perfil && st.perfil.pesoKg) || '';
+      extractPhotoCaptureDate(file, fallbackFecha).then(info => {
+        const fechaReal = info.fechaISO || fallbackFecha;
+        generarImagenConMarcaDeAgua(file, fechaReal, pesoKg, 'Solo local', dataUrl => {
+          Store.commit(s => Engine.agregarFoto(s, {
+            fecha: fechaReal,
+            fechaCaptura: fechaReal,
+            hora: info.hora,
+            pesoKg,
+            origen: origin,
+            autor: Store.user ? Store.user.displayName : 'Alumno',
+            dataUrl
+          }));
+          if (Store.lastSaveError === 'QUOTA_EXCEEDED') {
+            showToast('No queda espacio en el almacenamiento de este teléfono para otra foto. Borrá alguna anterior.');
+            return;
+          }
+          showToast(`✓ Foto guardada localmente (${formatFechaDMY(fechaReal)}). Solo visible en tu teléfono.`);
+          render();
+        }, { hora: info.hora, soloLocalLabel: true });
       });
       return;
     }

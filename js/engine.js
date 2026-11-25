@@ -2623,12 +2623,16 @@
    */
   Engine.agregarFoto = function (state, fotoData) {
     const ahora = Date.now();
+    const fechaFinal = fotoData.fechaCaptura || fotoData.fecha || Engine.todayISO();
     const nuevaFoto = {
       id: Engine.generateId('ph'),
-      fecha: fotoData.fecha || Engine.todayISO(),
-      hora: Engine.timeNow(),
+      fecha: fechaFinal,
+      fechaCaptura: fechaFinal,
+      hora: fotoData.hora || Engine.timeNow(),
       pesoKg: Number(fotoData.pesoKg) || (state.perfil ? state.perfil.pesoKg : 0) || 0,
       autor: fotoData.autor || 'Alumno',
+      origen: fotoData.origen || 'salud',
+      soloLocal: true,
       nota: fotoData.nota || '',
       dataUrl: fotoData.dataUrl || '',
       deleted: false,
@@ -2649,6 +2653,17 @@
     const ahora = Date.now();
     const fotos = (state.fotos || []).map(f =>
       f.id === fotoId ? { ...f, deleted: true, updatedAt: ahora } : f
+    );
+    return { ...state, fotos, updatedAt: ahora };
+  };
+
+  /**
+   * Restaura una foto borrada (para toast Deshacer).
+   */
+  Engine.restaurarFoto = function (state, fotoId) {
+    const ahora = Date.now();
+    const fotos = (state.fotos || []).map(f =>
+      f.id === fotoId ? { ...f, deleted: false, updatedAt: ahora } : f
     );
     return { ...state, fotos, updatedAt: ahora };
   };

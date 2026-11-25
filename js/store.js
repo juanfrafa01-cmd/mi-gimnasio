@@ -679,10 +679,13 @@
     if (!nextState) return currentState;
 
     const key = getStorageKey(targetUsername);
+    Store.lastSaveError = null;
     try {
       localStorage.setItem(key, JSON.stringify(nextState));
     } catch (e) {
+      Store.lastSaveError = e && e.name === 'QuotaExceededError' ? 'QUOTA_EXCEEDED' : (e && e.message) || 'SAVE_ERROR';
       console.error('Error guardando estado de alumno:', e);
+      return currentState;
     }
 
     // Si el usuario modificado es también el usuario activo en sesión, actualizar memoria
@@ -872,6 +875,7 @@
       const code = String(Store.user.codigoAlumno).trim().toUpperCase();
       const userVaultKey = String(Store.user.vaultSyncKey);
       const vaultId = 'vault_' + code.replace(/[^A-Z0-9]/gi, '').toLowerCase();
+      // IMPORTANTE (ética y privacidad): `fotos` personales son 100% locales en el dispositivo del usuario y NUNCA se suben a Supabase.
       const snapshot = {
         codigoAlumno: code,
         username: Store.user.username,
@@ -883,6 +887,7 @@
         registrosSalud: Array.isArray(st.registrosSalud) ? st.registrosSalud.slice(0, 60) : [],
         readiness: Array.isArray(st.readiness) ? st.readiness.slice(0, 60) : []
       };
+      delete snapshot.fotos;
       await fetch(`${SUPABASE_URL}/rest/v1/fin_records`, {
         method: 'POST',
         headers: {
