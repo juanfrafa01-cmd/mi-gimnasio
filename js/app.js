@@ -19,7 +19,7 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '3.9.0';
+  const APP_VERSION = '3.10.0';
 
   /** Número válido o valor por defecto (a diferencia de `|| def`, respeta el 0: RIR 0 = serie al fallo). */
   const numOr = (v, def) => (Number.isFinite(v) ? v : def);
@@ -896,6 +896,7 @@
           </div>
         ` : listaEjercicios.map((item, idx) => {
             const ej = item.ejercicio;
+            const esBilateralManc = Engine.esMancuernaBilateral(ej);
             const media = Engine.resolveEjercicioMedia(ej);
             const seriesDelEj = seriesEntreno.filter(s => s.ejercicioId === ej.id);
             const prev = Engine.getUltimaSesionEjercicio(state, ej.id, entActivo.id);
@@ -956,7 +957,7 @@
 
                   <div style="display: grid; grid-template-columns: 1fr 1fr 0.85fr auto; gap: 5px; align-items: end;">
                     <div class="ej-input-col">
-                      <label class="ej-input-label" for="vert-peso-${bloqueKey}-${h(ej.id)}">KG</label>
+                      <label class="ej-input-label" for="vert-peso-${bloqueKey}-${h(ej.id)}">${esBilateralManc ? 'KG (c/u ×2)' : 'KG'}</label>
                       <input type="text" id="vert-peso-${bloqueKey}-${h(ej.id)}" class="ej-val-input" value="${defaultPeso}" inputmode="decimal" autocomplete="off" data-select-on-focus="1">
                     </div>
                     <div class="ej-input-col">
@@ -977,7 +978,7 @@
                       <div class="ej-saved-summary">
                         <span style="color: var(--accent-emerald);">${renderIcon('check')}</span>
                         <div class="ej-saved-data">
-                          <span style="color: var(--accent-emerald);">Hoy: ${seriesDelEj.length} × ${ultimaHoy.pesoKg} kg</span>
+                          <span style="color: var(--accent-emerald);">Hoy: ${seriesDelEj.length} × ${ultimaHoy.pesoKg} kg${esBilateralManc ? ` c/u (${Math.round((Number(ultimaHoy.pesoKg) || 0) * 2 * 10) / 10} total)` : ''}</span>
                           <span style="color: var(--text-dim); margin: 0 3px;">·</span>
                           <span>${ultimaHoy.reps} reps</span>
                           ${ultimaHoy.rpe ? `<span style="color: var(--text-dim); margin: 0 3px;">·</span><span>RPE ${ultimaHoy.rpe}</span>` : ''}
@@ -992,7 +993,7 @@
                     <div class="ej-input-box">
                       <div class="ej-inputs-4col">
                         <div class="ej-input-col">
-                          <label class="ej-input-label" for="bulk-peso-${h(ej.id)}">KG</label>
+                          <label class="ej-input-label" for="bulk-peso-${h(ej.id)}">${esBilateralManc ? 'KG (c/u ×2)' : 'KG'}</label>
                           <input type="text" id="bulk-peso-${h(ej.id)}" class="ej-val-input" value="${defaultPeso}" inputmode="decimal" autocomplete="off" data-select-on-focus="1" placeholder="0">
                         </div>
                         <div class="ej-input-col">
@@ -1206,6 +1207,9 @@
         return {
           id: item.ejercicioId,
           nombre: (ejObj && ejObj.nombre) || item.nombre || 'Activación',
+          series: item.seriesObjetivo || 2,
+          reps: item.repsObjetivo || '12',
+          notas: item.notas || '',
           prescripcion: `${item.seriesObjetivo || 2} series × ${item.repsObjetivo || '12'}`,
           foco: (ejObj && ejObj.grupoMuscular) || 'Activación',
           completado: Boolean(item.completado),
@@ -1235,6 +1239,8 @@
           nombre: (ejObj && ejObj.nombre) || item.nombre || 'Movilidad',
           series: item.seriesObjetivo || 2,
           reps: item.repsObjetivo || '12',
+          pesoKg: item.pesoObjetivo || 0,
+          notas: item.notas || '',
           completado: Boolean(item.completado),
           esSesionItem: true
         };
@@ -1354,6 +1360,8 @@
               ` : listaActivacionHoy.map(act => {
                 const ejRef = (state.ejercicios || []).find(e => e.id === act.id) || (Engine.CATALOGO_EJERCICIOS || []).find(e => e.id === act.id);
                 const media = ejRef ? Engine.resolveEjercicioMedia(ejRef) : {};
+                const actSeries = act.series || 2;
+                const actReps = act.reps || act.prescripcion || '12';
                 return `
                   <div class="check-row ${act.completado ? 'done' : ''}">
                     <div class="check-row-inner">
@@ -1363,9 +1371,10 @@
                       ${media.illustrationUrl ? `<img class="check-row-img" src="${h(media.illustrationUrl)}" alt="" loading="lazy">` : ''}
                       <div class="check-row-text">
                         <strong>${h(act.nombre)}</strong>
-                        <small>${h(act.prescripcion || '')}</small>
+                        <small>${h(act.prescripcion || `${actSeries} series × ${actReps}`)}</small>
                       </div>
                       <button type="button" class="btn-eye-icon" data-action="view-ejercicio" data-ejercicio-id="${h(act.id)}" title="Ver técnica">${renderIcon('eye')}</button>
+                      <button type="button" class="btn-icon-action" data-action="open-edit-act-mov" data-tipo="activacion" data-es-sesion="${act.esPersonalizadoEnSesion ? '1' : '0'}" data-ejercicio-id="${h(act.id)}" data-entrenamiento-id="${h(entActivo.id)}" data-nombre="${h(act.nombre)}" data-series="${h(String(actSeries))}" data-reps="${h(String(actReps))}" data-notas="${h(act.notas || '')}" title="Editar series y repes">${renderIcon('edit')}</button>
                       <button type="button" class="btn-icon-action danger" data-action="${act.esPersonalizadoEnSesion ? 'delete-sesion-ej' : 'delete-activacion'}" data-act-id="${h(act.id)}" data-ejercicio-id="${h(act.id)}" data-entrenamiento-id="${h(entActivo.id)}" title="Quitar">${renderIcon('x')}</button>
                     </div>
                   </div>
@@ -1410,9 +1419,10 @@
                       ${media.illustrationUrl ? `<img class="check-row-img" src="${h(media.illustrationUrl)}" alt="" loading="lazy">` : ''}
                       <div class="check-row-text">
                         <strong>${h(m.nombre)}</strong>
-                        <small>${m.series || 2} series × ${h(m.reps || '12')} reps</small>
+                        <small>${m.series || 2} series × ${h(m.reps || '12')} reps${Number(m.pesoKg) > 0 ? ` · ${m.pesoKg} kg` : ''}</small>
                       </div>
                       <button type="button" class="btn-eye-icon" data-action="view-ejercicio" data-ejercicio-id="${h(m.ejercicioId)}" title="Ver técnica">${renderIcon('eye')}</button>
+                      <button type="button" class="btn-icon-action" data-action="open-edit-act-mov" data-tipo="movilidad" data-es-sesion="${m.esSesionItem ? '1' : '0'}" data-mov-id="${h(m.esSesionItem ? '' : m.id)}" data-ejercicio-id="${h(m.ejercicioId)}" data-entrenamiento-id="${h(entActivo.id)}" data-nombre="${h(m.nombre)}" data-series="${h(String(m.series || 2))}" data-reps="${h(String(m.reps || '12'))}" data-peso="${h(String(m.pesoKg || 0))}" data-notas="${h(m.notas || '')}" title="Editar series y repes">${renderIcon('edit')}</button>
                       <button type="button" class="btn-icon-action danger" data-action="${m.esSesionItem ? 'delete-sesion-ej' : 'delete-movilidad'}" data-mov-id="${h(m.id)}" data-ejercicio-id="${h(m.ejercicioId)}" data-entrenamiento-id="${h(entActivo.id)}" title="Quitar">${renderIcon('x')}</button>
                     </div>
                   </div>
@@ -1608,7 +1618,7 @@
     });
 
     const seriesActivas = (state.series || []).filter(s => !s.deleted && s.completada);
-    const volumenTotal = seriesActivas.reduce((acc, s) => acc + Engine.computeVolumenSerie(s), 0);
+    const volumenTotal = seriesActivas.reduce((acc, s) => acc + Engine.computeVolumenSerie(s, todosEjerciciosMap), 0);
 
     // 1. Construir lista de EJERCICIOS REALIZADOS (jamás mostrar ejercicios que nunca hizo)
     const ejerciciosRealizados = [];
@@ -1686,7 +1696,7 @@
         });
       });
 
-      const volClase = sList.reduce((acc, s) => acc + Engine.computeVolumenSerie(s), 0);
+      const volClase = sList.reduce((acc, s) => acc + Engine.computeVolumenSerie(s, todosEjerciciosMap), 0);
       clasesRealizadas.push({
         id: entId,
         fecha,
@@ -3186,9 +3196,10 @@
       return;
     }
 
-    // MODAL 4: Crear un Ejercicio Personalizado Nuevo en el Catálogo (con chequeo de similares y categorías completas)
+    // MODAL 4: Crear un Ejercicio Personalizado Nuevo en el Catálogo (simple: patrón queda pendiente para curación)
     if (activeModal.type === 'create-custom-ejercicio') {
       const defGrupo = activeModal.defaultGrupo || (activeModal.targetBloque === 'activacion' ? 'activacion' : (activeModal.targetBloque === 'movilidad' ? 'movilidad' : (activeModal.targetBloque === 'cierre' ? 'brazos' : 'pecho')));
+      const esActOMov = defGrupo === 'activacion' || defGrupo === 'movilidad';
       const tieneDestino = Boolean(activeModal.targetBloque || activeModal.returnContext);
       const opcionesGrupo = [
         ['activacion', 'Activación'],
@@ -3200,15 +3211,6 @@
         ['brazos', 'Brazos'],
         ['core', 'Core'],
         ['amrap', 'AMRAP']
-      ];
-      const opcionesPatron = [
-        ['empuje', 'Empuje (Press / Fondos)'],
-        ['traccion', 'Tracción (Remo / Dominadas)'],
-        ['rodilla', 'Dominante de rodilla (Sentadilla)'],
-        ['bisagra', 'Bisagra de cadera (Peso muerto / Thrust)'],
-        ['core', 'Core / Anti-rotación'],
-        ['movilidad', 'Movilidad / Activación'],
-        ['metabolico', 'Metabólico / Acondicionamiento']
       ];
       overlay.innerHTML = `
         <div class="modal-card">
@@ -3222,7 +3224,7 @@
           <form data-action="submit-custom-ejercicio" style="display: flex; flex-direction: column; gap: 10px;">
             <div class="form-group">
               <label class="form-label" for="custom-ej-nombre">Nombre</label>
-              <input type="text" id="custom-ej-nombre" class="form-input" placeholder="Ej: Sentadilla hack o Pallof con banda" required>
+              <input type="text" id="custom-ej-nombre" class="form-input" placeholder="Ej: Remo renegado o Pallof con banda" required>
               <div id="custom-ej-similares" class="similares-box" style="display: none;"></div>
             </div>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
@@ -3248,22 +3250,66 @@
             </div>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
               <div class="form-group">
-                <label class="form-label" for="custom-ej-musculo">Músculo principal</label>
-                <input type="text" id="custom-ej-musculo" class="form-input" placeholder="Ej: Cuádriceps / Glúteos">
+                <label class="form-label" for="custom-ej-series">Series</label>
+                <input type="text" id="custom-ej-series" class="form-input" value="${esActOMov ? '2' : '3'}" inputmode="numeric" autocomplete="off" data-select-on-focus="1">
               </div>
               <div class="form-group">
-                <label class="form-label" for="custom-ej-patron">Patrón</label>
-                <select id="custom-ej-patron" class="form-input">
-                  ${opcionesPatron.map(([v, lbl]) => `<option value="${v}">${lbl}</option>`).join('')}
-                </select>
+                <label class="form-label" for="custom-ej-reps">Repeticiones</label>
+                <input type="text" id="custom-ej-reps" class="form-input" value="${esActOMov ? '12' : '8-12'}" autocomplete="off" data-select-on-focus="1" placeholder="Ej: 12 o 10-12">
               </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="custom-ej-musculo">Músculo principal (opcional)</label>
+              <input type="text" id="custom-ej-musculo" class="form-input" placeholder="Opcional (ej. Espalda / Glúteos)">
             </div>
             <div class="form-group">
               <label class="form-label" for="custom-ej-notas">Notas técnicas (opcional)</label>
               <input type="text" id="custom-ej-notas" class="form-input" placeholder="Indicaciones de postura o recorrido">
             </div>
-            <p style="margin: 0; font-size: 11px; color: var(--text-dim);">Se guarda al instante en tu dispositivo y se envía al administrador para sumar imagen al catálogo global.</p>
+            <p style="margin: 0; font-size: 11px; color: var(--text-dim);">Se guarda al instante en tu dispositivo. Los datos técnicos (patrón e imagen) quedan pendientes hasta revisarlos en nuestra base.</p>
             <button type="submit" class="btn-primary">${tieneDestino ? 'Guardar y sumar' : 'Guardar'}</button>
+          </form>
+        </div>
+      `;
+      return;
+    }
+
+    if (activeModal.type === 'edit-act-mov') {
+      const esMov = activeModal.tipo === 'movilidad';
+      overlay.innerHTML = `
+        <div class="modal-card" style="max-width: 440px;">
+          <div class="modal-header-sticky">
+            <div>
+              <h2 class="modal-title" style="font-size: 17px;">${h(activeModal.nombre || (esMov ? 'Editar movilidad' : 'Editar activación'))}</h2>
+              <span class="net-status" style="margin: 2px 0 0;">${esMov ? 'Movilidad' : 'Activación'} · Ajustá series y repeticiones</span>
+            </div>
+            <button type="button" class="btn-close-modal" data-action="close-modal" title="Cerrar">${renderIcon('x')}</button>
+          </div>
+          <form data-action="submit-edit-act-mov" style="display: flex; flex-direction: column; gap: 10px;">
+            <div style="display: grid; grid-template-columns: ${esMov ? '1fr 1fr 1fr' : '1fr 1fr'}; gap: 8px;">
+              <div class="form-group">
+                <label class="form-label" for="edit-am-series">Series</label>
+                <input type="text" id="edit-am-series" class="form-input" value="${h(activeModal.series || '2')}" inputmode="numeric" autocomplete="off" data-select-on-focus="1">
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="edit-am-reps">Repes</label>
+                <input type="text" id="edit-am-reps" class="form-input" value="${h(activeModal.reps || '12')}" autocomplete="off" data-select-on-focus="1" placeholder="Ej: 15">
+              </div>
+              ${esMov ? `
+                <div class="form-group">
+                  <label class="form-label" for="edit-am-peso">Peso (kg)</label>
+                  <input type="text" id="edit-am-peso" class="form-input" value="${h(activeModal.pesoKg != null ? String(activeModal.pesoKg) : '0')}" inputmode="decimal" autocomplete="off" data-select-on-focus="1">
+                </div>
+              ` : ''}
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="edit-am-notas">Nota (opcional)</label>
+              <input type="text" id="edit-am-notas" class="form-input" value="${h(activeModal.notas || '')}" placeholder="Ej: Pausa de 2 seg arriba">
+            </div>
+            <div class="modal-actions">
+              <button type="button" class="btn-secondary" data-action="close-modal">Cancelar</button>
+              <button type="submit" class="btn-primary">Guardar cambios</button>
+            </div>
           </form>
         </div>
       `;
@@ -3339,6 +3385,10 @@
             ${ej.prescripcionSugerida ? `<p><strong>Dosificación sugerida:</strong> ${h(ej.prescripcionSugerida)}</p>` : ''}
             <p><strong>Técnica:</strong> ${h(ej.notas || 'Recorrido completo, bajada controlada y abdomen firme.')}</p>
           </div>
+
+          <button type="button" class="btn-link report-img-btn" data-action="report-wrong-exercise-img" data-ejercicio-id="${h(ej.id)}" data-media-tab="${h(viewMode)}">
+            ${activeModal.imgReported ? '✓ Imagen reportada para revisión' : 'Avisar si la imagen no corresponde'}
+          </button>
 
           <button type="button" class="btn-secondary" data-action="close-modal">Listo</button>
         </div>
@@ -3530,7 +3580,7 @@
                 </div>
                 <div class="detalle-chips-wrap">
                   ${item.series.map(sr => `
-                    <span class="badge" style="font-family: var(--font-mono); font-size: 11px;">#${sr.numeroSerie}: ${sr.pesoKg} kg × ${sr.reps}${sr.rpe ? ` · RPE ${sr.rpe}` : ''}</span>
+                    <span class="badge" style="font-family: var(--font-mono); font-size: 11px;">#${sr.numeroSerie}: ${sr.pesoKg} kg${sr.multiplicadorCarga === 2 ? ' ×2' : ''} × ${sr.reps}${sr.rpe ? ` · RPE ${sr.rpe}` : ''}</span>
                   `).join('')}
                 </div>
               </div>
@@ -3572,7 +3622,7 @@
               ${det.series.map(sr => `
                 <div class="detalle-serie-row">
                   <span>Serie ${sr.numeroSerie}</span>
-                  <strong>${sr.pesoKg} kg × ${sr.reps} reps${sr.rpe ? ` · RPE ${sr.rpe}` : ''}</strong>
+                  <strong>${sr.pesoKg} kg${sr.multiplicadorCarga === 2 ? ' (c/u ×2)' : ''} × ${sr.reps} reps${sr.rpe ? ` · RPE ${sr.rpe}` : ''}</strong>
                 </div>
               `).join('')}
             </div>
@@ -4720,17 +4770,38 @@
       const grupoMuscular = document.getElementById('custom-ej-grupo').value;
       const equipo = document.getElementById('custom-ej-equipo').value;
       const musculoActivo = (document.getElementById('custom-ej-musculo')?.value || '').trim();
-      const patronMovimiento = document.getElementById('custom-ej-patron')?.value || '';
+      const seriesSugeridas = Math.max(1, parseInt(document.getElementById('custom-ej-series')?.value, 10) || (grupoMuscular === 'activacion' || grupoMuscular === 'movilidad' ? 2 : 3));
+      const repsSugeridas = (document.getElementById('custom-ej-reps')?.value || '').trim() || (grupoMuscular === 'activacion' || grupoMuscular === 'movilidad' ? '12' : '8-12');
+      const patronMovimiento = 'pendiente';
       const notas = document.getElementById('custom-ej-notas').value;
 
       const ctx = activeModal && activeModal.returnContext;
       const targetBloqueAttr = activeModal && activeModal.targetBloque;
 
-      Store.commit(s => Engine.crearEjercicio(s, { nombre, grupoMuscular, equipo, musculoActivo, patronMovimiento, notas }));
+      Store.commit(s => Engine.crearEjercicio(s, {
+        nombre,
+        grupoMuscular,
+        equipo,
+        musculoActivo,
+        patronMovimiento,
+        seriesSugeridas,
+        repsSugeridas,
+        notas
+      }));
       const stAfter = Store.getState();
       const newEjId = stAfter.lastCreatedEjercicioId || ((stAfter.ejercicios && stAfter.ejercicios[stAfter.ejercicios.length - 1]) || {}).id;
       if (typeof Store.enviarEjercicioPropuestoNube === 'function') {
-        Store.enviarEjercicioPropuestoNube({ id: newEjId, nombre, grupoMuscular, equipo, musculoActivo, patronMovimiento, notas }).catch(() => {});
+        Store.enviarEjercicioPropuestoNube({
+          id: newEjId,
+          nombre,
+          grupoMuscular,
+          equipo,
+          musculoActivo,
+          patronMovimiento,
+          seriesSugeridas,
+          repsSugeridas,
+          notas
+        }).catch(() => {});
       }
 
       // Si veníamos de un constructor, rutina, AMRAP o bloque de entrenamiento, sumarlo automáticamente
@@ -4738,8 +4809,8 @@
         draftRutina.ejercicios.push({
           ejercicioId: newEjId,
           nombre,
-          seriesObjetivo: 3,
-          repsObjetivo: '8-12'
+          seriesObjetivo: seriesSugeridas,
+          repsObjetivo: repsSugeridas
         });
         activeModal = { type: 'rutina-builder' };
         showToast(`✓ "${nombre}" creado y sumado a la rutina.`);
@@ -4751,8 +4822,8 @@
         const mutator = s => Engine.agregarEjercicioARutina(s, ctx.rutinaId, {
           ejercicioId: newEjId,
           nombre,
-          seriesObjetivo: 3,
-          repsObjetivo: '8-12'
+          seriesObjetivo: seriesSugeridas,
+          repsObjetivo: repsSugeridas
         });
         if (ctx.targetUser) Store.commitForUser(ctx.targetUser, mutator);
         else Store.commit(mutator);
@@ -4766,7 +4837,7 @@
         Store.commit(s => Engine.agregarEjercicioABloqueAmrap(s, ctx.amrapId, {
           ejercicioId: newEjId,
           nombre,
-          repsObjetivo: '12 reps'
+          repsObjetivo: repsSugeridas
         }));
         activeModal = null;
         showToast(`✓ "${nombre}" creado y agregado al AMRAP.`);
@@ -4787,8 +4858,8 @@
             ejercicioId: newEjId,
             segmento: resolvedSeg,
             bloque: resolvedB,
-            seriesObjetivo: resolvedB === 'activacion' || resolvedB === 'movilidad' ? 2 : 3,
-            repsObjetivo: resolvedB === 'activacion' || resolvedB === 'movilidad' ? '12' : '8-12',
+            seriesObjetivo: seriesSugeridas,
+            repsObjetivo: repsSugeridas,
             notas
           });
         });
@@ -4802,6 +4873,95 @@
       activeModal = null;
       showToast(`✓ "${nombre}" creado en el catálogo.`);
       render();
+    },
+
+    'open-edit-act-mov': el => {
+      const tipo = el.getAttribute('data-tipo') || 'movilidad';
+      const esSesion = el.getAttribute('data-es-sesion') === '1';
+      const movId = el.getAttribute('data-mov-id') || '';
+      const ejercicioId = el.getAttribute('data-ejercicio-id') || '';
+      const entrenamientoId = el.getAttribute('data-entrenamiento-id') || '';
+      const nombre = el.getAttribute('data-nombre') || '';
+      const series = el.getAttribute('data-series') || '2';
+      const reps = el.getAttribute('data-reps') || '12';
+      const pesoKg = el.getAttribute('data-peso') || '0';
+      const notas = el.getAttribute('data-notas') || '';
+      activeModal = {
+        type: 'edit-act-mov',
+        tipo,
+        esSesion,
+        movId,
+        ejercicioId,
+        entrenamientoId,
+        nombre,
+        series,
+        reps,
+        pesoKg,
+        notas
+      };
+      renderModals();
+    },
+
+    'submit-edit-act-mov': () => {
+      if (!activeModal || activeModal.type !== 'edit-act-mov') return;
+      const { tipo, esSesion, movId, ejercicioId, entrenamientoId } = activeModal;
+      const series = Math.max(1, parseInt(document.getElementById('edit-am-series')?.value, 10) || 2);
+      const reps = (document.getElementById('edit-am-reps')?.value || '').trim() || '12';
+      const pesoEl = document.getElementById('edit-am-peso');
+      const pesoKg = pesoEl ? Engine.parseDecimal(pesoEl.value, 0) : 0;
+      const notas = (document.getElementById('edit-am-notas')?.value || '').trim();
+
+      if (tipo === 'movilidad' && movId && !esSesion) {
+        Store.commit(s => Engine.actualizarMovilidad(s, movId, { series, reps, pesoKg, notas }));
+      } else {
+        const bloque = tipo === 'movilidad' ? 'movilidad' : 'activacion';
+        Store.commit(s => {
+          let next = Engine.agregarEjercicioASesion(s, entrenamientoId, {
+            ejercicioId,
+            segmento: bloque,
+            bloque,
+            seriesObjetivo: series,
+            repsObjetivo: reps,
+            pesoObjetivo: pesoKg,
+            notas
+          });
+          return Engine.editarEjercicioDeSesion(next, entrenamientoId, ejercicioId, {
+            newEjercicioId: ejercicioId,
+            seriesObjetivo: series,
+            repsObjetivo: reps,
+            notas
+          });
+        });
+      }
+      activeModal = null;
+      showToast(`✓ Actualizado: ${series} series × ${reps} reps.`);
+      render();
+    },
+
+    'report-wrong-exercise-img': el => {
+      const ejId = el.getAttribute('data-ejercicio-id');
+      const mediaTab = el.getAttribute('data-media-tab') || 'lamina';
+      if (!ejId || (activeModal && activeModal.imgReported)) return;
+      const st = Store.getState();
+      const ej = (st.ejercicios || []).find(e => e.id === ejId)
+        || (Engine.CATALOGO_EJERCICIOS || []).find(e => e.id === ejId)
+        || { id: ejId, nombre: ejId };
+      const media = Engine.resolveEjercicioMedia(ej);
+      const urlRep = mediaTab === 'movimiento' ? media.gifUrl : (mediaTab === 'cuadros' ? media.startImgUrl : media.illustrationUrl);
+      const mensaje = `Imagen incorrecta en ejercicio "${ej.nombre}" (${ej.id}) · pestaña: ${mediaTab}${urlRep ? ` · archivo: ${urlRep}` : ''}`;
+      if (typeof Store.enviarFeedback === 'function') {
+        Store.enviarFeedback({
+          categoria: 'imagen_incorrecta',
+          tipo: 'imagen_incorrecta',
+          mensaje,
+          contexto: `v${APP_VERSION} · ${activeTab} · ${window.innerWidth}x${window.innerHeight}`
+        });
+      }
+      if (activeModal && activeModal.type === 'view-ejercicio') {
+        activeModal = { ...activeModal, imgReported: true };
+        renderModals();
+      }
+      showToast(`✓ Aviso enviado: revisaremos la imagen de ${ej.nombre}.`);
     },
 
     // --- EJECUCIÓN DE ENTRENAMIENTO ---

@@ -329,6 +329,25 @@
       notas: 'Llevar la mancuerna en arco hacia el bolsillo de la cadera.',
       orden: 10
     },
+    {
+      id: 'ej-remo-renegado',
+      nombre: 'Remo Renegado con Mancuernas',
+      grupoMuscular: 'espalda',
+      equipo: 'mancuerna',
+      mancuernasCantidad: 2,
+      musculoActivo: 'Dorsal Ancho / Core Antirotación / Hombros',
+      patronMovimiento: 'traccion_horizontal',
+      svgTipo: 'row',
+      seriesSugeridas: 3,
+      repsSugeridas: '8-10 por lado',
+      descansoSugerido: 90,
+      illustrationUrl: './icons/ejercicios/ej-remo-renegado.jpg',
+      startImgUrl: './icons/gifs/renegade-row-start.jpg',
+      endImgUrl: './icons/gifs/renegade-row-end.jpg',
+      gifUrl: './icons/gifs/renegade-row.gif',
+      notas: 'Plancha alta apoyado sobre dos mancuernas, pies separados al ancho de hombros. Remá una mancuerna hacia la cadera manteniendo la pelvis firme sin rotar.',
+      orden: 10.5
+    },
     // VARIANTES DE DOMINADAS (PULL-UPS)
     {
       id: 'ej-dominadas-pronas',
@@ -666,6 +685,7 @@
       nombre: 'Sentadilla Búlgara con Pesa Rusa (Kettlebell)',
       grupoMuscular: 'piernas',
       equipo: 'mancuerna',
+      mancuernasCantidad: 1,
       seriesSugeridas: 3,
       repsSugeridas: '8-10',
       descansoSugerido: 90,
@@ -1638,6 +1658,7 @@
     'ej-remo-barra': './icons/ejercicios/ej-remo-barra.jpg',
     'ej-remo-polea-baja': './icons/ejercicios/ej-remo-polea-baja.jpg',
     'ej-remo-mancuerna': './icons/ejercicios/ej-remo-mancuerna.jpg',
+    'ej-remo-renegado': './icons/ejercicios/ej-remo-renegado.jpg',
     'ej-sentadilla': './icons/ejercicios/ej-sentadilla.jpg',
     'ej-peso-muerto': './icons/ejercicios/ej-peso-muerto.jpg',
     'ej-prensa-inclinada': './icons/ejercicios/ej-prensa-inclinada.jpg',
@@ -1886,22 +1907,62 @@
   };
 
   /**
-   * Volumen de carga de una serie (peso × repeticiones).
+   * Determina si el ejercicio usa DOS mancuernas simultáneas (volumen real ×2 del peso mostrado c/u).
    */
-  Engine.computeVolumenSerie = function (serie) {
+  Engine.esMancuernaBilateral = function (ej) {
+    if (!ej) return false;
+    if (Number(ej.mancuernasCantidad) === 2) return true;
+    if (Number(ej.mancuernasCantidad) === 1) return false;
+    if (ej.equipo !== 'mancuerna') return false;
+    if (ej.grupoMuscular === 'movilidad' || ej.grupoMuscular === 'activacion') return false;
+    const norm = String(ej.nombre || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (/unilateral|goblet|pullover|tras nuca|trasnuca|concentrado|patada|swing|giros rusos|russian|wall ball|balon|una pierna|una mano|serrucho|pesa rusa(?!s)/.test(norm)) {
+      return false;
+    }
+    return true;
+  };
+
+  function resolveEjercicioForCalc(ejOrState, ejercicioId) {
+    if (!ejOrState) return null;
+    if (ejOrState instanceof Map) return ejOrState.get(ejercicioId) || null;
+    if (Array.isArray(ejOrState.ejercicios)) {
+      return ejOrState.ejercicios.find(e => e && e.id === ejercicioId)
+        || (Engine.CATALOGO_EJERCICIOS || []).find(e => e && e.id === ejercicioId)
+        || null;
+    }
+    if (ejOrState.equipo !== undefined || ejOrState.mancuernasCantidad !== undefined || ejOrState.nombre !== undefined) {
+      return ejOrState;
+    }
+    return null;
+  }
+
+  /**
+   * Multiplicador de carga de una serie (2 para mancuernas bilaterales, 1 en el resto).
+   */
+  Engine.getMultiplicadorCarga = function (serie, ejOrState = null) {
+    if (serie && Number(serie.multiplicadorCarga) > 0) return Number(serie.multiplicadorCarga);
+    const ej = serie ? resolveEjercicioForCalc(ejOrState, serie.ejercicioId) : resolveEjercicioForCalc(ejOrState, null);
+    return Engine.esMancuernaBilateral(ej) ? 2 : 1;
+  };
+
+  /**
+   * Volumen de carga de una serie (peso × multiplicador × repeticiones).
+   */
+  Engine.computeVolumenSerie = function (serie, ejOrState = null) {
     if (!serie || serie.deleted) return 0;
     const peso = Number(serie.pesoKg) || 0;
     const reps = Number(serie.reps) || 0;
-    return Math.round(peso * reps * 100) / 100;
+    const mult = Engine.getMultiplicadorCarga(serie, ejOrState);
+    return Math.round(peso * mult * reps * 100) / 100;
   };
 
   /**
    * Volumen total de un entrenamiento sumando todas sus series activas.
    */
-  Engine.computeVolumenEntrenamiento = function (series, entrenamientoId) {
+  Engine.computeVolumenEntrenamiento = function (series, entrenamientoId, stateOrEjMap = null) {
     if (!Array.isArray(series)) return 0;
     const filtradas = series.filter(s => s.entrenamientoId === entrenamientoId && !s.deleted);
-    const total = filtradas.reduce((acc, s) => acc + Engine.computeVolumenSerie(s), 0);
+    const total = filtradas.reduce((acc, s) => acc + Engine.computeVolumenSerie(s, stateOrEjMap), 0);
     return Math.round(total * 10) / 10;
   };
 
@@ -1924,8 +1985,12 @@
     }
 
     const mapaEjercicios = new Map();
-    (state.ejercicios || Engine.CATALOGO_EJERCICIOS).forEach(ej => {
-      mapaEjercicios.set(ej.id, ej.grupoMuscular || 'core');
+    const mapaEjObj = new Map();
+    [...(Engine.CATALOGO_EJERCICIOS || []), ...(state.ejercicios || [])].forEach(ej => {
+      if (ej && ej.id) {
+        mapaEjercicios.set(ej.id, ej.grupoMuscular || 'core');
+        mapaEjObj.set(ej.id, ej);
+      }
     });
 
     const entrenamientosRango = new Set(
@@ -1939,7 +2004,7 @@
       if (!entrenamientosRango.has(serie.entrenamientoId)) return;
 
       const grupo = mapaEjercicios.get(serie.ejercicioId) || 'core';
-      const vol = Engine.computeVolumenSerie(serie);
+      const vol = Engine.computeVolumenSerie(serie, mapaEjObj);
 
       if (Object.prototype.hasOwnProperty.call(resultado, grupo)) {
         resultado[grupo] = Math.round((resultado[grupo] + vol) * 10) / 10;
@@ -2347,6 +2412,10 @@
 
     if (!nuevaSerie) {
       const id = serieData.id || Engine.generateId('sr');
+      const mult = Engine.getMultiplicadorCarga({
+        ejercicioId: serieData.ejercicioId,
+        multiplicadorCarga: serieData.multiplicadorCarga
+      }, state);
       nuevaSerie = {
         id: id,
         entrenamientoId: serieData.entrenamientoId,
@@ -2355,6 +2424,7 @@
         numeroSerie: serieData.numeroSerie || 1,
         tipo: serieData.tipo || 'efectiva',
         pesoKg: Number(serieData.pesoKg) || 0,
+        multiplicadorCarga: mult,
         reps: Number(serieData.reps) || 0,
         rir: serieData.rir !== undefined ? Number(serieData.rir) : 2,
         rpe: (serieData.rpe !== undefined && serieData.rpe !== null && serieData.rpe !== '') ? Number(serieData.rpe) : null,
@@ -2576,7 +2646,7 @@
       grupoMuscular: ejData.grupoMuscular || 'pecho',
       equipo: ejData.equipo || 'barra',
       musculoActivo: String(ejData.musculoActivo || '').trim(),
-      patronMovimiento: ejData.patronMovimiento || '',
+      patronMovimiento: ejData.patronMovimiento || 'pendiente',
       prescripcionSugerida: ejData.prescripcionSugerida || '',
       seriesSugeridas: Number(ejData.seriesSugeridas) || 3,
       repsSugeridas: ejData.repsSugeridas || '8-12',
@@ -3017,6 +3087,11 @@
       s => s.entrenamientoId === payload.entrenamientoId && s.ejercicioId === payload.ejercicioId && !s.deleted
     );
 
+    const mult = Engine.getMultiplicadorCarga({
+      ejercicioId: payload.ejercicioId,
+      multiplicadorCarga: payload.multiplicadorCarga
+    }, state);
+
     const nuevasIds = [];
     for (let i = 0; i < cant; i++) {
       const id = Engine.generateId('sr');
@@ -3029,6 +3104,7 @@
         numeroSerie: previas.length + i + 1,
         tipo: payload.tipo || 'efectiva',
         pesoKg: Number(payload.pesoKg) || 0,
+        multiplicadorCarga: mult,
         reps: Number(payload.reps) || 0,
         rir: payload.rir !== undefined ? Number(payload.rir) : 2,
         rpe: (payload.rpe !== undefined && payload.rpe !== null && payload.rpe !== '') ? Number(payload.rpe) : null,
@@ -3390,6 +3466,26 @@
     return { ...state, movilidad, movilidadSesion: movilidad, updatedAt: ahora };
   };
 
+  /** Actualiza series, repeticiones, peso o notas de un ítem puntual de movilidad sin perder su orden. */
+  Engine.actualizarMovilidad = function (state, movId, patch = {}) {
+    if (!state || !movId) return state;
+    const ahora = Date.now();
+    const movilidad = (state.movilidad || []).map(m => {
+      if (m.id !== movId) return m;
+      const pesoVal = patch.pesoKg !== undefined ? Engine.parseDecimal(patch.pesoKg, 0) : (Number(m.pesoKg) || 0);
+      return {
+        ...m,
+        nombre: patch.nombre ? String(patch.nombre).trim() : m.nombre,
+        series: patch.series !== undefined ? (parseInt(patch.series, 10) || m.series || 2) : m.series,
+        reps: patch.reps !== undefined ? (String(patch.reps).trim() || m.reps || '12') : m.reps,
+        pesoKg: pesoVal,
+        notas: patch.notas !== undefined ? String(patch.notas || '').trim() : (m.notas || ''),
+        updatedAt: ahora
+      };
+    });
+    return { ...state, movilidad, movilidadSesion: movilidad, updatedAt: ahora };
+  };
+
   /** Movilidad que corresponde a una fecha (los ítems viejos sin fecha se consideran del día). */
   Engine.movilidadDe = function (state, fechaISO = Engine.todayISO()) {
     return (state.movilidad || []).filter(m => !m.deleted && (!m.fecha || m.fecha === fechaISO));
@@ -3543,7 +3639,7 @@
       entrenamiento: t,
       nombre: rutina ? rutina.nombre : 'Entrenamiento libre',
       series: series.length,
-      volumen: Engine.computeVolumenEntrenamiento(state.series, t.id),
+      volumen: Engine.computeVolumenEntrenamiento(state.series, t.id, state),
       haceDias: dias,
       haceTexto: dias === 0 ? 'hoy' : dias === 1 ? 'ayer' : `hace ${dias} días`
     };
@@ -3614,7 +3710,7 @@
         fecha: fecha,
         series: ordenadas,
         mejorSerie: { pesoKg: mejor.pesoKg, reps: mejor.reps },
-        volumenTotal: Engine.computeVolumenEntrenamiento(ordenadas, entId)
+        volumenTotal: Engine.computeVolumenEntrenamiento(ordenadas, entId, state)
       });
     });
 
@@ -3678,7 +3774,7 @@
       const ej = catalogo.find(e => e.id === ejId) || { id: ejId, nombre: 'Ejercicio' };
       const efectivas = lista.filter(s => s.tipo !== 'calentamiento' && Number(s.pesoKg) > 0 && Number(s.reps) > 0);
       const mejor = efectivas.reduce((a, s) => (!a || Engine.compute1RM(s.pesoKg, s.reps) > Engine.compute1RM(a.pesoKg, a.reps) ? s : a), null);
-      const vol = lista.reduce((acc, s) => acc + Engine.computeVolumenSerie(s), 0);
+      const vol = lista.reduce((acc, s) => acc + Engine.computeVolumenSerie(s, ej), 0);
       const item = { ejercicioId: ejId, nombre: ej.nombre, series: lista.length, volumen: Math.round(vol), mejor: mejor ? { pesoKg: mejor.pesoKg, reps: mejor.reps, rm: Engine.compute1RM(mejor.pesoKg, mejor.reps) } : null, pr: false };
       if (mejor) {
         const prevRM = prsPrevios[ejId] ? prsPrevios[ejId].max1RM.rm : 0;
@@ -4166,11 +4262,17 @@
     const entCur = entConFecha.filter(t => t._ms >= cutoffCur);
     const entPrev = dias > 0 ? entConFecha.filter(t => t._ms >= cutoffPrev && t._ms < cutoffCur) : [];
 
+    // Catálogo indexado para nombres, músculos y multiplicador de carga
+    const ejMap = new Map();
+    [...(Engine.CATALOGO_EJERCICIOS || []), ...(state.ejercicios || [])].forEach(e => {
+      if (e && e.id) ejMap.set(e.id, e);
+    });
+
     const srCur = seriesConFecha.filter(s => s._ms >= cutoffCur);
     const srPrev = dias > 0 ? seriesConFecha.filter(s => s._ms >= cutoffPrev && s._ms < cutoffCur) : [];
 
-    const volumenKg = Math.round(srCur.reduce((acc, s) => acc + Engine.computeVolumenSerie(s), 0));
-    const volumenPrevKg = Math.round(srPrev.reduce((acc, s) => acc + Engine.computeVolumenSerie(s), 0));
+    const volumenKg = Math.round(srCur.reduce((acc, s) => acc + Engine.computeVolumenSerie(s, ejMap), 0));
+    const volumenPrevKg = Math.round(srPrev.reduce((acc, s) => acc + Engine.computeVolumenSerie(s, ejMap), 0));
     const volumenDeltaPct = volumenPrevKg > 0
       ? Math.round(((volumenKg - volumenPrevKg) / volumenPrevKg) * 100)
       : null;
@@ -4189,12 +4291,6 @@
     const diasMetaSem = (state.perfil && Array.isArray(state.perfil.diasSemana) && state.perfil.diasSemana.length) || 3;
     const semanas = dias > 0 ? Math.max(1, dias / 7) : 4;
     const consistenciaPct = Math.min(100, Math.round((entCur.length / (diasMetaSem * semanas)) * 100));
-
-    // Catálogo indexado para nombres y músculos
-    const ejMap = new Map();
-    [...(Engine.CATALOGO_EJERCICIOS || []), ...(state.ejercicios || [])].forEach(e => {
-      if (e && e.id) ejMap.set(e.id, e);
-    });
 
     // Ejercicios con series realizadas
     const statsPorEj = new Map();
@@ -4248,7 +4344,7 @@
           const p = Number(s.pesoKg) || 0;
           const rep = Number(s.reps) || 0;
           const rm = Engine.compute1RM(p, rep);
-          vol += Engine.computeVolumenSerie(s);
+          vol += Engine.computeVolumenSerie(s, ejMap);
           if (rm > best1RM) { best1RM = rm; }
           if (p > maxPeso || (p === maxPeso && rep > mejorReps)) { maxPeso = p; mejorReps = rep; }
           if (s.rpe != null && Number(s.rpe) > 0) rpes.push(Number(s.rpe));
@@ -4286,7 +4382,7 @@
     for (const t of entOrdenados) {
       const lista = srPorEntCur.get(t.id) || [];
       if (lista.length === 0) continue;
-      const vol = Math.round(lista.reduce((acc, s) => acc + Engine.computeVolumenSerie(s), 0));
+      const vol = Math.round(lista.reduce((acc, s) => acc + Engine.computeVolumenSerie(s, ejMap), 0));
       const rt = t.rutinaId ? rutinasMapPerf.get(t.rutinaId) : null;
       const ejIds = new Set(lista.map(s => s.ejercicioId));
       clasesVolumen.push({
@@ -4306,7 +4402,7 @@
       const ej = ejMap.get(s.ejercicioId);
       const grupo = (ej && ej.grupoMuscular) || 'otros';
       if (!volMusc[grupo]) volMusc[grupo] = { grupo, volumen: 0, series: 0 };
-      volMusc[grupo].volumen += Engine.computeVolumenSerie(s);
+      volMusc[grupo].volumen += Engine.computeVolumenSerie(s, ejMap);
       volMusc[grupo].series += 1;
     }
     const listaMusc = Object.values(volMusc).sort((a, b) => b.volumen - a.volumen || b.series - a.series);
@@ -4330,7 +4426,7 @@
       if (!srEnt.length) continue;
       const bucket = Number(rLog.energia) >= 4 ? alta : baja;
       bucket.sesiones += 1;
-      bucket.volSum += srEnt.reduce((acc, s) => acc + Engine.computeVolumenSerie(s), 0);
+      bucket.volSum += srEnt.reduce((acc, s) => acc + Engine.computeVolumenSerie(s, ejMap), 0);
       srEnt.forEach(s => {
         if (s.rpe != null && Number(s.rpe) > 0) {
           bucket.rpeSum += Number(s.rpe);
@@ -4404,12 +4500,13 @@
     const porEj = new Map();
     let volumenTotal = 0;
     seriesList.forEach(s => {
-      const vol = Engine.computeVolumenSerie(s);
+      const vol = Engine.computeVolumenSerie(s, ejMap);
       volumenTotal += vol;
       if (!porEj.has(s.ejercicioId)) porEj.set(s.ejercicioId, []);
       porEj.get(s.ejercicioId).push({
         numeroSerie: s.numeroSerie || porEj.get(s.ejercicioId).length + 1,
         pesoKg: Number(s.pesoKg) || 0,
+        multiplicadorCarga: Engine.getMultiplicadorCarga(s, ejMap),
         reps: Number(s.reps) || 0,
         rpe: s.rpe != null ? Number(s.rpe) : null,
         tipo: s.tipo || 'efectiva',
@@ -4472,7 +4569,7 @@
     const series = rawSeries.map((s, idx) => {
       const p = Number(s.pesoKg) || 0;
       const reps = Number(s.reps) || 0;
-      const vol = Engine.computeVolumenSerie(s);
+      const vol = Engine.computeVolumenSerie(s, ej);
       const rm = Engine.compute1RM(p, reps);
       volumen += vol;
       if (rm > est1RM) est1RM = rm;
@@ -4484,6 +4581,7 @@
       return {
         numeroSerie: s.numeroSerie || idx + 1,
         pesoKg: p,
+        multiplicadorCarga: Engine.getMultiplicadorCarga(s, ej),
         reps,
         rpe: s.rpe != null ? Number(s.rpe) : null,
         tipo: s.tipo || 'efectiva',
@@ -4575,13 +4673,18 @@
       }
     });
 
+    const ejMapCal = new Map();
+    [...(Engine.CATALOGO_EJERCICIOS || []), ...(state && state.ejercicios ? state.ejercicios : [])].forEach(e => {
+      if (e && e.id) ejMapCal.set(e.id, e);
+    });
+
     series.forEach(s => {
       const ent = entById.get(s.entrenamientoId);
       const fecha = (ent && ent.fecha) || s.fecha;
       if (!fecha) return;
       const g = ensureGym(fecha);
       g.seriesCount += 1;
-      g.volumenKg += Engine.computeVolumenSerie(s);
+      g.volumenKg += Engine.computeVolumenSerie(s, ejMapCal);
     });
 
     Engine.getFechasAsistenciaGym(state).forEach(f => ensureGym(f));

@@ -1074,6 +1074,25 @@
         }
       }
 
+      // 1b. PUSH: Subir ejercicios personalizados aún no sincronizados
+      try {
+        const customLocales = (st && Array.isArray(st.ejercicios) ? st.ejercicios : [])
+          .filter(e => e && !e.deleted && (e.esPersonalizado || e.creadoPorUsuario));
+        const cachedProps = getCachedPropuestos();
+        const syncedIds = new Set(cachedProps.filter(x => x && x.syncedCloud).map(x => x.id));
+        for (const cp of cachedProps) {
+          if (cp && cp.id && !cp.syncedCloud) {
+            await Store.enviarEjercicioPropuestoNube(cp);
+            syncedIds.add(cp.id);
+          }
+        }
+        for (const ejc of customLocales) {
+          if (!syncedIds.has(ejc.id)) {
+            await Store.enviarEjercicioPropuestoNube(ejc);
+          }
+        }
+      } catch (_) {}
+
       // Migrar elementos históricos de FEEDBACK_INBOX_KEY sin duplicar los ya presentes en state.sugerencias
       try {
         const rawInbox = localStorage.getItem(FEEDBACK_INBOX_KEY);
@@ -1365,12 +1384,15 @@
       grupoMuscular: ejItem.grupoMuscular || 'pecho',
       equipo: ejItem.equipo || 'barra',
       musculoActivo: ejItem.musculoActivo || '',
-      patronMovimiento: ejItem.patronMovimiento || '',
+      patronMovimiento: ejItem.patronMovimiento || 'pendiente',
+      seriesSugeridas: ejItem.seriesSugeridas || 3,
+      repsSugeridas: ejItem.repsSugeridas || '8-12',
       notas: ejItem.notas || '',
       autor: Store.user ? (Store.user.displayName || Store.user.username) : 'Usuario',
       fecha: Engine.todayISO(),
       estado: ejItem.estado || 'pendiente',
       coincidenciasCatalogo: similares,
+      syncedCloud: false,
       updatedAt: Date.now()
     };
 
@@ -1380,9 +1402,10 @@
     else cached.unshift(propData);
     saveCachedPropuestos(cached);
 
+    let uploadedOk = false;
     try {
       if (typeof fetch === 'function') {
-        await fetch(`${SUPABASE_URL}/rest/v1/fin_records`, {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/fin_records`, {
           method: 'POST',
           headers: {
             'apikey': SUPABASE_ANON_KEY,
@@ -1400,9 +1423,47 @@
             deleted: false
           })
         });
+        if (res && res.ok) {
+          uploadedOk = true;
+        } else {
+          // Fallback: respaldar también en coleccion 'sugerencias' para visibilidad garantizada
+          const sugRes = await fetch(`${SUPABASE_URL}/rest/v1/fin_records`, {
+            method: 'POST',
+            headers: {
+              'apikey': SUPABASE_ANON_KEY,
+              'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+              'Content-Type': 'application/json',
+              'x-sync-key': SUGERENCIAS_SYNC_KEY,
+              'Prefer': 'resolution=merge-duplicates,return=minimal'
+            },
+            body: JSON.stringify({
+              sync_key: SUGERENCIAS_SYNC_KEY,
+              coleccion: 'sugerencias',
+              id: 'sug-ejprop-' + propData.id,
+              data: {
+                id: 'sug-ejprop-' + propData.id,
+                categoria: 'ejercicio_propuesto',
+                mensaje: `Ejercicio propuesto: ${propData.nombre} (${propData.grupoMuscular} · ${propData.equipo})`,
+                autor: propData.autor,
+                fecha: propData.fecha,
+                hora: Engine.timeNow(),
+                ejPropuesto: propData,
+                capturas: []
+              },
+              updated_at: Date.now(),
+              deleted: false
+            })
+          });
+          if (sugRes && sugRes.ok) uploadedOk = true;
+        }
       }
     } catch (_) {}
-    return { ok: true, item: propData };
+    if (uploadedOk) {
+      propData.syncedCloud = true;
+      const cachedNow = getCachedPropuestos().map(x => x && x.id === propData.id ? { ...propData } : x);
+      saveCachedPropuestos(cachedNow);
+    }
+    return { ok: true, syncedCloud: uploadedOk, item: propData };
   };
 
   /**
@@ -1427,7 +1488,27 @@
           if (Array.isArray(rows)) {
             for (const r of rows) {
               const d = sanitizeObject(r.data || {});
-              if (d && d.id) mergedMap.set(d.id, d);
+              if (d && d.id) mergedMap.set(d.id, { ...d, syncedCloud: true });
+            }
+          }
+        }
+        const sugRes = await fetch(`${SUPABASE_URL}/rest/v1/fin_records?coleccion=eq.sugerencias&deleted=eq.false&order=server_ts.desc&limit=100`, {
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+            'x-sync-key': SUGERENCIAS_SYNC_KEY
+          }
+        });
+        if (sugRes.ok) {
+          const sRows = await sugRes.json();
+          if (Array.isArray(sRows)) {
+            for (const sr of sRows) {
+              const sd = sanitizeObject(sr.data || {});
+              if (sd && sd.categoria === 'ejercicio_propuesto' && sd.ejPropuesto && sd.ejPropuesto.id) {
+                if (!mergedMap.has(sd.ejPropuesto.id)) {
+                  mergedMap.set(sd.ejPropuesto.id, { ...sd.ejPropuesto, syncedCloud: true });
+                }
+              }
             }
           }
         }
