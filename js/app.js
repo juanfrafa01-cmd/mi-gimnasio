@@ -19,7 +19,7 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '3.7.0';
+  const APP_VERSION = '3.8.0';
 
   /** Número válido o valor por defecto (a diferencia de `|| def`, respeta el 0: RIR 0 = serie al fallo). */
   const numOr = (v, def) => (Number.isFinite(v) ? v : def);
@@ -57,6 +57,9 @@
   let isSaludLogsOpen = false;
   let isSaludFotosOpen = false;
   let isEditingSaludHoy = false;
+  let skipNextSaludCapture = false;
+  let saludCalYear = new Date().getFullYear();
+  let saludCalMonth = new Date().getMonth() + 1;
   let lastRenderedModalType = null;
   let resetPickerScroll = false;
   let adminEjPropuestos = [];
@@ -88,8 +91,10 @@
     objetivoCorto: ''
   };
 
-  function syncSaludDraftsWithState(state, user) {
-    const uKey = user ? user.username : 'anon';
+  function syncSaludDraftsWithState(state, userOrForce) {
+    const force = userOrForce === true;
+    const uObj = (userOrForce && typeof userOrForce === 'object') ? userOrForce : Store.user;
+    const uKey = uObj ? uObj.username : 'anon';
     const p = (state && state.perfil) || {};
     const hoyISO = Engine.todayISO();
     const targetFecha = draftReadiness.fecha || hoyISO;
@@ -100,7 +105,7 @@
       ? state.readinessLogs.find(r => !r.deleted)
       : null);
 
-    if (draftReadiness.userKey !== uKey) {
+    if (force || draftReadiness.userKey !== uKey) {
       draftReadiness = {
         userKey: uKey,
         fecha: hoyISO,
@@ -114,7 +119,7 @@
       };
     }
 
-    if (draftPerfil.userKey !== uKey) {
+    if (force || draftPerfil.userKey !== uKey) {
       draftPerfil = {
         userKey: uKey,
         edad: p.edad != null ? String(p.edad) : '',
@@ -2140,13 +2145,71 @@
         </div>
         `}
 
-        <div class="seg seg-sm">
-          <button type="button" class="seg-btn ${isSaludLogsOpen ? 'active' : ''}" data-action="toggle-salud-logs">Registros (${logs.length})</button>
-          <button type="button" class="seg-btn ${isSaludFotosOpen ? 'active' : ''}" data-action="toggle-salud-fotos">Fotos (${fotosActivas.length})</button>
-          <button type="button" class="seg-btn ${isPerfilOpen ? 'active' : ''}" data-action="toggle-perfil-collapse">Mi ficha</button>
-        </div>
+        ${(() => {
+          const cal = Engine.computeCalendarioSaludMes(state, saludCalYear, saludCalMonth);
+          const hoyParts = hoyISO.split('-').map(Number);
+          const esMesActual = cal.year === hoyParts[0] && cal.month === hoyParts[1];
+          const blanks = Array.from({ length: cal.primerDiaSemana }, () => `<span class="cal-blank" aria-hidden="true"></span>`).join('');
+          return `
+            <div class="onepage-scroll-list">
+              <div class="card card-flat salud-streak-bar">
+                <div class="row-between">
+                  <div>
+                    <span class="eyebrow">Tu constancia del mes</span>
+                    <strong style="font-size: 15px; display: block; margin-top: 2px;">${cal.diasGymMes} ${cal.diasGymMes === 1 ? 'día de gym' : 'días de gym'} · ${cal.diasSeguidosActivos} ${cal.diasSeguidosActivos === 1 ? 'día en racha' : 'días en racha'}</strong>
+                  </div>
+                  <span class="streak-pct-pill">${cal.cumplimientoPct}%</span>
+                </div>
+                <div class="streak-progress"><i style="width: ${cal.cumplimientoPct}%;"></i></div>
+                <small class="streak-msg">${h(cal.mensajeMotivacional)}${cal.rachaSemanas > 0 ? ` · ${cal.rachaSemanas} ${cal.rachaSemanas === 1 ? 'sem.' : 'sems.'} cumpliendo meta` : ''}</small>
+              </div>
 
-        <div class="onepage-scroll-list">
+              <div class="card card-flat salud-cal-card">
+                <div class="cal-header">
+                  <button type="button" class="cal-nav-btn" data-action="nav-salud-cal-mes" data-delta="-1" aria-label="Mes anterior">${renderIcon('arrowLeft')}</button>
+                  <div class="cal-header-title">
+                    <strong>${h(cal.labelMes)}</strong>
+                    ${!esMesActual ? `<button type="button" class="btn-link" data-action="nav-salud-cal-mes" data-delta="0" style="font-size: 11px; padding: 0 4px;">Ir a hoy</button>` : ''}
+                  </div>
+                  <button type="button" class="cal-nav-btn" data-action="nav-salud-cal-mes" data-delta="1" aria-label="Mes siguiente">${renderIcon('arrowRight')}</button>
+                </div>
+
+                <div class="cal-weekdays" aria-hidden="true">
+                  <span>L</span><span>M</span><span>X</span><span>J</span><span>V</span><span>S</span><span>D</span>
+                </div>
+
+                <div class="cal-grid">
+                  ${blanks}
+                  ${cal.dias.map(d => `
+                    <button type="button"
+                      class="cal-day cal-${d.nivelColor} ${d.asistioGym ? 'has-gym' : ''} ${d.esHoy ? 'is-today' : ''} ${d.esFuturo ? 'is-future' : ''} ${d.esDiaPlanificado && !d.asistioGym && !d.esFuturo ? 'is-missed-plan' : ''}"
+                      data-action="open-salud-dia-modal"
+                      data-date="${h(d.fecha)}"
+                      ${d.esFuturo ? 'disabled' : ''}
+                      aria-label="${h(formatFechaDMY(d.fecha))}${d.asistioGym ? ', asistió al gimnasio' : ''}${d.readiness ? `, salud: ${h(d.readiness.estadoGeneral || 'registrada')}` : ''}">
+                      <span class="cal-num">${d.dia}</span>
+                      ${d.asistioGym ? `<span class="cal-check" aria-hidden="true">${renderIcon('check')}</span>` : ''}
+                      ${d.fotosCount > 0 ? `<span class="cal-photo-dot" aria-hidden="true"></span>` : ''}
+                    </button>
+                  `).join('')}
+                </div>
+
+                <div class="cal-legend">
+                  <span><i class="leg-check">${renderIcon('check')}</i> Gym</span>
+                  <span><i class="leg-dot leg-optimo"></i> Bien</span>
+                  <span><i class="leg-dot leg-moderado"></i> Regular</span>
+                  <span><i class="leg-dot leg-alerta"></i> Molestia</span>
+                  <span><i class="leg-dot leg-salud"></i> Descanso</span>
+                </div>
+              </div>
+
+              <div class="seg seg-sm">
+                <button type="button" class="seg-btn ${isSaludLogsOpen ? 'active' : ''}" data-action="toggle-salud-logs">Registros (${logs.length})</button>
+                <button type="button" class="seg-btn ${isSaludFotosOpen ? 'active' : ''}" data-action="toggle-salud-fotos">Fotos (${fotosActivas.length})</button>
+                <button type="button" class="seg-btn ${isPerfilOpen ? 'active' : ''}" data-action="toggle-perfil-collapse">Mi ficha</button>
+              </div>
+          `;
+        })()}
           ${observaciones.length > 0 ? `
             <div class="list-row" style="cursor: default;">
               <span class="list-row-icon">${renderIcon('user')}</span>
@@ -3365,6 +3428,81 @@
       return;
     }
 
+    if (activeModal.type === 'salud-dia') {
+      const targetFecha = activeModal.fecha || Engine.todayISO();
+      const pts = targetFecha.split('-').map(Number);
+      const calMes = Engine.computeCalendarioSaludMes(state, pts[0], pts[1]);
+      const diaInfo = calMes.dias.find(d => d.fecha === targetFecha) || {
+        fecha: targetFecha,
+        asistioGym: false,
+        readiness: null,
+        fotosCount: 0,
+        nivelColor: 'vacio'
+      };
+      const fotosDia = (state.fotos || []).filter(f => !f.deleted && f.fecha === targetFecha);
+      const rLog = diaInfo.readiness;
+      const nivelLabel = {
+        optimo: 'Día óptimo',
+        moderado: 'Día exigido / regular',
+        alerta: 'Molestia o fatiga',
+        salud: 'Descanso registrado',
+        vacio: 'Sin registros'
+      }[diaInfo.nivelColor] || 'Resumen';
+
+      overlay.innerHTML = `
+        <div class="modal-card" style="max-width: 480px;">
+          <div class="modal-header-sticky">
+            <div>
+              <h2 class="modal-title" style="font-size: 17px;">Ficha del ${h(formatFechaDMY(targetFecha))}</h2>
+              <span class="net-status" style="margin: 2px 0 0;">${h(Engine.diaDeLaSemana(targetFecha))} · ${h(nivelLabel)}</span>
+            </div>
+            <button type="button" class="btn-close-modal" data-action="close-modal">${renderIcon('x')}</button>
+          </div>
+
+          <div class="salud-dia-badge ${diaInfo.asistioGym ? 'present' : 'absent'}">
+            <span class="salud-dia-badge-icon">${diaInfo.asistioGym ? renderIcon('check') : renderIcon('calendar')}</span>
+            <div style="min-width: 0; flex: 1;">
+              <strong>${diaInfo.asistioGym ? 'Asistió al gimnasio' : 'Sin asistencia registrada'}</strong>
+              <small>
+                ${diaInfo.asistioGym
+                  ? [
+                      diaInfo.horaLlegada ? `Check-in ${h(diaInfo.horaLlegada)} hs` : '',
+                      diaInfo.rutinaNombre ? h(diaInfo.rutinaNombre) : '',
+                      diaInfo.seriesCount ? `${diaInfo.seriesCount} series` : '',
+                      diaInfo.volumenKg ? `${diaInfo.volumenKg.toLocaleString('es-AR')} kg` : ''
+                    ].filter(Boolean).join(' · ') || 'Presencia confirmada'
+                  : 'Podés registrar cómo te sentiste ese día abajo.'}
+              </small>
+            </div>
+          </div>
+
+          <div class="card card-flat" style="gap: 8px; padding: 12px 14px;">
+            <div class="row-between">
+              <span class="section-title">Estado de Salud</span>
+              <button type="button" class="btn-secondary btn-sm" data-action="edit-salud-dia-desde-modal" data-date="${h(targetFecha)}">
+                ${renderIcon('edit')} ${rLog ? 'Editar' : 'Cargar'}
+              </button>
+            </div>
+            ${rLog ? `
+              <div class="salud-dia-metrics">
+                <div><span>Estado</span><strong>${h(rLog.estadoGeneral || 'Registrado')}</strong></div>
+                <div><span>Energía</span><strong>${rLog.energia || 4}/5</strong></div>
+                <div><span>Estrés</span><strong>${Number(rLog.estres) <= 1 ? 'Bajo' : (Number(rLog.estres) <= 3 ? 'Medio' : 'Alto')}</strong></div>
+                <div><span>Sueño</span><strong>${Number(rLog.sueno) >= 4 ? '7 h+' : (Number(rLog.sueno) === 3 ? '6 h' : '≤ 5 h')}</strong></div>
+              </div>
+              ${rLog.zonaDolor ? `<p style="margin: 0; font-size: 12px; color: var(--accent-rose); font-weight: 600;">Molestia: ${h(rLog.zonaDolor)}</p>` : ''}
+              ${rLog.observacionAlumno && rLog.observacionAlumno !== rLog.estadoGeneral ? `<p style="margin: 0; font-size: 12px; color: var(--text-muted);">Nota: ${h(rLog.observacionAlumno)}</p>` : ''}
+            ` : `<p class="empty-hint" style="margin: 0;">Sin registro psicofísico para esta fecha.</p>`}
+          </div>
+
+          ${renderLocalPhotoBox(fotosDia, { fecha: targetFecha, origin: 'salud', compact: true })}
+
+          <button type="button" class="btn-primary" data-action="close-modal">Listo</button>
+        </div>
+      `;
+      return;
+    }
+
     // MODAL 6: Prescripción de Movilidad Articular Específica
     if (activeModal.type === 'add-movilidad') {
       const catalogoMovilidad = (state.ejercicios || []).filter(e => !e.deleted && e.grupoMuscular === 'movilidad');
@@ -3803,7 +3941,11 @@
     }
 
     // Preservar los borradores del Check-in y de la Ficha Física antes de re-renderizar
-    captureSaludDraftsFromDOM();
+    if (skipNextSaludCapture) {
+      skipNextSaludCapture = false;
+    } else {
+      captureSaludDraftsFromDOM();
+    }
 
     // Detección automática estricta: PC abre PC, Celular abre Celular
     layoutMode = getAutoLayoutMode();
@@ -5475,6 +5617,7 @@
         draftReadiness.observacionAlumno = log.observacionAlumno || '';
         draftReadiness.estadoGeneral = log.observacionAlumno || 'Excelente';
       }
+      skipNextSaludCapture = true;
       render();
     },
 
@@ -5494,6 +5637,7 @@
         draftReadiness.observacionAlumno = log.observacionAlumno || '';
         draftReadiness.estadoGeneral = log.observacionAlumno || 'Excelente';
       }
+      skipNextSaludCapture = true;
       render();
     },
 
@@ -5552,6 +5696,54 @@
       Store.commit(s => Engine.borrarReadiness(s, logId));
       showToast('Registro de salud eliminado.');
       render();
+    },
+
+    'nav-salud-cal-mes': el => {
+      const delta = Number(el.getAttribute('data-delta'));
+      if (delta === 0) {
+        const hoyParts = Engine.todayISO().split('-').map(Number);
+        saludCalYear = hoyParts[0];
+        saludCalMonth = hoyParts[1];
+      } else {
+        const d = new Date(saludCalYear, saludCalMonth - 1 + delta, 1, 12, 0, 0);
+        saludCalYear = d.getFullYear();
+        saludCalMonth = d.getMonth() + 1;
+      }
+      render();
+    },
+
+    'open-salud-dia-modal': el => {
+      const fecha = el.getAttribute('data-date');
+      if (!fecha) return;
+      activeModal = { type: 'salud-dia', fecha };
+      renderModals();
+    },
+
+    'edit-salud-dia-desde-modal': el => {
+      const date = el.getAttribute('data-date');
+      if (!date) return;
+      draftReadiness.fecha = date;
+      const state = Store.getState();
+      const log = (state.readinessLogs || []).find(r => r.fecha === date && !r.deleted);
+      if (log) {
+        draftReadiness.energia = String(log.energia || 4);
+        draftReadiness.estres = String(log.estres || 2);
+        draftReadiness.sueno = String(log.sueno || 4);
+        draftReadiness.alimentacion = String(log.alimentacion || 4);
+        draftReadiness.zonaDolor = log.zonaDolor || '';
+        draftReadiness.observacionAlumno = log.observacionAlumno || '';
+        draftReadiness.estadoGeneral = log.estadoGeneral || log.observacionAlumno || 'Excelente';
+      } else {
+        draftReadiness.zonaDolor = '';
+        draftReadiness.observacionAlumno = '';
+      }
+      isEditingSaludHoy = true;
+      skipNextSaludCapture = true;
+      activeModal = null;
+      render();
+      try {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } catch (_) {}
     },
 
     'toggle-perfil-collapse': () => {

@@ -3978,3 +3978,248 @@ html[data-theme="dark"] .seg-btn.active { background: color-mix(in srgb, var(--b
   font-weight: 600;
   color: var(--text-muted);
 }
+
+/* ======================================================== */
+/* v3.8.0: CALENDARIO DE SALUD, CONSTANCIA Y FICHA DEL DÍA */
+/* ======================================================== */
+.salud-streak-bar {
+  padding: 12px 14px !important;
+  gap: 7px !important;
+}
+.streak-pct-pill {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--accent-emerald);
+  background: color-mix(in srgb, var(--accent-emerald) 16%, transparent);
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+}
+.streak-progress {
+  width: 100%;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  overflow: hidden;
+}
+.streak-progress i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-emerald));
+  transition: width 0.3s var(--ease);
+}
+.streak-msg {
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.salud-cal-card {
+  padding: 12px !important;
+  gap: 10px !important;
+}
+.cal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.cal-header-title {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+.cal-header-title strong {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--text-main);
+}
+.cal-nav-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: none;
+  background: var(--bg-elevated);
+  color: var(--text-main);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.cal-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 5px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-dim);
+}
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 5px;
+}
+.cal-blank {
+  height: 40px;
+}
+.cal-day {
+  position: relative;
+  height: 40px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: var(--bg-elevated);
+  color: var(--text-main);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  transition: transform 0.12s var(--ease), border-color 0.15s ease;
+}
+.cal-day:active:not(:disabled) {
+  transform: scale(0.95);
+}
+.cal-day.is-future {
+  opacity: 0.35;
+  cursor: default;
+}
+.cal-day.is-today {
+  border-color: var(--text-main);
+  box-shadow: 0 0 0 1px var(--text-main) inset;
+}
+.cal-day.is-missed-plan {
+  border-style: dashed;
+  border-color: var(--border-strong);
+}
+.cal-day.cal-optimo {
+  background: color-mix(in srgb, var(--accent-emerald) 24%, var(--bg-elevated));
+  color: var(--text-main);
+  border-color: color-mix(in srgb, var(--accent-emerald) 45%, transparent);
+}
+.cal-day.cal-moderado {
+  background: color-mix(in srgb, #f59e0b 22%, var(--bg-elevated));
+  color: var(--text-main);
+  border-color: color-mix(in srgb, #f59e0b 42%, transparent);
+}
+.cal-day.cal-alerta {
+  background: color-mix(in srgb, var(--accent-rose) 24%, var(--bg-elevated));
+  color: var(--text-main);
+  border-color: color-mix(in srgb, var(--accent-rose) 48%, transparent);
+}
+.cal-day.cal-salud {
+  background: color-mix(in srgb, var(--accent) 20%, var(--bg-elevated));
+  color: var(--text-main);
+  border-color: color-mix(in srgb, var(--accent) 42%, transparent);
+}
+.cal-num {
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.cal-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-emerald);
+  margin-top: 1px;
+}
+.cal-check svg {
+  width: 11px;
+  height: 11px;
+  stroke-width: 3;
+}
+.cal-photo-dot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.cal-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px 12px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.cal-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.leg-check {
+  display: inline-flex;
+  color: var(--accent-emerald);
+}
+.leg-check svg { width: 12px; height: 12px; stroke-width: 3; }
+.leg-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  display: inline-block;
+}
+.leg-optimo { background: var(--accent-emerald); }
+.leg-moderado { background: #f59e0b; }
+.leg-alerta { background: var(--accent-rose); }
+.leg-salud { background: var(--accent); }
+
+.salud-dia-badge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--bg-elevated);
+}
+.salud-dia-badge.present {
+  background: color-mix(in srgb, var(--accent-emerald) 16%, var(--bg-elevated));
+  border: 1px solid color-mix(in srgb, var(--accent-emerald) 40%, transparent);
+}
+.salud-dia-badge-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--bg-card);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-emerald);
+  flex-shrink: 0;
+}
+.salud-dia-badge.absent .salud-dia-badge-icon {
+  color: var(--text-dim);
+}
+.salud-dia-badge strong {
+  display: block;
+  font-size: 13.5px;
+  color: var(--text-main);
+}
+.salud-dia-badge small {
+  display: block;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+.salud-dia-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+.salud-dia-metrics > div {
+  background: var(--bg-elevated);
+  border-radius: 10px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.salud-dia-metrics span { font-size: 11px; color: var(--text-dim); }
+.salud-dia-metrics strong { font-size: 13px; color: var(--text-main); }

@@ -4265,6 +4265,239 @@
     };
   };
 
+  Engine.diaDeLaSemana = function (fechaISO = Engine.todayISO()) {
+    return Engine.nombreDia(fechaISO);
+  };
+
+  /**
+   * Construye el mapa mensual de Salud, Asistencia al Gimnasio, Racha y Fotos locales.
+   * month es 1..12 (por defecto mes/año locales actuales).
+   */
+  Engine.computeCalendarioSaludMes = function (state, year = null, month = null) {
+    const hoyISO = Engine.todayISO();
+    const hoyParts = hoyISO.split('-').map(Number);
+    const y = Number(year) || hoyParts[0];
+    const m = Number(month) || hoyParts[1];
+    const mm = String(m).padStart(2, '0');
+
+    const primerDate = new Date(y, m - 1, 1, 12, 0, 0);
+    const diasEnMes = new Date(y, m, 0, 12, 0, 0).getDate();
+    // Lunes=0 .. Domingo=6
+    const primerDiaSemana = (primerDate.getDay() + 6) % 7;
+
+    const MESES = [
+      'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+      'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+    ];
+    const labelMes = `${MESES[(m - 1 + 12) % 12]} ${y}`;
+
+    const diasPlanNorm = new Set(
+      ((state && state.perfil && state.perfil.diasSemana) || []).map(d =>
+        String(d || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
+      )
+    );
+    const metaSemanal = Math.max(1, diasPlanNorm.size || 3);
+
+    const entrenamientos = (state && Array.isArray(state.entrenamientos) ? state.entrenamientos : []).filter(t => !t.deleted);
+    const checkins = (state && Array.isArray(state.checkinsGym) ? state.checkinsGym : []).filter(c => !c.deleted && c.presente !== false);
+    const series = (state && Array.isArray(state.series) ? state.series : []).filter(s => !s.deleted && s.completada !== false);
+    const logs = (state && Array.isArray(state.readinessLogs) ? state.readinessLogs : []).filter(r => !r.deleted);
+    const fotos = (state && Array.isArray(state.fotos) ? state.fotos : []).filter(f => !f.deleted);
+    const rutinasMap = new Map(
+      ((state && Array.isArray(state.rutinas) ? state.rutinas : []).filter(r => !r.deleted)).map(r => [r.id, r])
+    );
+
+    const entById = new Map(entrenamientos.map(t => [t.id, t]));
+    const gymPorFecha = new Map();
+    const ensureGym = f => {
+      if (!gymPorFecha.has(f)) {
+        gymPorFecha.set(f, { horaLlegada: '', rutinaNombre: '', seriesCount: 0, volumenKg: 0 });
+      }
+      return gymPorFecha.get(f);
+    };
+
+    checkins.forEach(c => {
+      if (!c.fecha) return;
+      const g = ensureGym(c.fecha);
+      if (c.horaLlegada && !g.horaLlegada) g.horaLlegada = c.horaLlegada;
+      const ent = c.entrenamientoId ? entById.get(c.entrenamientoId) : null;
+      const rt = ent && ent.rutinaId ? rutinasMap.get(ent.rutinaId) : null;
+      if (rt && rt.nombre && !g.rutinaNombre) g.rutinaNombre = rt.nombre;
+    });
+
+    entrenamientos.forEach(t => {
+      if (!t.fecha) return;
+      if (t.checkinRealizado || t.completado || series.some(s => s.entrenamientoId === t.id)) {
+        const g = ensureGym(t.fecha);
+        if (t.horaLlegada && !g.horaLlegada) g.horaLlegada = t.horaLlegada;
+        const rt = t.rutinaId ? rutinasMap.get(t.rutinaId) : null;
+        if (t.nombre && !g.rutinaNombre) g.rutinaNombre = t.nombre;
+        else if (rt && rt.nombre && !g.rutinaNombre) g.rutinaNombre = rt.nombre;
+      }
+    });
+
+    series.forEach(s => {
+      const ent = entById.get(s.entrenamientoId);
+      const fecha = (ent && ent.fecha) || s.fecha;
+      if (!fecha) return;
+      const g = ensureGym(fecha);
+      g.seriesCount += 1;
+      g.volumenKg += Engine.computeVolumenSerie(s);
+    });
+
+    const readinessPorFecha = new Map();
+    logs.forEach(l => {
+      if (!l.fecha) return;
+      const prev = readinessPorFecha.get(l.fecha);
+      if (!prev || (l.updatedAt || 0) >= (prev.updatedAt || 0)) {
+        readinessPorFecha.set(l.fecha, l);
+      }
+    });
+
+    const fotosPorFecha = new Map();
+    fotos.forEach(f => {
+      if (!f.fecha) return;
+      fotosPorFecha.set(f.fecha, (fotosPorFecha.get(f.fecha) || 0) + 1);
+    });
+
+    const clasificarNivel = (asistioGym, readiness) => {
+      if (readiness) {
+        const est = String(readiness.estadoGeneral || readiness.observacionAlumno || '').toLowerCase();
+        const tieneDolor = Boolean(readiness.dolorArticular || String(readiness.zonaDolor || '').trim());
+        const energia = Number(readiness.energia);
+        const estres = Number(readiness.estres);
+        if (tieneDolor || (Number.isFinite(energia) && energia <= 2) || est.includes('mal') || est.includes('molestia')) {
+          return 'alerta';
+        }
+        if (asistioGym) {
+          if ((Number.isFinite(estres) && estres >= 4) || est.includes('cansad')) return 'moderado';
+          return 'optimo';
+        }
+        if ((Number.isFinite(energia) && energia <= 3) || est === 'normal' || est.includes('cansad')) {
+          return 'moderado';
+        }
+        return 'salud';
+      }
+      if (asistioGym) return 'optimo';
+      return 'vacio';
+    };
+
+    const dias = [];
+    let diasGymMes = 0;
+    let diasSaludMes = 0;
+
+    for (let dayNum = 1; dayNum <= diasEnMes; dayNum++) {
+      const dd = String(dayNum).padStart(2, '0');
+      const fecha = `${y}-${mm}-${dd}`;
+      const gymInfo = gymPorFecha.get(fecha) || null;
+      const asistioGym = Boolean(gymInfo);
+      const readiness = readinessPorFecha.get(fecha) || null;
+      const fotosCount = fotosPorFecha.get(fecha) || 0;
+      const esHoy = fecha === hoyISO;
+      const esFuturo = fecha > hoyISO;
+
+      const diaNom = Engine.diaDeLaSemana(fecha).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const esDiaPlanificado = diasPlanNorm.has(diaNom);
+      const nivelColor = esFuturo ? 'vacio' : clasificarNivel(asistioGym, readiness);
+
+      if (asistioGym && !esFuturo) diasGymMes += 1;
+      if (readiness && !esFuturo) diasSaludMes += 1;
+
+      dias.push({
+        dia: dayNum,
+        fecha,
+        esHoy,
+        esFuturo,
+        esDiaPlanificado,
+        asistioGym,
+        horaLlegada: gymInfo ? gymInfo.horaLlegada : '',
+        rutinaNombre: gymInfo ? gymInfo.rutinaNombre : '',
+        seriesCount: gymInfo ? gymInfo.seriesCount : 0,
+        volumenKg: gymInfo ? Math.round(gymInfo.volumenKg) : 0,
+        readiness,
+        fotosCount,
+        nivelColor
+      });
+    }
+
+    // Meta proporcional del mes hasta hoy (o mes completo si es un mes pasado)
+    const esMesActual = y === hoyParts[0] && m === hoyParts[1];
+    const esMesFuturo = y > hoyParts[0] || (y === hoyParts[0] && m > hoyParts[1]);
+    const diasEvaluados = esMesFuturo ? 0 : (esMesActual ? hoyParts[2] : diasEnMes);
+    const metaDiasMes = esMesFuturo ? metaSemanal : Math.max(1, Math.round((diasEvaluados / 7) * metaSemanal));
+    const cumplimientoPct = esMesFuturo ? 0 : Math.min(100, Math.round((diasGymMes / metaDiasMes) * 100));
+
+    // Racha de semanas consecutivas cumpliendo la meta semanal
+    const getWeekMondayISO = iso => {
+      const pts = iso.split('-').map(Number);
+      const d = new Date(pts[0], pts[1] - 1, pts[2], 12, 0, 0);
+      const diff = (d.getDay() + 6) % 7;
+      d.setDate(d.getDate() - diff);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    };
+    const gymPorSemana = new Map();
+    gymPorFecha.forEach((_, f) => {
+      if (f <= hoyISO) {
+        const wk = getWeekMondayISO(f);
+        gymPorSemana.set(wk, (gymPorSemana.get(wk) || 0) + 1);
+      }
+    });
+    const currentWeekMonday = getWeekMondayISO(hoyISO);
+    let rachaSemanas = (gymPorSemana.get(currentWeekMonday) || 0) >= metaSemanal ? 1 : 0;
+    const wkDatePts = currentWeekMonday.split('-').map(Number);
+    const cursor = new Date(wkDatePts[0], wkDatePts[1] - 1, wkDatePts[2], 12, 0, 0);
+    for (let w = 0; w < 24; w++) {
+      cursor.setDate(cursor.getDate() - 7);
+      const prevWkISO = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`;
+      if ((gymPorSemana.get(prevWkISO) || 0) >= metaSemanal) {
+        rachaSemanas += 1;
+      } else {
+        break;
+      }
+    }
+
+    // Días seguidos recientes con al menos check-in o registro de salud
+    let diasSeguidosActivos = 0;
+    const actDate = new Date(hoyParts[0], hoyParts[1] - 1, hoyParts[2], 12, 0, 0);
+    for (let k = 0; k < 60; k++) {
+      const iso = `${actDate.getFullYear()}-${String(actDate.getMonth() + 1).padStart(2, '0')}-${String(actDate.getDate()).padStart(2, '0')}`;
+      const tieneAlgo = gymPorFecha.has(iso) || readinessPorFecha.has(iso);
+      if (tieneAlgo) {
+        diasSeguidosActivos += 1;
+        actDate.setDate(actDate.getDate() - 1);
+      } else if (k === 0) {
+        // Si hoy aún no cargó nada, contar desde ayer para no romper la racha del día en curso
+        actDate.setDate(actDate.getDate() - 1);
+      } else {
+        break;
+      }
+    }
+
+    let mensajeMotivacional = 'Sumá tu primer check-in del mes para encender la racha';
+    if (diasGymMes > 0 || diasSaludMes > 0) {
+      if (cumplimientoPct >= 90) mensajeMotivacional = 'Constancia impecable este mes';
+      else if (cumplimientoPct >= 65) mensajeMotivacional = 'Muy buen ritmo, seguí sumando tildes';
+      else if (diasGymMes > 0) mensajeMotivacional = 'Cada tilde cuenta para tu progreso';
+      else mensajeMotivacional = 'Buen seguimiento de salud, sumá tu próximo entreno';
+    }
+
+    return {
+      year: y,
+      month: m,
+      labelMes,
+      primerDiaSemana,
+      diasEnMes,
+      diasGymMes,
+      diasSaludMes,
+      metaDiasMes,
+      cumplimientoPct,
+      rachaSemanas,
+      diasSeguidosActivos,
+      mensajeMotivacional,
+      dias
+    };
+  };
+
   // ==========================================
   // 9. ESTADO INICIAL LIMPIO CON CATÁLOGO ESTANDARIZADO
   // ==========================================
