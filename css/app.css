@@ -4223,3 +4223,159 @@ html[data-theme="dark"] .seg-btn.active { background: color-mix(in srgb, var(--b
 }
 .salud-dia-metrics span { font-size: 11px; color: var(--text-dim); }
 .salud-dia-metrics strong { font-size: 13px; color: var(--text-main); }
+
+/* v3.9.0: Scroll fluido en Salud, ficha plegable y visuales interactivos en Histórico/Evolución */
+.salud-scroll-view {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 18px;
+}
+.salud-toggle-card {
+  width: 100%;
+  cursor: pointer;
+  padding: 11px 14px !important;
+  text-align: left;
+}
+.chart-card {
+  gap: 10px !important;
+}
+.vol-bar-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 5px;
+  height: 118px;
+  padding-top: 4px;
+  overflow: hidden;
+}
+.vol-bar-chart-mini {
+  height: 86px;
+  margin-bottom: 6px;
+}
+.vol-bar-col {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: inherit;
+}
+.vol-bar-val {
+  font-size: 9.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.vol-bar-track-v {
+  width: 100%;
+  max-width: 24px;
+  flex: 1;
+  min-height: 20px;
+  background: var(--bg-elevated);
+  border-radius: 6px;
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+}
+.vol-bar-fill-v {
+  display: block;
+  width: 100%;
+  border-radius: 6px;
+  background: var(--accent);
+  transition: height 0.25s var(--ease);
+}
+.vol-bar-col:active .vol-bar-fill-v {
+  opacity: 0.78;
+}
+.vol-bar-lbl {
+  font-size: 9.5px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.hist-clase-btn {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+}
+.hist-clase-preview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.hist-clase-preview span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hist-clase-preview strong {
+  color: var(--accent);
+  font-size: 11.5px;
+  flex-shrink: 0;
+}
+.rutina-ej-btn {
+  width: 100%;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: inherit;
+  padding: 5px 0;
+  text-align: left;
+}
+.perf-metric-seg {
+  margin-top: 2px;
+}
+.perf-pt-btn {
+  cursor: pointer;
+}
+.perf-mini-btn {
+  width: 100%;
+  border: none;
+  background: var(--bg-elevated);
+  border-radius: 9px;
+  padding: 7px 10px;
+  cursor: pointer;
+  color: inherit;
+  text-align: left;
+}
+.detalle-series-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+.detalle-chips-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.detalle-serie-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-elevated);
+  border-radius: 10px;
+  padding: 9px 12px;
+  font-size: 13px;
+}
+.detalle-serie-row span {
+  color: var(--text-muted);
+}

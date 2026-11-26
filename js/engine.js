@@ -48,6 +48,23 @@
     return `${hours}:${minutes}`;
   };
 
+  /**
+   * Parsea decimales con coma o punto (ej. "12,5" -> 12.5, " 82,25 kg " -> 82.25).
+   */
+  Engine.parseDecimal = function (val, fallback = 0) {
+    if (typeof val === 'number') {
+      return Number.isFinite(val) && val >= 0 ? val : fallback;
+    }
+    if (val === null || val === undefined) return fallback;
+    const norm = String(val)
+      .trim()
+      .replace(/,/g, '.')
+      .replace(/[^0-9.-]/g, '');
+    if (!norm || norm === '-' || norm === '.') return fallback;
+    const parsed = parseFloat(norm);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+  };
+
   let idCounter = 0;
   /**
    * Generador de IDs estables con prefijo (ej: rt-, ej-, tr-, sr-, rd-, ob-, ph-).
@@ -3457,14 +3474,68 @@
     return { rutina, esDiaDeGym, dia };
   };
 
-  /** Último entrenamiento terminado (no el activo), con su resumen corto. */
+  /**
+   * Fuente única de fechas (YYYY-MM-DD) con asistencia real al gimnasio:
+   * entrenamientos activos, check-ins, series cargadas o registros de movilidad.
+   */
+  Engine.getFechasAsistenciaGym = function (state) {
+    const fechas = new Set();
+    if (!state) return fechas;
+    const entrenamientos = (Array.isArray(state.entrenamientos) ? state.entrenamientos : []).filter(t => !t.deleted);
+    const entById = new Map(entrenamientos.map(t => [t.id, t]));
+    entrenamientos.forEach(t => { if (t.fecha) fechas.add(t.fecha); });
+    (Array.isArray(state.checkinsGym) ? state.checkinsGym : []).forEach(c => {
+      if (c && !c.deleted && c.presente !== false && c.fecha) fechas.add(c.fecha);
+    });
+    (Array.isArray(state.series) ? state.series : []).forEach(s => {
+      if (!s || s.deleted || s.completada === false) return;
+      const ent = entById.get(s.entrenamientoId);
+      const f = (ent && ent.fecha) || s.fecha;
+      if (f) fechas.add(f);
+    });
+    (Array.isArray(state.movilidad) ? state.movilidad : []).forEach(m => {
+      if (m && !m.deleted && m.fecha) fechas.add(m.fecha);
+    });
+    return fechas;
+  };
+
+  /**
+   * Calcula los 7 días (L a D) de la semana actual usando Engine.getFechasAsistenciaGym().
+   */
+  Engine.computeSemanaActual = function (state) {
+    const hoyISO = Engine.todayISO();
+    const hoy = new Date(hoyISO + 'T12:00:00');
+    const offset = (hoy.getDay() + 6) % 7; // lunes = 0
+    const entrenados = Engine.getFechasAsistenciaGym(state);
+    const letras = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+    let hechos = 0;
+    const dias = letras.map((letra, i) => {
+      const d = new Date(hoy);
+      d.setDate(hoy.getDate() - offset + i);
+      const iso = Engine.todayISO(d);
+      const hecho = entrenados.has(iso);
+      if (hecho) hechos++;
+      return { iso, letra, hecho, esHoy: iso === hoyISO };
+    });
+    const metaSemana = (state && state.perfil && Array.isArray(state.perfil.diasSemana)) ? state.perfil.diasSemana.length : 0;
+    return { dias, hechos, metaSemana };
+  };
+
+  /** Último entrenamiento terminado (no el activo), con fallback a sesiones recientes con series. */
   Engine.ultimoEntrenamiento = function (state) {
-    const lista = (state.entrenamientos || [])
+    const seriesActivas = (state.series || []).filter(s => !s.deleted);
+    const completados = (state.entrenamientos || [])
       .filter(t => !t.deleted && t.completado && t.id !== state.entrenamientoActivoId)
       .sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '') || (b.updatedAt || 0) - (a.updatedAt || 0));
-    const t = lista[0];
+    let t = completados[0];
+    if (!t) {
+      const conSeries = (state.entrenamientos || [])
+        .filter(x => !x.deleted && x.id !== state.entrenamientoActivoId && seriesActivas.some(s => s.entrenamientoId === x.id))
+        .sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '') || (b.updatedAt || 0) - (a.updatedAt || 0));
+      t = conSeries[0];
+    }
     if (!t) return null;
-    const series = (state.series || []).filter(s => s.entrenamientoId === t.id && !s.deleted);
+    const series = seriesActivas.filter(s => s.entrenamientoId === t.id);
     const rutina = t.rutinaId ? (state.rutinas || []).find(r => r.id === t.rutinaId) : null;
     const hoy = new Date(Engine.todayISO() + 'T12:00:00'), f = new Date(t.fecha + 'T12:00:00');
     const dias = Math.round((hoy - f) / 86400000);
@@ -4190,9 +4261,41 @@
           mejorReps,
           est1RM: best1RM,
           volumen: Math.round(vol),
+          totalSeries: lista.length,
+          entrenamientoId: lista[0] ? lista[0].entrenamientoId : null,
           rpePromedio: rpes.length ? Math.round((rpes.reduce((a, b) => a + b, 0) / rpes.length) * 10) / 10 : null,
           isPR
         };
+      });
+    }
+
+    // Volumen cronológico por clase para gráfico interactivo
+    const rutinasMapPerf = new Map(
+      ((state.rutinas || []).filter(r => !r.deleted)).map(r => [r.id, r])
+    );
+    const clasesVolumen = [];
+    const srPorEntCur = new Map();
+    srCur.forEach(s => {
+      if (!s.entrenamientoId) return;
+      if (!srPorEntCur.has(s.entrenamientoId)) srPorEntCur.set(s.entrenamientoId, []);
+      srPorEntCur.get(s.entrenamientoId).push(s);
+    });
+    const entOrdenados = [...entCur].sort(
+      (a, b) => (a.fecha || '').localeCompare(b.fecha || '') || (a.updatedAt || 0) - (b.updatedAt || 0)
+    );
+    for (const t of entOrdenados) {
+      const lista = srPorEntCur.get(t.id) || [];
+      if (lista.length === 0) continue;
+      const vol = Math.round(lista.reduce((acc, s) => acc + Engine.computeVolumenSerie(s), 0));
+      const rt = t.rutinaId ? rutinasMapPerf.get(t.rutinaId) : null;
+      const ejIds = new Set(lista.map(s => s.ejercicioId));
+      clasesVolumen.push({
+        id: t.id,
+        fecha: t.fecha || hoyISO,
+        nombre: t.nombre || (rt ? rt.nombre : 'Entrenamiento libre'),
+        volumen: vol,
+        totalSeries: lista.length,
+        ejerciciosCount: ejIds.size
       });
     }
 
@@ -4260,8 +4363,144 @@
       ejerciciosDisponibles,
       ejercicioSeleccionadoId,
       serieEjercicio,
+      clasesVolumen,
       volumenPorMusculo,
       correlacionSalud
+    };
+  };
+
+  /**
+   * Detalle completo de una clase/sesión por entrenamientoId (para modal interactivo).
+   */
+  Engine.computeDetalleClase = function (state, entrenamientoId) {
+    if (!state || !entrenamientoId) return null;
+    const t = (state.entrenamientos || []).find(x => x.id === entrenamientoId && !x.deleted) || null;
+    const seriesList = (state.series || [])
+      .filter(s => s.entrenamientoId === entrenamientoId && !s.deleted)
+      .sort((a, b) => (a.numeroSerie || 0) - (b.numeroSerie || 0) || (a.updatedAt || 0) - (b.updatedAt || 0));
+    if (!t && seriesList.length === 0) return null;
+
+    const rt = t && t.rutinaId ? (state.rutinas || []).find(r => r.id === t.rutinaId) : null;
+    const nombre = (t && t.nombre) || (rt && rt.nombre) || 'Entrenamiento libre';
+    const fecha = (t && t.fecha) || (seriesList[0] && seriesList[0].fecha) || Engine.todayISO();
+    const inicio = (t && (t.inicio || t.horaLlegada)) || '';
+    const fin = (t && t.fin) || '';
+    let duracionMin = null;
+    if (inicio && fin) {
+      const [h1, m1] = String(inicio).split(':').map(Number);
+      const [h2, m2] = String(fin).split(':').map(Number);
+      if ([h1, m1, h2, m2].every(Number.isFinite)) {
+        let d = (h2 * 60 + m2) - (h1 * 60 + m1);
+        if (d < 0) d += 1440;
+        duracionMin = d;
+      }
+    }
+
+    const ejMap = new Map();
+    [...(Engine.CATALOGO_EJERCICIOS || []), ...(state.ejercicios || [])].forEach(e => {
+      if (e && e.id) ejMap.set(e.id, e);
+    });
+
+    const porEj = new Map();
+    let volumenTotal = 0;
+    seriesList.forEach(s => {
+      const vol = Engine.computeVolumenSerie(s);
+      volumenTotal += vol;
+      if (!porEj.has(s.ejercicioId)) porEj.set(s.ejercicioId, []);
+      porEj.get(s.ejercicioId).push({
+        numeroSerie: s.numeroSerie || porEj.get(s.ejercicioId).length + 1,
+        pesoKg: Number(s.pesoKg) || 0,
+        reps: Number(s.reps) || 0,
+        rpe: s.rpe != null ? Number(s.rpe) : null,
+        tipo: s.tipo || 'efectiva',
+        volumen: Math.round(vol)
+      });
+    });
+
+    const ejercicios = [];
+    porEj.forEach((srList, ejId) => {
+      const ej = ejMap.get(ejId) || { id: ejId, nombre: ejId, grupoMuscular: '' };
+      let mejorPeso = 0, mejorReps = 0, volEj = 0;
+      srList.forEach(x => {
+        volEj += x.volumen;
+        if (x.pesoKg > mejorPeso || (x.pesoKg === mejorPeso && x.reps > mejorReps)) {
+          mejorPeso = x.pesoKg;
+          mejorReps = x.reps;
+        }
+      });
+      ejercicios.push({
+        ej,
+        series: srList,
+        mejorPeso,
+        mejorReps,
+        volumenEj: Math.round(volEj)
+      });
+    });
+
+    return {
+      id: entrenamientoId,
+      fecha,
+      nombre,
+      inicio,
+      fin,
+      duracionMin,
+      volumen: Math.round(volumenTotal),
+      totalSeries: seriesList.length,
+      ejercicios
+    };
+  };
+
+  /**
+   * Detalle puntual de un ejercicio en una fecha determinada (para click en punto/sesión).
+   */
+  Engine.computeDetalleEjercicioFecha = function (state, ejercicioId, fecha) {
+    if (!state || !ejercicioId || !fecha) return null;
+    const ej = [...(state.ejercicios || []), ...(Engine.CATALOGO_EJERCICIOS || [])].find(e => e && e.id === ejercicioId)
+      || { id: ejercicioId, nombre: ejercicioId, grupoMuscular: '' };
+    const entById = new Map(((state.entrenamientos || []).filter(t => !t.deleted)).map(t => [t.id, t]));
+    const rawSeries = (state.series || [])
+      .filter(s => {
+        if (!s || s.deleted || s.ejercicioId !== ejercicioId) return false;
+        const ent = entById.get(s.entrenamientoId);
+        const f = (ent && ent.fecha) || s.fecha;
+        return f === fecha;
+      })
+      .sort((a, b) => (a.numeroSerie || 0) - (b.numeroSerie || 0) || (a.updatedAt || 0) - (b.updatedAt || 0));
+
+    let volumen = 0, mejorPeso = 0, mejorReps = 0, est1RM = 0;
+    const rpes = [];
+    const series = rawSeries.map((s, idx) => {
+      const p = Number(s.pesoKg) || 0;
+      const reps = Number(s.reps) || 0;
+      const vol = Engine.computeVolumenSerie(s);
+      const rm = Engine.compute1RM(p, reps);
+      volumen += vol;
+      if (rm > est1RM) est1RM = rm;
+      if (p > mejorPeso || (p === mejorPeso && reps > mejorReps)) {
+        mejorPeso = p;
+        mejorReps = reps;
+      }
+      if (s.rpe != null && Number(s.rpe) > 0) rpes.push(Number(s.rpe));
+      return {
+        numeroSerie: s.numeroSerie || idx + 1,
+        pesoKg: p,
+        reps,
+        rpe: s.rpe != null ? Number(s.rpe) : null,
+        tipo: s.tipo || 'efectiva',
+        volumen: Math.round(vol)
+      };
+    });
+
+    return {
+      ej,
+      fecha,
+      series,
+      totalSeries: series.length,
+      volumen: Math.round(volumen),
+      mejorPeso,
+      mejorReps,
+      est1RM: Math.round(est1RM),
+      rpePromedio: rpes.length ? Math.round((rpes.reduce((a, b) => a + b, 0) / rpes.length) * 10) / 10 : null
     };
   };
 
@@ -4344,6 +4583,8 @@
       g.seriesCount += 1;
       g.volumenKg += Engine.computeVolumenSerie(s);
     });
+
+    Engine.getFechasAsistenciaGym(state).forEach(f => ensureGym(f));
 
     const readinessPorFecha = new Map();
     logs.forEach(l => {

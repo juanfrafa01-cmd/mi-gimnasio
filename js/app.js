@@ -19,7 +19,7 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '3.8.0';
+  const APP_VERSION = '3.9.0';
 
   /** Número válido o valor por defecto (a diferencia de `|| def`, respeta el 0: RIR 0 = serie al fallo). */
   const numOr = (v, def) => (Number.isFinite(v) ? v : def);
@@ -52,10 +52,13 @@
   let historicoModo = 'clases'; // 'clases' | 'ejercicios' | 'evolucion'
   let evolucionEjercicioId = null;
   let evolucionPeriodoDias = 30;
+  let evolucionMetric = '1rm'; // '1rm' | 'peso' | 'volumen'
+  let evolucionEjFiltro = '';
   let rutinasSubTab = 'rutinas'; // 'rutinas' | 'catalogo'
   let showPhotoOptions = false;
   let isSaludLogsOpen = false;
   let isSaludFotosOpen = false;
+  let isSaludFormOpen = false;
   let isEditingSaludHoy = false;
   let skipNextSaludCapture = false;
   let saludCalYear = new Date().getFullYear();
@@ -287,21 +290,11 @@
 
   /** Tira de la semana (L a D) con los días entrenados y el día de hoy. */
   function renderSemanaStrip(state) {
-    const hoyISO = Engine.todayISO();
-    const hoy = new Date(hoyISO + 'T12:00:00');
-    const offset = (hoy.getDay() + 6) % 7; // lunes = 0
-    const entrenados = new Set((state.entrenamientos || []).filter(t => !t.deleted && t.fecha).map(t => t.fecha));
-    const letras = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
-    let hechos = 0;
-    const celdas = letras.map((letra, i) => {
-      const d = new Date(hoy);
-      d.setDate(hoy.getDate() - offset + i);
-      const iso = Engine.todayISO(d);
-      const hecho = entrenados.has(iso);
-      if (hecho) hechos++;
-      return `<div class="semana-dia ${hecho ? 'hecho' : ''} ${iso === hoyISO ? 'hoy' : ''}"><span>${letra}</span><i>${hecho ? renderIcon('check') : ''}</i></div>`;
-    }).join('');
-    return { html: `<div class="semana-strip" aria-label="Días entrenados esta semana">${celdas}</div>`, hechos };
+    const sem = Engine.computeSemanaActual(state);
+    const celdas = sem.dias.map(d =>
+      `<div class="semana-dia ${d.hecho ? 'hecho' : ''} ${d.esHoy ? 'hoy' : ''}"><span>${d.letra}</span><i>${d.hecho ? renderIcon('check') : ''}</i></div>`
+    ).join('');
+    return { html: `<div class="semana-strip" aria-label="Días entrenados esta semana">${celdas}</div>`, hechos: sem.hechos, metaSemana: sem.metaSemana };
   }
 
   /** Panel de apariencia: tema, color principal, color y estilo de fondo, foto propia. */
@@ -964,11 +957,11 @@
                   <div style="display: grid; grid-template-columns: 1fr 1fr 0.85fr auto; gap: 5px; align-items: end;">
                     <div class="ej-input-col">
                       <label class="ej-input-label" for="vert-peso-${bloqueKey}-${h(ej.id)}">KG</label>
-                      <input type="number" step="0.5" id="vert-peso-${bloqueKey}-${h(ej.id)}" class="ej-val-input" value="${defaultPeso}" inputmode="decimal">
+                      <input type="text" id="vert-peso-${bloqueKey}-${h(ej.id)}" class="ej-val-input" value="${defaultPeso}" inputmode="decimal" autocomplete="off" data-select-on-focus="1">
                     </div>
                     <div class="ej-input-col">
                       <label class="ej-input-label" for="vert-reps-${bloqueKey}-${h(ej.id)}">REPES</label>
-                      <input type="number" id="vert-reps-${bloqueKey}-${h(ej.id)}" class="ej-val-input" value="${defaultReps}" inputmode="numeric">
+                      <input type="text" id="vert-reps-${bloqueKey}-${h(ej.id)}" class="ej-val-input" value="${defaultReps}" inputmode="numeric" autocomplete="off" data-select-on-focus="1">
                     </div>
                     <div class="ej-input-col">
                       <label class="ej-input-label" for="vert-rpe-${bloqueKey}-${h(ej.id)}">RPE</label>
@@ -1000,15 +993,15 @@
                       <div class="ej-inputs-4col">
                         <div class="ej-input-col">
                           <label class="ej-input-label" for="bulk-peso-${h(ej.id)}">KG</label>
-                          <input type="number" step="0.5" id="bulk-peso-${h(ej.id)}" class="ej-val-input" value="${defaultPeso}" inputmode="decimal" placeholder="0">
+                          <input type="text" id="bulk-peso-${h(ej.id)}" class="ej-val-input" value="${defaultPeso}" inputmode="decimal" autocomplete="off" data-select-on-focus="1" placeholder="0">
                         </div>
                         <div class="ej-input-col">
                           <label class="ej-input-label" for="bulk-reps-${h(ej.id)}">REPES</label>
-                          <input type="number" id="bulk-reps-${h(ej.id)}" class="ej-val-input" value="${defaultReps}" inputmode="numeric" placeholder="10">
+                          <input type="text" id="bulk-reps-${h(ej.id)}" class="ej-val-input" value="${defaultReps}" inputmode="numeric" autocomplete="off" data-select-on-focus="1" placeholder="10">
                         </div>
                         <div class="ej-input-col">
                           <label class="ej-input-label" for="bulk-series-${h(ej.id)}">SERIES</label>
-                          <input type="number" id="bulk-series-${h(ej.id)}" class="ej-val-input" value="${defaultSeriesCant}" inputmode="numeric" min="1" max="10">
+                          <input type="text" id="bulk-series-${h(ej.id)}" class="ej-val-input" value="${defaultSeriesCant}" inputmode="numeric" autocomplete="off" data-select-on-focus="1">
                         </div>
                         <div class="ej-input-col">
                           <label class="ej-input-label" for="bulk-rpe-${h(ej.id)}">RPE</label>
@@ -1170,15 +1163,11 @@
       cierreActivo: rawCfg.cierreActivo !== false
     };
 
-    // PASO 1 DEDICADO: PSICOFÍSICO ULTRA COMPACTO (ZERO SCROLL)
+    // PASO 1 DEDICADO: PSICOFÍSICO UNIFICADO CON SALUD (SCROLLEABLE EN PANTALLAS CORTAS)
     if (cfg.pasoActual === 'psicofisico') {
-      const estSel = draftReadiness.estadoGeneral || (readinessHoy && readinessHoy.estadoGeneral) || 'Bien';
-      const estresVal = String(draftReadiness.estres || (readinessHoy && readinessHoy.estres) || '1');
-      const suenoVal = String(draftReadiness.sueno || (readinessHoy && readinessHoy.sueno) || '5');
-      const alimVal = String(draftReadiness.alimentacion || (readinessHoy && readinessHoy.alimentacion) || '5');
-
+      syncSaludDraftsWithState(state, Store.user);
       return `
-        <div class="onepage-view">
+        <div class="salud-scroll-view">
           <div class="step-head">
             <div>
               <span class="eyebrow">Antes de empezar</span>
@@ -1187,79 +1176,13 @@
             <button type="button" class="btn-link" data-action="set-workout-step" data-step="rutina">Saltar</button>
           </div>
 
-          <div class="card psico-card">
-            <div class="psico-rows">
-              <div class="psico-compact-row">
-                <span class="psico-compact-label">Estado</span>
-                <div class="psico-chips">
-                  ${[
-                    { val: 'Bien', label: 'Bien' },
-                    { val: 'Normal', label: 'Normal' },
-                    { val: 'Mal', label: 'Mal' }
-                  ].map(o => `
-                    <button type="button" class="psico-chip ${estSel === o.val ? 'selected' : ''}" data-action="set-psico-chip" data-field="estadoGeneral" data-value="${o.val}">
-                      ${o.label}
-                    </button>
-                  `).join('')}
-                </div>
-              </div>
-
-              <div class="psico-compact-row">
-                <span class="psico-compact-label">Estrés</span>
-                <div class="psico-chips">
-                  ${[
-                    { val: '1', label: 'Bajo' },
-                    { val: '3', label: 'Medio' },
-                    { val: '5', label: 'Alto' }
-                  ].map(o => `
-                    <button type="button" class="psico-chip ${estresVal === o.val ? 'selected' : ''}" data-action="set-psico-chip" data-field="estres" data-value="${o.val}">
-                      ${o.label}
-                    </button>
-                  `).join('')}
-                </div>
-              </div>
-
-              <div class="psico-compact-row">
-                <span class="psico-compact-label">Sueño</span>
-                <div class="psico-chips">
-                  ${[
-                    { val: '5', label: 'Bien' },
-                    { val: '3', label: 'Regular' },
-                    { val: '1', label: 'Mal' }
-                  ].map(o => `
-                    <button type="button" class="psico-chip ${suenoVal === o.val ? 'selected' : ''}" data-action="set-psico-chip" data-field="sueno" data-value="${o.val}">
-                      ${o.label}
-                    </button>
-                  `).join('')}
-                </div>
-              </div>
-
-              <div class="psico-compact-row">
-                <span class="psico-compact-label">Comida</span>
-                <div class="psico-chips">
-                  ${[
-                    { val: '5', label: 'Bien' },
-                    { val: '3', label: 'Regular' },
-                    { val: '1', label: 'Mal' }
-                  ].map(o => `
-                    <button type="button" class="psico-chip ${alimVal === o.val ? 'selected' : ''}" data-action="set-psico-chip" data-field="alimentacion" data-value="${o.val}">
-                      ${o.label}
-                    </button>
-                  `).join('')}
-                </div>
-              </div>
-
-              <div class="psico-dual-inputs">
-                <input type="text" id="step-psico-dolor" class="form-input" value="${h(draftReadiness.zonaDolor || '')}" placeholder="¿Alguna molestia?">
-                <input type="text" id="step-psico-obs" class="form-input" value="${h(draftReadiness.observacionAlumno || '')}" placeholder="Nota (opcional)">
-              </div>
-              ${renderLocalPhotoBox((state.fotos || []).filter(f => !f.deleted && f.fecha === hoyISO), { fecha: hoyISO, origin: 'checkin', compact: true })}
-            </div>
-
-            <button type="button" class="btn-primary btn-lg" data-action="submit-step-psicofisico">
-              Continuar ${renderIcon('arrowRight')}
-            </button>
-          </div>
+          ${renderSaludFormBody(state, {
+            fecha: hoyISO,
+            origin: 'checkin',
+            showDatePicker: false,
+            submitAction: 'submit-step-psicofisico',
+            submitLabel: 'Continuar'
+          })}
         </div>
       `;
     }
@@ -1799,6 +1722,40 @@
       }
     };
     const kg = n => `${Math.round(n).toLocaleString('es-AR')} kg`;
+    const kgCorto = n => {
+      const v = Math.round(Number(n) || 0);
+      return v >= 1000 ? `${(v / 1000).toFixed(1).replace(/\.0$/, '').replace('.', ',')}k` : `${v}`;
+    };
+    const renderClasesVolumenChart = (listaAsc, title = 'Total kg por clase') => {
+      const slice = Array.isArray(listaAsc) ? listaAsc.slice(-10) : [];
+      if (slice.length === 0) return '';
+      const maxVol = Math.max(1, ...slice.map(c => Number(c.volumen) || 0));
+      return `
+        <div class="card card-flat chart-card">
+          <div class="row-between">
+            <span class="section-title">${h(title)}</span>
+            <span class="section-meta">Tocá una barra para ver</span>
+          </div>
+          <div class="vol-bar-chart" role="list" aria-label="${h(title)}">
+            ${slice.map(c => {
+              const vol = Math.round(Number(c.volumen) || 0);
+              const pct = Math.max(10, Math.round((vol / maxVol) * 100));
+              const fParts = String(c.fecha || '').split('-');
+              const ddmm = fParts.length === 3 ? `${fParts[2]}/${fParts[1]}` : (c.fecha || '');
+              return `
+                <button type="button" class="vol-bar-col" data-action="open-detalle-clase" data-entrenamiento-id="${h(c.id)}" title="${h(c.nombre)}: ${vol.toLocaleString('es-AR')} kg">
+                  <span class="vol-bar-val">${h(kgCorto(vol))}</span>
+                  <span class="vol-bar-track-v"><i class="vol-bar-fill-v" style="height: ${pct}%;"></i></span>
+                  <span class="vol-bar-lbl">${h(ddmm)}</span>
+                </button>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      `;
+    };
+
+    const clasesAsc = [...clasesFiltradas].sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
 
     return `
       <div class="onepage-view">
@@ -1814,41 +1771,41 @@
           <button type="button" class="seg-btn ${historicoModo === 'evolucion' ? 'active' : ''}" data-action="set-historico-modo" data-modo="evolucion">Evolución</button>
         </div>
 
-        ${historicoModo !== 'evolucion' && (clasesRealizadas.length > 3 || historialBusqueda) ? `
+        ${historicoModo !== 'evolucion' && ((historicoModo === 'ejercicios' && ejerciciosRealizados.length > 0) || clasesRealizadas.length > 1 || historialBusqueda) ? `
           <div class="search-box">
             ${renderIcon('search')}
-            <input type="text" id="historial-search-input" class="form-input" placeholder="${historicoModo === 'clases' ? 'Buscar clase o ejercicio' : 'Buscar ejercicio'}" value="${h(historialBusqueda)}" data-action="search-historial">
+            <input type="text" id="historial-search-input" class="form-input" placeholder="${historicoModo === 'clases' ? 'Buscar clase o ejercicio' : 'Buscar ejercicio (ej. press banco)'}" value="${h(historialBusqueda)}" data-action="search-historial">
             ${historialBusqueda ? `<button type="button" class="search-clear" data-action="clear-historial-search" aria-label="Borrar búsqueda">${renderIcon('x')}</button>` : ''}
           </div>
         ` : ''}
 
         <div class="onepage-scroll-list">
-          ${historicoModo === 'evolucion' ? renderPerformanceDashboard(state) : (historicoModo === 'clases' ? (
+          ${historicoModo === 'evolucion' ? renderPerformanceDashboard(state, renderClasesVolumenChart) : (historicoModo === 'clases' ? (
             clasesFiltradas.length === 0 ? (clasesRealizadas.length === 0 ? `
               <div class="empty-state">
                 <span class="empty-state-icon">${renderIcon('chart')}</span>
                 <strong>Tu historial empieza hoy</strong>
                 <p>Cada sesión que guardes aparece acá con sus ejercicios, series y kilos.</p>
               </div>
-            ` : `<p class="empty-hint">Nada coincide con "${h(historialBusqueda)}".</p>`) : clasesFiltradas.map(cl => `
-              <div class="card hist-card">
-                <div class="row-between">
-                  <div class="rutina-row-text">
-                    <strong>${h(cl.nombre)}</strong>
-                    <small>${h(fechaCorta(cl.fecha))} · ${cl.totalSeries} series</small>
-                  </div>
-                  <span class="hist-vol">${kg(cl.volumen)}</span>
-                </div>
-                <div class="rutina-ej-list">
-                  ${cl.ejercicios.map(det => `
-                    <div class="rutina-ej">
-                      <button type="button" class="rutina-ej-name" data-action="view-ejercicio" data-ejercicio-id="${h(det.ej.id)}">${h(det.ej.nombre)}</button>
-                      <span class="rutina-ej-meta">${det.cantidadSeries} × ${det.pesoKg} kg × ${det.reps}</span>
+            ` : `<p class="empty-hint">Nada coincide con "${h(historialBusqueda)}".</p>`) : `
+              ${renderClasesVolumenChart(clasesAsc)}
+              ${clasesFiltradas.map(cl => {
+                const resumenEjs = cl.ejercicios.slice(0, 3).map(d => d.ej.nombre).join(' · ')
+                  + (cl.ejercicios.length > 3 ? ` +${cl.ejercicios.length - 3}` : '');
+                return `
+                  <button type="button" class="card hist-card hist-clase-btn" data-action="open-detalle-clase" data-entrenamiento-id="${h(cl.id)}">
+                    <div class="row-between" style="width: 100%;">
+                      <div class="rutina-row-text" style="text-align: left;">
+                        <strong>${h(cl.nombre)}</strong>
+                        <small>${h(fechaCorta(cl.fecha))} · ${cl.totalSeries} series · ${cl.ejercicios.length} ej.</small>
+                      </div>
+                      <span class="hist-vol">${kg(cl.volumen)}</span>
                     </div>
-                  `).join('')}
-                </div>
-              </div>
-            `).join('')
+                    ${resumenEjs ? `<div class="hist-clase-preview"><span>${h(resumenEjs)}</span><strong>Ver detalle →</strong></div>` : ''}
+                  </button>
+                `;
+              }).join('')}
+            `
           ) : (
             ejerciciosFiltrados.length === 0 ? (ejerciciosRealizados.length === 0 ? `
               <div class="empty-state">
@@ -1860,6 +1817,8 @@
               const { ej, historial, totalClases, totalSeries, mejorPeso, mejorReps } = item;
               const media = Engine.resolveEjercicioMedia(ej);
               const isExpanded = expandedHistorialEjIds.has(ej.id);
+              const miniPts = isExpanded ? [...historial].reverse().slice(-8) : [];
+              const miniMax = miniPts.length ? Math.max(1, ...miniPts.map(s => Number(s.mejorSerie?.pesoKg) || 0)) : 1;
               return `
                 <div class="card hist-card">
                   <button type="button" class="hist-ej-head" data-action="toggle-expand-historial-ej" data-ejercicio-id="${h(ej.id)}" aria-expanded="${isExpanded}">
@@ -1875,12 +1834,32 @@
                   </button>
                   ${isExpanded ? `
                     <div class="rutina-ej-list">
-                      ${historial.map(sesion => `
-                        <div class="rutina-ej">
-                          <span class="rutina-ej-name">${h(fechaCorta(sesion.fecha))}</span>
-                          <span class="rutina-ej-meta">${sesion.series.length} × ${sesion.mejorSerie.pesoKg} kg × ${sesion.mejorSerie.reps}</span>
+                      ${miniPts.length > 0 ? `
+                        <div class="vol-bar-chart vol-bar-chart-mini">
+                          ${miniPts.map(s => {
+                            const pKg = Number(s.mejorSerie?.pesoKg) || 0;
+                            const pct = Math.max(14, Math.round((pKg / miniMax) * 100));
+                            const fP = String(s.fecha || '').split('-');
+                            const ddmm = fP.length === 3 ? `${fP[2]}/${fP[1]}` : '';
+                            return `
+                              <button type="button" class="vol-bar-col" data-action="open-detalle-ej-sesion" data-ejercicio-id="${h(ej.id)}" data-fecha="${h(s.fecha)}">
+                                <span class="vol-bar-val">${pKg}</span>
+                                <span class="vol-bar-track-v"><i class="vol-bar-fill-v" style="height: ${pct}%;"></i></span>
+                                <span class="vol-bar-lbl">${h(ddmm)}</span>
+                              </button>
+                            `;
+                          }).join('')}
                         </div>
+                      ` : ''}
+                      ${historial.map(sesion => `
+                        <button type="button" class="rutina-ej rutina-ej-btn" data-action="open-detalle-ej-sesion" data-ejercicio-id="${h(ej.id)}" data-fecha="${h(sesion.fecha)}">
+                          <span class="rutina-ej-name">${h(fechaCorta(sesion.fecha))}</span>
+                          <span class="rutina-ej-meta">${sesion.series.length} × ${sesion.mejorSerie.pesoKg} kg × ${sesion.mejorSerie.reps} →</span>
+                        </button>
                       `).join('')}
+                      <button type="button" class="btn-link" data-action="jump-evolucion-ej" data-ejercicio-id="${h(ej.id)}" style="align-self: flex-end; font-size: 12px; padding-top: 2px;">
+                        Ver gráfico completo en Evolución →
+                      </button>
                     </div>
                   ` : ''}
                 </div>
@@ -1895,41 +1874,98 @@
   /**
    * Tablero Evolutivo de Performance del Alumno (usado en Histórico → Evolución y vista Profesor).
    */
-  function renderPerformanceDashboard(state) {
-    const perf = Engine.computePerformanceAlumno(state, {
+  function renderPerformanceDashboard(state, renderClasesChartFn = null) {
+    const perfBase = Engine.computePerformanceAlumno(state, {
       ejercicioId: evolucionEjercicioId,
       dias: evolucionPeriodoDias
     });
+    const normTxt = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const filtroNorm = normTxt(evolucionEjFiltro).trim();
+    const ejsFiltrados = filtroNorm
+      ? perfBase.ejerciciosDisponibles.filter(e => normTxt(e.nombre).includes(filtroNorm))
+      : perfBase.ejerciciosDisponibles;
+
+    const targetEjId = ejsFiltrados.some(e => e.id === perfBase.ejercicioSeleccionadoId)
+      ? perfBase.ejercicioSeleccionadoId
+      : (ejsFiltrados[0] ? ejsFiltrados[0].id : perfBase.ejercicioSeleccionadoId);
+
+    const perf = targetEjId && targetEjId !== perfBase.ejercicioSeleccionadoId
+      ? Engine.computePerformanceAlumno(state, { ejercicioId: targetEjId, dias: evolucionPeriodoDias })
+      : perfBase;
 
     const pts = perf.serieEjercicio || [];
     const ejSelected = perf.ejerciciosDisponibles.find(e => e.id === perf.ejercicioSeleccionadoId);
+    const metricKey = ['1rm', 'peso', 'volumen'].includes(evolucionMetric) ? evolucionMetric : '1rm';
+    const metricLabel = metricKey === 'peso' ? 'Peso máx. (kg)' : (metricKey === 'volumen' ? 'Volumen por sesión (kg)' : 'Curva de fuerza (1RM est.)');
+    const getMetricVal = p => metricKey === 'peso' ? (Number(p.maxPeso) || 0) : (metricKey === 'volumen' ? (Number(p.volumen) || 0) : (Number(p.est1RM) || 0));
 
     let svgChart = '';
     if (pts.length > 0) {
-      const w = 320, ht = 132, pL = 28, pR = 14, pT = 16, pB = 22;
+      const w = 320, ht = 140, pL = 32, pR = 14, pT = 18, pB = 22;
       const pw = w - pL - pR, ph = ht - pT - pB;
-      const rms = pts.map(p => p.est1RM || 0);
-      const minRm = Math.max(0, Math.min(...rms) - 5);
-      const maxRm = Math.max(minRm + 10, Math.max(...rms) + 5);
+      const vals = pts.map(getMetricVal);
+      const minRm = Math.max(0, Math.min(...vals) - (metricKey === 'volumen' ? 50 : 5));
+      const maxRm = Math.max(minRm + 10, Math.max(...vals) + (metricKey === 'volumen' ? 50 : 5));
       const gx = i => pts.length === 1 ? pL + pw / 2 : pL + (i / (pts.length - 1)) * pw;
       const gy = v => pT + ph - ((v - minRm) / Math.max(1, maxRm - minRm)) * ph;
-      const poly = pts.map((p, i) => `${gx(i).toFixed(1)},${gy(p.est1RM).toFixed(1)}`).join(' ');
+      const poly = pts.map((p, i) => `${gx(i).toFixed(1)},${gy(getMetricVal(p)).toFixed(1)}`).join(' ');
       svgChart = `
-        <svg viewBox="0 0 ${w} ${ht}" class="perf-svg" role="img" aria-label="Evolución de fuerza 1RM">
+        <svg viewBox="0 0 ${w} ${ht}" class="perf-svg" role="img" aria-label="${h(metricLabel)}">
           <line x1="${pL}" y1="${pT}" x2="${pL}" y2="${ht - pB}" stroke="var(--border-subtle)" stroke-width="1"/>
           <line x1="${pL}" y1="${ht - pB}" x2="${w - pR}" y2="${ht - pB}" stroke="var(--border-subtle)" stroke-width="1"/>
           <text x="2" y="${pT + 6}" font-size="9" fill="var(--text-dim)">${Math.round(maxRm)}</text>
           <text x="2" y="${ht - pB}" font-size="9" fill="var(--text-dim)">${Math.round(minRm)}</text>
           <polyline fill="none" stroke="var(--accent)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" points="${poly}" />
-          ${pts.map((p, i) => `
-            <circle cx="${gx(i).toFixed(1)}" cy="${gy(p.est1RM).toFixed(1)}" r="${p.isPR ? 4.2 : 3}" fill="${p.isPR ? 'var(--accent-emerald)' : 'var(--accent)'}" />
-            <text x="${gx(i).toFixed(1)}" y="${(gy(p.est1RM) - 6).toFixed(1)}" font-size="8.5" text-anchor="middle" fill="var(--text-main)">${Math.round(p.est1RM)}</text>
-          `).join('')}
+          ${pts.map((p, i) => {
+            const v = getMetricVal(p);
+            const cx = gx(i).toFixed(1);
+            const cy = gy(v).toFixed(1);
+            return `
+              <g class="perf-pt-btn" data-action="open-detalle-ej-sesion" data-ejercicio-id="${h(perf.ejercicioSeleccionadoId)}" data-fecha="${h(p.fecha)}">
+                <circle cx="${cx}" cy="${cy}" r="13" fill="transparent" />
+                <circle cx="${cx}" cy="${cy}" r="${p.isPR ? 4.4 : 3.2}" fill="${p.isPR ? 'var(--accent-emerald)' : 'var(--accent)'}" />
+                <text x="${cx}" y="${(gy(v) - 7).toFixed(1)}" font-size="8.5" text-anchor="middle" fill="var(--text-main)">${Math.round(v)}</text>
+              </g>
+            `;
+          }).join('')}
           <text x="${pL}" y="${ht - 5}" font-size="8.5" fill="var(--text-dim)">${h(pts[0].fecha.slice(5))}</text>
           ${pts.length > 1 ? `<text x="${w - pR}" y="${ht - 5}" font-size="8.5" text-anchor="end" fill="var(--text-dim)">${h(pts[pts.length - 1].fecha.slice(5))}</text>` : ''}
         </svg>
       `;
     }
+
+    const kgCortoPerf = n => {
+      const v = Math.round(Number(n) || 0);
+      return v >= 1000 ? `${(v / 1000).toFixed(1).replace(/\.0$/, '').replace('.', ',')}k` : `${v}`;
+    };
+    const renderClasesFallback = lista => {
+      const slice = (lista || []).slice(-10);
+      if (!slice.length) return '';
+      const maxVol = Math.max(1, ...slice.map(c => Number(c.volumen) || 0));
+      return `
+        <div class="card card-flat chart-card">
+          <div class="row-between">
+            <span class="section-title">Total kg por clase</span>
+            <span class="section-meta">Tocá una barra para ver</span>
+          </div>
+          <div class="vol-bar-chart">
+            ${slice.map(c => {
+              const vol = Math.round(Number(c.volumen) || 0);
+              const pct = Math.max(10, Math.round((vol / maxVol) * 100));
+              const fP = String(c.fecha || '').split('-');
+              const ddmm = fP.length === 3 ? `${fP[2]}/${fP[1]}` : '';
+              return `
+                <button type="button" class="vol-bar-col" data-action="open-detalle-clase" data-entrenamiento-id="${h(c.id)}">
+                  <span class="vol-bar-val">${h(kgCortoPerf(vol))}</span>
+                  <span class="vol-bar-track-v"><i class="vol-bar-fill-v" style="height: ${pct}%;"></i></span>
+                  <span class="vol-bar-lbl">${h(ddmm)}</span>
+                </button>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      `;
+    };
 
     return `
       <div class="perf-dashboard">
@@ -1965,30 +2001,45 @@
           </div>
         </div>
 
+        ${perf.clasesVolumen && perf.clasesVolumen.length > 0
+          ? (renderClasesChartFn ? renderClasesChartFn(perf.clasesVolumen, 'Total kg por clase') : renderClasesFallback(perf.clasesVolumen))
+          : ''}
+
         <div class="card card-flat" style="gap: 10px;">
           <div class="row-between">
-            <span class="section-title">Curva de fuerza (1RM est.)</span>
+            <span class="section-title">${h(metricLabel)}</span>
             ${ejSelected ? `<span class="section-meta">PR ${Math.round(ejSelected.pr1RM)} kg</span>` : ''}
           </div>
           ${perf.ejerciciosDisponibles.length === 0 ? `
             <p class="empty-hint">Todavía no hay series registradas en este período.</p>
           ` : `
-            <select class="form-input" data-change="select-evolucion-ej" aria-label="Elegir ejercicio para ver evolución">
-              ${perf.ejerciciosDisponibles.map(e => `
-                <option value="${h(e.id)}" ${e.id === perf.ejercicioSeleccionadoId ? 'selected' : ''}>${h(e.nombre)} (${e.sesiones} ses.)</option>
-              `).join('')}
-            </select>
-            ${pts.length > 0 ? `
-              ${svgChart}
-              <div class="perf-history-mini">
-                ${pts.slice(-4).reverse().map(p => `
-                  <div class="perf-mini-row">
-                    <span>${h(p.fecha.split('-').reverse().join('/'))}${p.isPR ? ' · <strong>PR</strong>' : ''}</span>
-                    <span>${p.maxPeso} kg × ${p.mejorReps}${p.rpePromedio ? ` · RPE ${p.rpePromedio}` : ''} → <strong>1RM ${Math.round(p.est1RM)} kg</strong></span>
-                  </div>
+            <input type="text" id="evolucion-ej-filter" class="form-input" value="${h(evolucionEjFiltro)}" placeholder="Filtrar ejercicio (ej. press banco)" data-action="filter-evolucion-ej" autocomplete="off">
+            ${ejsFiltrados.length === 0 ? `
+              <p class="empty-hint">Ningún ejercicio coincide con "${h(evolucionEjFiltro)}".</p>
+            ` : `
+              <select class="form-input" data-change="select-evolucion-ej" aria-label="Elegir ejercicio para ver evolución">
+                ${ejsFiltrados.map(e => `
+                  <option value="${h(e.id)}" ${e.id === perf.ejercicioSeleccionadoId ? 'selected' : ''}>${h(e.nombre)} (${e.sesiones} ses.)</option>
                 `).join('')}
+              </select>
+              <div class="seg seg-sm perf-metric-seg">
+                <button type="button" class="seg-btn ${metricKey === '1rm' ? 'active' : ''}" data-action="set-evolucion-metric" data-metric="1rm">1RM est.</button>
+                <button type="button" class="seg-btn ${metricKey === 'peso' ? 'active' : ''}" data-action="set-evolucion-metric" data-metric="peso">Peso máx.</button>
+                <button type="button" class="seg-btn ${metricKey === 'volumen' ? 'active' : ''}" data-action="set-evolucion-metric" data-metric="volumen">Volumen</button>
               </div>
-            ` : `<p class="empty-hint">Sin registros de este ejercicio en el período elegido.</p>`}
+              ${pts.length > 0 ? `
+                ${svgChart}
+                <small style="font-size: 11px; color: var(--text-dim); text-align: center;">Tocá un punto o sesión para ver sus series exactas</small>
+                <div class="perf-history-mini">
+                  ${pts.slice(-6).reverse().map(p => `
+                    <button type="button" class="perf-mini-row perf-mini-btn" data-action="open-detalle-ej-sesion" data-ejercicio-id="${h(perf.ejercicioSeleccionadoId)}" data-fecha="${h(p.fecha)}">
+                      <span>${h(p.fecha.split('-').reverse().join('/'))}${p.isPR ? ' · <strong>PR</strong>' : ''}</span>
+                      <span>${p.maxPeso} kg × ${p.mejorReps}${p.rpePromedio ? ` · RPE ${p.rpePromedio}` : ''} → <strong>${Math.round(getMetricVal(p))} kg</strong></span>
+                    </button>
+                  `).join('')}
+                </div>
+              ` : `<p class="empty-hint">Sin registros de este ejercicio en el período elegido.</p>`}
+            `}
           `}
         </div>
 
@@ -2031,32 +2082,28 @@
   }
 
   // 6.3 Pestaña SALUD FÍSICA Y PSICOLÓGICA (SIMPLIFICADA, RÁPIDA, A DEMANDA Y ONE-PAGE)
-  function renderAlumnoSaludSection(state) {
-    syncSaludDraftsWithState(state, Store.user);
-    const diasSeleccionados = Array.isArray(draftPerfil.diasSemana) ? draftPerfil.diasSemana : [];
-    const logs = (state.readinessLogs || []).filter(r => !r.deleted);
-    const fotosActivas = (state.fotos || []).filter(f => !f.deleted);
-    const observaciones = (state.observaciones || []).filter(o => !o.deleted);
-
+  function renderSaludFormBody(state, options = {}) {
     const hoyISO = Engine.todayISO();
+    const selFecha = options.fecha || draftReadiness.fecha || hoyISO;
+    const origin = options.origin || 'salud';
+    const showDatePicker = options.showDatePicker !== false;
+    const submitAction = options.submitAction || 'submit-readiness';
+    const cancelAction = options.cancelAction || null;
+
     const ayerDate = new Date(Date.now() - 86400000);
     const ayerISO = `${ayerDate.getFullYear()}-${String(ayerDate.getMonth() + 1).padStart(2, '0')}-${String(ayerDate.getDate()).padStart(2, '0')}`;
 
-    const selFecha = draftReadiness.fecha || hoyISO;
+    const logs = (state.readinessLogs || []).filter(r => !r.deleted);
+    const fotosActivas = (state.fotos || []).filter(f => !f.deleted);
     const logDeEstaFecha = logs.find(l => l.fecha === selFecha);
     const fotosDeEstaFecha = fotosActivas.filter(f => f.fecha === selFecha);
-    const fotosPorFecha = new Map();
-    fotosActivas.forEach(f => {
-      if (!fotosPorFecha.has(f.fecha)) fotosPorFecha.set(f.fecha, []);
-      fotosPorFecha.get(f.fecha).push(f);
-    });
 
-    const selEnergia = String(draftReadiness.energia || '4');
-    const selEstres = String(draftReadiness.estres || '2');
-    const selSueno = String(draftReadiness.sueno || '4');
-    const selEstado = draftReadiness.estadoGeneral || (logDeEstaFecha ? logDeEstaFecha.observacionAlumno : 'Excelente');
-
+    const selEnergia = String(draftReadiness.energia || (logDeEstaFecha && logDeEstaFecha.energia) || '4');
+    const selEstres = String(draftReadiness.estres || (logDeEstaFecha && logDeEstaFecha.estres) || '2');
+    const selSueno = String(draftReadiness.sueno || (logDeEstaFecha && logDeEstaFecha.sueno) || '4');
+    const selEstado = draftReadiness.estadoGeneral || (logDeEstaFecha ? (logDeEstaFecha.estadoGeneral || logDeEstaFecha.observacionAlumno) : 'Excelente');
     const fechaDisplay = selFecha === hoyISO ? 'Hoy' : (selFecha === ayerISO ? 'Ayer' : selFecha.split('-').reverse().join('/'));
+    const submitLabel = options.submitLabel || `Guardar ${selFecha === hoyISO ? 'cómo estoy hoy' : `(${h(fechaDisplay)})`}`;
 
     const ESTADOS = [
       { val: 'Excelente', label: 'Genial', energia: 5, estres: 1, sueno: 5 },
@@ -2067,25 +2114,10 @@
     ];
 
     return `
-      <div class="onepage-view">
-        ${selFecha === hoyISO && logDeEstaFecha && !isEditingSaludHoy ? `
-          <div class="card card-flat salud-hoy-summary">
-            <div class="row-between">
-              <div>
-                <span class="eyebrow">Check-in de hoy listo</span>
-                <strong style="display: block; font-size: 16px; margin-top: 2px;">${h(logDeEstaFecha.estadoGeneral || 'Bien')} · Energía ${logDeEstaFecha.energia}/5</strong>
-                <small style="color: var(--text-muted); font-size: 12px;">
-                  Estrés ${logDeEstaFecha.estres <= 1 ? 'Bajo' : (logDeEstaFecha.estres <= 3 ? 'Medio' : 'Alto')} · Sueño ${logDeEstaFecha.sueno >= 4 ? '7 h+' : (logDeEstaFecha.sueno === 3 ? '6 h' : '≤ 5 h')}${logDeEstaFecha.zonaDolor ? ` · Molestia: ${h(logDeEstaFecha.zonaDolor)}` : ''}
-                </small>
-              </div>
-              <button type="button" class="btn-secondary btn-sm" data-action="toggle-edit-salud-hoy">${renderIcon('edit')} Editar</button>
-            </div>
-            ${renderLocalPhotoBox(fotosDeEstaFecha, { fecha: selFecha, origin: 'salud', compact: true })}
-          </div>
-        ` : `
-        <div class="card card-flat">
-          <div class="row-between">
-            <span class="section-title">¿Cómo estás?${logDeEstaFecha ? ' <em>guardado</em>' : ''}</span>
+      <div class="card card-flat">
+        <div class="row-between">
+          <span class="section-title">¿Cómo estás?${logDeEstaFecha ? ' <em>guardado</em>' : ''}</span>
+          ${showDatePicker ? `
             <div class="date-picker-row">
               <button type="button" class="chip chip-filter ${selFecha === hoyISO ? 'active' : ''}" data-action="set-readiness-date" data-date="${hoyISO}">Hoy</button>
               <button type="button" class="chip chip-filter ${selFecha === ayerISO ? 'active' : ''}" data-action="set-readiness-date" data-date="${ayerISO}">Ayer</button>
@@ -2094,122 +2126,160 @@
                 <input type="date" id="rd-fecha" value="${h(selFecha)}" max="${hoyISO}" data-action="change-readiness-date" aria-label="Elegir fecha">
               </label>
             </div>
+          ` : (cancelAction ? `<button type="button" class="btn-link" data-action="${h(cancelAction)}">Ocultar</button>` : '')}
+        </div>
+
+        <div class="psico-chips" style="grid-template-columns: repeat(5, minmax(0, 1fr));">
+          ${ESTADOS.map(e => `
+            <button type="button" class="psico-chip ${selEstado === e.val ? 'selected' : ''}" data-action="pick-salud-estado" data-estado="${e.val}" data-energia="${e.energia}" data-estres="${e.estres}" data-sueno="${e.sueno}">${e.label}</button>
+          `).join('')}
+        </div>
+
+        <div class="psico-rows">
+          <div class="psico-compact-row">
+            <span class="psico-compact-label">Energía</span>
+            <div class="psico-chips" style="grid-template-columns: repeat(5, minmax(0, 1fr));">
+              ${[1, 2, 3, 4, 5].map(v => `
+                <button type="button" class="psico-chip ${Number(selEnergia) === v ? 'selected' : ''}" data-action="set-salud-metric" data-metric="energia" data-val="${v}">${v}</button>
+              `).join('')}
+            </div>
+          </div>
+          <div class="psico-compact-row">
+            <span class="psico-compact-label">Estrés</span>
+            <div class="psico-chips">
+              <button type="button" class="psico-chip ${Number(selEstres) <= 1 ? 'selected' : ''}" data-action="set-salud-metric" data-metric="estres" data-val="1">Bajo</button>
+              <button type="button" class="psico-chip ${Number(selEstres) === 2 || Number(selEstres) === 3 ? 'selected' : ''}" data-action="set-salud-metric" data-metric="estres" data-val="2">Medio</button>
+              <button type="button" class="psico-chip ${Number(selEstres) >= 4 ? 'selected' : ''}" data-action="set-salud-metric" data-metric="estres" data-val="4">Alto</button>
+            </div>
+          </div>
+          <div class="psico-compact-row">
+            <span class="psico-compact-label">Sueño</span>
+            <div class="psico-chips">
+              <button type="button" class="psico-chip ${Number(selSueno) >= 4 ? 'selected' : ''}" data-action="set-salud-metric" data-metric="sueno" data-val="5">7 h o más</button>
+              <button type="button" class="psico-chip ${Number(selSueno) === 3 ? 'selected' : ''}" data-action="set-salud-metric" data-metric="sueno" data-val="3">6 h</button>
+              <button type="button" class="psico-chip ${Number(selSueno) <= 2 ? 'selected' : ''}" data-action="set-salud-metric" data-metric="sueno" data-val="2">5 h o menos</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="psico-dual-inputs">
+          <input type="text" id="rd-dolor" class="form-input" value="${h(draftReadiness.zonaDolor || '')}" placeholder="¿Alguna molestia?">
+          <input type="text" id="rd-obs" class="form-input" value="${h(draftReadiness.observacionAlumno || '')}" placeholder="Nota (opcional)">
+        </div>
+
+        ${renderLocalPhotoBox(fotosDeEstaFecha, { fecha: selFecha, origin, compact: true })}
+
+        <div style="display: flex; gap: 8px;">
+          ${cancelAction ? `<button type="button" class="btn-secondary" data-action="${h(cancelAction)}" style="width: auto;">Cerrar</button>` : ''}
+          <button type="button" class="btn-primary" data-action="${h(submitAction)}" style="flex: 1;">
+            ${submitLabel}${submitAction === 'submit-step-psicofisico' ? ` ${renderIcon('arrowRight')}` : ''}
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderAlumnoSaludSection(state) {
+    syncSaludDraftsWithState(state, Store.user);
+    const diasSeleccionados = Array.isArray(draftPerfil.diasSemana) ? draftPerfil.diasSemana : [];
+    const logs = (state.readinessLogs || []).filter(r => !r.deleted);
+    const fotosActivas = (state.fotos || []).filter(f => !f.deleted);
+    const observaciones = (state.observaciones || []).filter(o => !o.deleted);
+
+    const hoyISO = Engine.todayISO();
+    const selFecha = draftReadiness.fecha || hoyISO;
+    const logDeHoy = logs.find(l => l.fecha === hoyISO);
+    const fotosPorFecha = new Map();
+    fotosActivas.forEach(f => {
+      if (!fotosPorFecha.has(f.fecha)) fotosPorFecha.set(f.fecha, []);
+      fotosPorFecha.get(f.fecha).push(f);
+    });
+
+    const cal = Engine.computeCalendarioSaludMes(state, saludCalYear, saludCalMonth);
+    const hoyParts = hoyISO.split('-').map(Number);
+    const esMesActual = cal.year === hoyParts[0] && cal.month === hoyParts[1];
+    const blanks = Array.from({ length: cal.primerDiaSemana }, () => `<span class="cal-blank" aria-hidden="true"></span>`).join('');
+
+    return `
+      <div class="salud-scroll-view" id="salud-scroll-root">
+        ${isSaludFormOpen || isEditingSaludHoy ? renderSaludFormBody(state, {
+          fecha: selFecha,
+          origin: 'salud',
+          showDatePicker: true,
+          submitAction: 'submit-readiness',
+          cancelAction: 'toggle-salud-form'
+        }) : `
+          <button type="button" class="card card-flat salud-toggle-card" data-action="toggle-salud-form" aria-expanded="false">
+            <div class="row-between" style="width: 100%;">
+              <div style="text-align: left; min-width: 0; flex: 1;">
+                <span class="eyebrow">${logDeHoy ? 'Salud hoy registrada' : 'Estado diario'}</span>
+                <strong style="display: block; font-size: 14.5px; margin-top: 2px;">
+                  ${logDeHoy
+                    ? `${h(logDeHoy.estadoGeneral || 'Bien')} · Energía ${logDeHoy.energia}/5${logDeHoy.zonaDolor ? ` · ${h(logDeHoy.zonaDolor)}` : ''}`
+                    : '¿Cómo estás hoy? Tocar para registrar'}
+                </strong>
+              </div>
+              <span class="btn-secondary btn-sm" style="flex-shrink: 0;">${logDeHoy ? renderIcon('edit') : renderIcon('chevronDown')} ${logDeHoy ? 'Editar' : 'Cargar'}</span>
+            </div>
+          </button>
+        `}
+
+        <div class="card card-flat salud-streak-bar">
+          <div class="row-between">
+            <div>
+              <span class="eyebrow">Tu constancia del mes</span>
+              <strong style="font-size: 15px; display: block; margin-top: 2px;">${cal.diasGymMes} ${cal.diasGymMes === 1 ? 'día de gym' : 'días de gym'} · ${cal.diasSeguidosActivos} ${cal.diasSeguidosActivos === 1 ? 'día en racha' : 'días en racha'}</strong>
+            </div>
+            <span class="streak-pct-pill">${cal.cumplimientoPct}%</span>
+          </div>
+          <div class="streak-progress"><i style="width: ${cal.cumplimientoPct}%;"></i></div>
+          <small class="streak-msg">${h(cal.mensajeMotivacional)}${cal.rachaSemanas > 0 ? ` · ${cal.rachaSemanas} ${cal.rachaSemanas === 1 ? 'sem.' : 'sems.'} cumpliendo meta` : ''}</small>
+        </div>
+
+        <div class="card card-flat salud-cal-card">
+          <div class="cal-header">
+            <button type="button" class="cal-nav-btn" data-action="nav-salud-cal-mes" data-delta="-1" aria-label="Mes anterior">${renderIcon('arrowLeft')}</button>
+            <div class="cal-header-title">
+              <strong>${h(cal.labelMes)}</strong>
+              ${!esMesActual ? `<button type="button" class="btn-link" data-action="nav-salud-cal-mes" data-delta="0" style="font-size: 11px; padding: 0 4px;">Ir a hoy</button>` : ''}
+            </div>
+            <button type="button" class="cal-nav-btn" data-action="nav-salud-cal-mes" data-delta="1" aria-label="Mes siguiente">${renderIcon('arrowRight')}</button>
           </div>
 
-          <div class="psico-chips" style="grid-template-columns: repeat(5, minmax(0, 1fr));">
-            ${ESTADOS.map(e => `
-              <button type="button" class="psico-chip ${selEstado === e.val ? 'selected' : ''}" data-action="pick-salud-estado" data-estado="${e.val}" data-energia="${e.energia}" data-estres="${e.estres}" data-sueno="${e.sueno}">${e.label}</button>
+          <div class="cal-weekdays" aria-hidden="true">
+            <span>L</span><span>M</span><span>X</span><span>J</span><span>V</span><span>S</span><span>D</span>
+          </div>
+
+          <div class="cal-grid">
+            ${blanks}
+            ${cal.dias.map(d => `
+              <button type="button"
+                class="cal-day cal-${d.nivelColor} ${d.asistioGym ? 'has-gym' : ''} ${d.esHoy ? 'is-today' : ''} ${d.esFuturo ? 'is-future' : ''} ${d.esDiaPlanificado && !d.asistioGym && !d.esFuturo ? 'is-missed-plan' : ''}"
+                data-action="open-salud-dia-modal"
+                data-date="${h(d.fecha)}"
+                ${d.esFuturo ? 'disabled' : ''}
+                aria-label="${h(formatFechaDMY(d.fecha))}${d.asistioGym ? ', asistió al gimnasio' : ''}${d.readiness ? `, salud: ${h(d.readiness.estadoGeneral || 'registrada')}` : ''}">
+                <span class="cal-num">${d.dia}</span>
+                ${d.asistioGym ? `<span class="cal-check" aria-hidden="true">${renderIcon('check')}</span>` : ''}
+                ${d.fotosCount > 0 ? `<span class="cal-photo-dot" aria-hidden="true"></span>` : ''}
+              </button>
             `).join('')}
           </div>
 
-          <div class="psico-rows">
-            <div class="psico-compact-row">
-              <span class="psico-compact-label">Energía</span>
-              <div class="psico-chips" style="grid-template-columns: repeat(5, minmax(0, 1fr));">
-                ${[1, 2, 3, 4, 5].map(v => `
-                  <button type="button" class="psico-chip ${Number(selEnergia) === v ? 'selected' : ''}" data-action="set-salud-metric" data-metric="energia" data-val="${v}">${v}</button>
-                `).join('')}
-              </div>
-            </div>
-            <div class="psico-compact-row">
-              <span class="psico-compact-label">Estrés</span>
-              <div class="psico-chips">
-                <button type="button" class="psico-chip ${Number(selEstres) <= 1 ? 'selected' : ''}" data-action="set-salud-metric" data-metric="estres" data-val="1">Bajo</button>
-                <button type="button" class="psico-chip ${Number(selEstres) === 2 || Number(selEstres) === 3 ? 'selected' : ''}" data-action="set-salud-metric" data-metric="estres" data-val="2">Medio</button>
-                <button type="button" class="psico-chip ${Number(selEstres) >= 4 ? 'selected' : ''}" data-action="set-salud-metric" data-metric="estres" data-val="4">Alto</button>
-              </div>
-            </div>
-            <div class="psico-compact-row">
-              <span class="psico-compact-label">Sueño</span>
-              <div class="psico-chips">
-                <button type="button" class="psico-chip ${Number(selSueno) >= 4 ? 'selected' : ''}" data-action="set-salud-metric" data-metric="sueno" data-val="5">7 h o más</button>
-                <button type="button" class="psico-chip ${Number(selSueno) === 3 ? 'selected' : ''}" data-action="set-salud-metric" data-metric="sueno" data-val="3">6 h</button>
-                <button type="button" class="psico-chip ${Number(selSueno) <= 2 ? 'selected' : ''}" data-action="set-salud-metric" data-metric="sueno" data-val="2">5 h o menos</button>
-              </div>
-            </div>
-          </div>
-
-          <div class="psico-dual-inputs">
-            <input type="text" id="rd-dolor" class="form-input" value="${h(draftReadiness.zonaDolor || '')}" placeholder="¿Alguna molestia?">
-            <input type="text" id="rd-obs" class="form-input" value="${h(draftReadiness.observacionAlumno || '')}" placeholder="Nota (opcional)">
-          </div>
-
-          ${renderLocalPhotoBox(fotosDeEstaFecha, { fecha: selFecha, origin: 'salud', compact: true })}
-
-          <div style="display: flex; gap: 8px;">
-            ${isEditingSaludHoy ? `<button type="button" class="btn-secondary" data-action="toggle-edit-salud-hoy" style="width: auto;">Cancelar</button>` : ''}
-            <button type="button" class="btn-primary" data-action="submit-readiness" style="flex: 1;">
-              Guardar ${selFecha === hoyISO ? 'cómo estoy hoy' : `(${h(fechaDisplay)})`}
-            </button>
+          <div class="cal-legend">
+            <span><i class="leg-check">${renderIcon('check')}</i> Gym</span>
+            <span><i class="leg-dot leg-optimo"></i> Bien</span>
+            <span><i class="leg-dot leg-moderado"></i> Regular</span>
+            <span><i class="leg-dot leg-alerta"></i> Molestia</span>
+            <span><i class="leg-dot leg-salud"></i> Descanso</span>
           </div>
         </div>
-        `}
 
-        ${(() => {
-          const cal = Engine.computeCalendarioSaludMes(state, saludCalYear, saludCalMonth);
-          const hoyParts = hoyISO.split('-').map(Number);
-          const esMesActual = cal.year === hoyParts[0] && cal.month === hoyParts[1];
-          const blanks = Array.from({ length: cal.primerDiaSemana }, () => `<span class="cal-blank" aria-hidden="true"></span>`).join('');
-          return `
-            <div class="onepage-scroll-list">
-              <div class="card card-flat salud-streak-bar">
-                <div class="row-between">
-                  <div>
-                    <span class="eyebrow">Tu constancia del mes</span>
-                    <strong style="font-size: 15px; display: block; margin-top: 2px;">${cal.diasGymMes} ${cal.diasGymMes === 1 ? 'día de gym' : 'días de gym'} · ${cal.diasSeguidosActivos} ${cal.diasSeguidosActivos === 1 ? 'día en racha' : 'días en racha'}</strong>
-                  </div>
-                  <span class="streak-pct-pill">${cal.cumplimientoPct}%</span>
-                </div>
-                <div class="streak-progress"><i style="width: ${cal.cumplimientoPct}%;"></i></div>
-                <small class="streak-msg">${h(cal.mensajeMotivacional)}${cal.rachaSemanas > 0 ? ` · ${cal.rachaSemanas} ${cal.rachaSemanas === 1 ? 'sem.' : 'sems.'} cumpliendo meta` : ''}</small>
-              </div>
-
-              <div class="card card-flat salud-cal-card">
-                <div class="cal-header">
-                  <button type="button" class="cal-nav-btn" data-action="nav-salud-cal-mes" data-delta="-1" aria-label="Mes anterior">${renderIcon('arrowLeft')}</button>
-                  <div class="cal-header-title">
-                    <strong>${h(cal.labelMes)}</strong>
-                    ${!esMesActual ? `<button type="button" class="btn-link" data-action="nav-salud-cal-mes" data-delta="0" style="font-size: 11px; padding: 0 4px;">Ir a hoy</button>` : ''}
-                  </div>
-                  <button type="button" class="cal-nav-btn" data-action="nav-salud-cal-mes" data-delta="1" aria-label="Mes siguiente">${renderIcon('arrowRight')}</button>
-                </div>
-
-                <div class="cal-weekdays" aria-hidden="true">
-                  <span>L</span><span>M</span><span>X</span><span>J</span><span>V</span><span>S</span><span>D</span>
-                </div>
-
-                <div class="cal-grid">
-                  ${blanks}
-                  ${cal.dias.map(d => `
-                    <button type="button"
-                      class="cal-day cal-${d.nivelColor} ${d.asistioGym ? 'has-gym' : ''} ${d.esHoy ? 'is-today' : ''} ${d.esFuturo ? 'is-future' : ''} ${d.esDiaPlanificado && !d.asistioGym && !d.esFuturo ? 'is-missed-plan' : ''}"
-                      data-action="open-salud-dia-modal"
-                      data-date="${h(d.fecha)}"
-                      ${d.esFuturo ? 'disabled' : ''}
-                      aria-label="${h(formatFechaDMY(d.fecha))}${d.asistioGym ? ', asistió al gimnasio' : ''}${d.readiness ? `, salud: ${h(d.readiness.estadoGeneral || 'registrada')}` : ''}">
-                      <span class="cal-num">${d.dia}</span>
-                      ${d.asistioGym ? `<span class="cal-check" aria-hidden="true">${renderIcon('check')}</span>` : ''}
-                      ${d.fotosCount > 0 ? `<span class="cal-photo-dot" aria-hidden="true"></span>` : ''}
-                    </button>
-                  `).join('')}
-                </div>
-
-                <div class="cal-legend">
-                  <span><i class="leg-check">${renderIcon('check')}</i> Gym</span>
-                  <span><i class="leg-dot leg-optimo"></i> Bien</span>
-                  <span><i class="leg-dot leg-moderado"></i> Regular</span>
-                  <span><i class="leg-dot leg-alerta"></i> Molestia</span>
-                  <span><i class="leg-dot leg-salud"></i> Descanso</span>
-                </div>
-              </div>
-
-              <div class="seg seg-sm">
-                <button type="button" class="seg-btn ${isSaludLogsOpen ? 'active' : ''}" data-action="toggle-salud-logs">Registros (${logs.length})</button>
-                <button type="button" class="seg-btn ${isSaludFotosOpen ? 'active' : ''}" data-action="toggle-salud-fotos">Fotos (${fotosActivas.length})</button>
-                <button type="button" class="seg-btn ${isPerfilOpen ? 'active' : ''}" data-action="toggle-perfil-collapse">Mi ficha</button>
-              </div>
-          `;
-        })()}
+        <div class="seg seg-sm">
+          <button type="button" class="seg-btn ${isSaludLogsOpen ? 'active' : ''}" data-action="toggle-salud-logs">Registros (${logs.length})</button>
+          <button type="button" class="seg-btn ${isSaludFotosOpen ? 'active' : ''}" data-action="toggle-salud-fotos">Fotos (${fotosActivas.length})</button>
+          <button type="button" class="seg-btn ${isPerfilOpen ? 'active' : ''}" data-action="toggle-perfil-collapse">Mi ficha</button>
+        </div>
           ${observaciones.length > 0 ? `
             <div class="list-row" style="cursor: default;">
               <span class="list-row-icon">${renderIcon('user')}</span>
@@ -2276,7 +2346,7 @@
                   </div>
                   <div class="form-group">
                     <label class="form-label" for="pf-peso">Peso (kg)</label>
-                    <input type="number" step="0.1" id="pf-peso" class="form-input" value="${h(draftPerfil.pesoKg || '')}" placeholder="78,5" inputmode="decimal">
+                    <input type="text" id="pf-peso" class="form-input" value="${h(draftPerfil.pesoKg || '')}" placeholder="78,5" inputmode="decimal" autocomplete="off" data-select-on-focus="1">
                   </div>
                   <div class="form-group">
                     <label class="form-label" for="pf-altura">Altura (cm)</label>
@@ -2308,7 +2378,6 @@
               </form>
             </div>
           ` : ''}
-        </div>
       </div>
     `;
   }
@@ -2371,7 +2440,7 @@
         <div style="background: var(--bg-elevated); padding: 14px; border-radius: var(--radius-md); display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; align-items: end;">
           <div class="form-group">
             <label class="form-label">Peso Corporal Hoy (kg)</label>
-            <input type="number" step="0.1" id="foto-peso-input" class="form-input" value="${h((state.perfil && state.perfil.pesoKg) || '')}" placeholder="Ej: 78.5">
+            <input type="text" id="foto-peso-input" class="form-input" value="${h((state.perfil && state.perfil.pesoKg) || '')}" placeholder="Ej: 78,5" inputmode="decimal" autocomplete="off" data-select-on-focus="1">
           </div>
           <div class="form-group">
             <label class="form-label">Nota / Observación de la Foto</label>
@@ -3079,7 +3148,7 @@
           <div class="picker-params" style="grid-template-columns: ${esModoMovilidad ? 'repeat(3, 1fr)' : 'repeat(2, 1fr)'};">
             <label><span>Series</span><input type="number" id="picker-series" class="form-input" value="${esModoMovilidad ? '2' : '3'}" min="1" max="12" inputmode="numeric"></label>
             <label><span>Repeticiones</span><input type="text" id="picker-reps" class="form-input" value="${esModoMovilidad ? '15' : (esModoAmrap ? '12 reps' : '8-10')}"></label>
-            ${esModoMovilidad ? `<label><span>Peso (kg)</span><input type="number" step="0.5" id="picker-peso" class="form-input" value="0" inputmode="decimal"></label>` : ''}
+            ${esModoMovilidad ? `<label><span>Peso (kg)</span><input type="text" id="picker-peso" class="form-input" value="0" inputmode="decimal" autocomplete="off" data-select-on-focus="1"></label>` : ''}
           </div>
 
           <div class="picker-list">
@@ -3428,6 +3497,96 @@
       return;
     }
 
+    if (activeModal.type === 'detalle-clase') {
+      const det = Engine.computeDetalleClase(state, activeModal.entrenamientoId);
+      if (!det) {
+        activeModal = null;
+        overlay.remove();
+        lastRenderedModalType = null;
+        return;
+      }
+      overlay.innerHTML = `
+        <div class="modal-card" style="max-width: 500px;">
+          <div class="modal-header-sticky">
+            <div>
+              <h2 class="modal-title" style="font-size: 17px;">${h(det.nombre)}</h2>
+              <span class="net-status" style="margin: 2px 0 0;">${h(formatFechaDMY(det.fecha))}${det.inicio ? ` · ${h(det.inicio)} hs` : ''}${det.duracionMin != null ? ` · ${det.duracionMin} min` : ''}</span>
+            </div>
+            <button type="button" class="btn-close-modal" data-action="close-modal">${renderIcon('x')}</button>
+          </div>
+
+          <div class="kpi-row">
+            <div class="kpi"><strong>${det.volumen.toLocaleString('es-AR')}</strong><span>kg movidos</span></div>
+            <div class="kpi"><strong>${det.totalSeries}</strong><span>series</span></div>
+            <div class="kpi"><strong>${det.ejercicios.length}</strong><span>ejercicios</span></div>
+          </div>
+
+          <div class="detalle-series-list">
+            ${det.ejercicios.map(item => `
+              <div class="card card-flat" style="padding: 10px 12px !important; gap: 6px !important;">
+                <div class="row-between">
+                  <button type="button" class="rutina-ej-name" data-action="view-ejercicio" data-ejercicio-id="${h(item.ej.id)}" style="font-weight: 700;">${h(item.ej.nombre)}</button>
+                  <span class="section-meta">${item.volumenEj.toLocaleString('es-AR')} kg</span>
+                </div>
+                <div class="detalle-chips-wrap">
+                  ${item.series.map(sr => `
+                    <span class="badge" style="font-family: var(--font-mono); font-size: 11px;">#${sr.numeroSerie}: ${sr.pesoKg} kg × ${sr.reps}${sr.rpe ? ` · RPE ${sr.rpe}` : ''}</span>
+                  `).join('')}
+                </div>
+              </div>
+            `).join('')}
+          </div>
+
+          <button type="button" class="btn-primary" data-action="close-modal">Cerrar</button>
+        </div>
+      `;
+      return;
+    }
+
+    if (activeModal.type === 'detalle-ej-sesion') {
+      const det = Engine.computeDetalleEjercicioFecha(state, activeModal.ejercicioId, activeModal.fecha);
+      if (!det) {
+        activeModal = null;
+        overlay.remove();
+        lastRenderedModalType = null;
+        return;
+      }
+      overlay.innerHTML = `
+        <div class="modal-card" style="max-width: 480px;">
+          <div class="modal-header-sticky">
+            <div>
+              <h2 class="modal-title" style="font-size: 17px;">${h(det.ej.nombre)}</h2>
+              <span class="net-status" style="margin: 2px 0 0;">${h(formatFechaDMY(det.fecha))} · ${det.totalSeries} ${det.totalSeries === 1 ? 'serie' : 'series'}</span>
+            </div>
+            <button type="button" class="btn-close-modal" data-action="close-modal">${renderIcon('x')}</button>
+          </div>
+
+          <div class="kpi-row">
+            <div class="kpi"><strong>${det.mejorPeso} kg</strong><span>mejor × ${det.mejorReps}</span></div>
+            <div class="kpi"><strong>${det.est1RM} kg</strong><span>1RM est.</span></div>
+            <div class="kpi"><strong>${det.volumen.toLocaleString('es-AR')}</strong><span>kg totales</span></div>
+          </div>
+
+          ${det.series.length === 0 ? `<p class="empty-hint">No se encontraron series en esta fecha.</p>` : `
+            <div class="detalle-series-list">
+              ${det.series.map(sr => `
+                <div class="detalle-serie-row">
+                  <span>Serie ${sr.numeroSerie}</span>
+                  <strong>${sr.pesoKg} kg × ${sr.reps} reps${sr.rpe ? ` · RPE ${sr.rpe}` : ''}</strong>
+                </div>
+              `).join('')}
+            </div>
+          `}
+
+          <div class="modal-actions">
+            <button type="button" class="btn-secondary" data-action="view-ejercicio" data-ejercicio-id="${h(det.ej.id)}">Ver técnica</button>
+            <button type="button" class="btn-primary" data-action="close-modal">Cerrar</button>
+          </div>
+        </div>
+      `;
+      return;
+    }
+
     if (activeModal.type === 'salud-dia') {
       const targetFecha = activeModal.fecha || Engine.todayISO();
       const pts = targetFecha.split('-').map(Number);
@@ -3540,7 +3699,7 @@
               </div>
               <div class="form-group">
                 <label class="form-label">Peso (kg)</label>
-                <input type="number" step="0.5" id="mov-peso" class="form-input" value="15" placeholder="Ej: 15">
+                <input type="text" id="mov-peso" class="form-input" value="15" placeholder="Ej: 15" inputmode="decimal" autocomplete="off" data-select-on-focus="1">
               </div>
             </div>
             <div class="form-group">
@@ -4395,7 +4554,7 @@
       const ejId = el.getAttribute('data-ejercicio-id');
       const seriesObj = Number(document.getElementById('picker-series')?.value) || 3;
       const repsObj = document.getElementById('picker-reps')?.value || '8-12';
-      const pesoObj = parseFloat(document.getElementById('picker-peso')?.value) || 0;
+      const pesoObj = Engine.parseDecimal(document.getElementById('picker-peso')?.value, 0);
 
       const st = Store.getState();
       const ejObj = (st.ejercicios || []).find(e => e.id === ejId)
@@ -4704,7 +4863,7 @@
       const nombre = document.getElementById('mov-nombre')?.value?.trim() || 'Movilidad';
       const series = parseInt(document.getElementById('mov-series')?.value, 10) || 2;
       const reps = document.getElementById('mov-reps')?.value?.trim() || '15';
-      const pesoKg = parseFloat(document.getElementById('mov-peso')?.value) || 0;
+      const pesoKg = Engine.parseDecimal(document.getElementById('mov-peso')?.value, 0);
       const notas = document.getElementById('mov-notas')?.value?.trim() || '';
 
       Store.commit(s => Engine.guardarMovilidad(s, { ejercicioId, nombre, series, reps, pesoKg, notas }));
@@ -5247,12 +5406,11 @@
 
     'submit-step-psicofisico': () => {
       captureSaludDraftsFromDOM();
-      const estadoMapEnergia = { Bien: 5, Normal: 4, Mal: 2 };
       const estGen = draftReadiness.estadoGeneral || 'Bien';
-      const energiaNum = Number(draftReadiness.energia) || estadoMapEnergia[estGen] || 4;
+      const energiaNum = Number(draftReadiness.energia) || 4;
       const estresNum = Number(draftReadiness.estres) || 1;
       const suenoNum = Number(draftReadiness.sueno) || 5;
-      const alimNum = Number(draftReadiness.alimentacion) || 5;
+      const alimNum = Number(draftReadiness.alimentacion) || 4;
 
       Store.commit(state => {
         let next = Engine.registrarReadiness(state, {
@@ -5262,6 +5420,7 @@
           estres: estresNum,
           sueno: suenoNum,
           alimentacion: alimNum,
+          dolorArticular: Boolean(draftReadiness.zonaDolor),
           zonaDolor: draftReadiness.zonaDolor || '',
           observacionAlumno: draftReadiness.observacionAlumno || estGen
         });
@@ -5372,7 +5531,7 @@
       const pesoEl = document.getElementById(`vert-peso-${bloque}-${ejId}`);
       const repsEl = document.getElementById(`vert-reps-${bloque}-${ejId}`);
       const rpeEl = document.getElementById(`vert-rpe-${bloque}-${ejId}`);
-      const pesoKg = pesoEl ? parseFloat(pesoEl.value) || 0 : 0;
+      const pesoKg = pesoEl ? Engine.parseDecimal(pesoEl.value, 0) : 0;
       const reps = repsEl ? parseInt(repsEl.value, 10) || 0 : 0;
       const rpe = rpeEl && rpeEl.value ? parseFloat(rpeEl.value) : null;
       if (reps <= 0) {
@@ -5412,9 +5571,9 @@
         const rpeInput = document.getElementById(`vert-rpe-${bloque}-${ejId}`);
         return {
           ejercicioId: ejId,
-          pesoKg: pInput ? parseFloat(pInput.value) || 0 : 0,
+          pesoKg: pInput ? Engine.parseDecimal(pInput.value, 0) : 0,
           reps: parseInt(rInput.value, 10) || 0,
-          rpe: rpeInput && rpeInput.value ? parseFloat(rpeInput.value) : null,
+          rpe: rpeInput && rpeInput.value ? Engine.parseDecimal(rpeInput.value, null) : null,
           tipo: 'efectiva'
         };
       }).filter(r => r.reps > 0 || r.pesoKg > 0);
@@ -5441,7 +5600,7 @@
       const seriesEl = document.getElementById(`bulk-series-${ejId}`);
       const rpeEl = document.getElementById(`bulk-rpe-${ejId}`);
 
-      const pesoKg = pesoEl ? parseFloat(pesoEl.value) || 0 : 0;
+      const pesoKg = pesoEl ? Engine.parseDecimal(pesoEl.value, 0) : 0;
       const reps = repsEl ? parseInt(repsEl.value, 10) || 0 : 0;
       const seriesCant = seriesEl ? parseInt(seriesEl.value, 10) || 3 : 3;
       const rpe = rpeEl && rpeEl.value ? parseFloat(rpeEl.value) : null;
@@ -5519,8 +5678,48 @@
       }
     },
 
+    'set-evolucion-metric': el => {
+      const m = el.getAttribute('data-metric');
+      if (['1rm', 'peso', 'volumen'].includes(m)) {
+        evolucionMetric = m;
+        render();
+      }
+    },
+
+    'open-detalle-clase': el => {
+      const entrenamientoId = el.getAttribute('data-entrenamiento-id');
+      if (!entrenamientoId) return;
+      activeModal = { type: 'detalle-clase', entrenamientoId };
+      renderModals();
+    },
+
+    'open-detalle-ej-sesion': el => {
+      const ejercicioId = el.getAttribute('data-ejercicio-id');
+      const fecha = el.getAttribute('data-fecha');
+      if (!ejercicioId || !fecha) return;
+      activeModal = { type: 'detalle-ej-sesion', ejercicioId, fecha };
+      renderModals();
+    },
+
+    'jump-evolucion-ej': el => {
+      const ejercicioId = el.getAttribute('data-ejercicio-id');
+      if (!ejercicioId) return;
+      evolucionEjercicioId = ejercicioId;
+      evolucionEjFiltro = '';
+      historicoModo = 'evolucion';
+      render();
+    },
+
     'toggle-edit-salud-hoy': () => {
       isEditingSaludHoy = !isEditingSaludHoy;
+      isSaludFormOpen = isEditingSaludHoy;
+      render();
+    },
+
+    'toggle-salud-form': () => {
+      const next = !(isSaludFormOpen || isEditingSaludHoy);
+      isSaludFormOpen = next;
+      isEditingSaludHoy = next;
       render();
     },
 
@@ -5617,8 +5816,14 @@
         draftReadiness.observacionAlumno = log.observacionAlumno || '';
         draftReadiness.estadoGeneral = log.observacionAlumno || 'Excelente';
       }
+      isSaludFormOpen = true;
+      isEditingSaludHoy = true;
       skipNextSaludCapture = true;
       render();
+      try {
+        const sc = document.getElementById('salud-scroll-root');
+        if (sc) sc.scrollTo({ top: 0, behavior: 'smooth' });
+      } catch (_) {}
     },
 
     'change-readiness-date': el => {
@@ -5637,8 +5842,14 @@
         draftReadiness.observacionAlumno = log.observacionAlumno || '';
         draftReadiness.estadoGeneral = log.observacionAlumno || 'Excelente';
       }
+      isSaludFormOpen = true;
+      isEditingSaludHoy = true;
       skipNextSaludCapture = true;
       render();
+      try {
+        const sc = document.getElementById('salud-scroll-root');
+        if (sc) sc.scrollTo({ top: 0, behavior: 'smooth' });
+      } catch (_) {}
     },
 
     'pick-salud-estado': el => {
@@ -5685,6 +5896,7 @@
         })
       );
       isEditingSaludHoy = false;
+      isSaludFormOpen = false;
       const formattedDate = fecha.split('-').reverse().join('/');
       showToast(`✓ Estado psicofísico guardado (${formattedDate}).`);
       render();
@@ -5737,12 +5949,15 @@
         draftReadiness.zonaDolor = '';
         draftReadiness.observacionAlumno = '';
       }
+      isSaludFormOpen = true;
       isEditingSaludHoy = true;
       skipNextSaludCapture = true;
       activeModal = null;
       render();
       try {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        const sc = document.getElementById('salud-scroll-root');
+        if (sc) sc.scrollTo({ top: 0, behavior: 'smooth' });
+        else window.scrollTo({ top: 0, behavior: 'smooth' });
       } catch (_) {}
     },
 
@@ -5783,6 +5998,9 @@
     'save-perfil-fisico': () => {
       // Capturamos primero los valores actuales del Check-in para que jamás se modifiquen ni reseteen
       captureSaludDraftsFromDOM();
+      const pesoClean = String(draftPerfil.pesoKg || '').trim();
+      const pesoParsed = pesoClean ? Engine.parseDecimal(pesoClean, '') : '';
+      draftPerfil.pesoKg = pesoParsed !== '' ? String(pesoParsed) : '';
 
       Store.commit(s =>
         Engine.actualizarPerfilFisico(s, {
@@ -5915,7 +6133,7 @@
   document.addEventListener('input', e => {
     if (e.target && e.target.dataset && e.target.dataset.discosFor) {
       const box = document.getElementById(`discos-${e.target.dataset.discosFor}`);
-      if (box) box.textContent = Engine.calcularDiscos(parseFloat(e.target.value) || 0).texto;
+      if (box) box.textContent = Engine.calcularDiscos(Engine.parseDecimal(e.target.value, 0)).texto;
       return;
     }
     if (e.target && e.target.id === 'sug-mensaje') {
@@ -5963,6 +6181,18 @@
       if (histInput) {
         histInput.focus();
         histInput.setSelectionRange(histInput.value.length, histInput.value.length);
+      }
+      return;
+    }
+
+    const evoFilterTarget = e.target.closest('input[data-action="filter-evolucion-ej"]');
+    if (evoFilterTarget) {
+      evolucionEjFiltro = evoFilterTarget.value;
+      render();
+      const evoInput = document.getElementById('evolucion-ej-filter');
+      if (evoInput) {
+        evoInput.focus();
+        evoInput.setSelectionRange(evoInput.value.length, evoInput.value.length);
       }
       return;
     }
@@ -6231,7 +6461,8 @@
         ? document.getElementById('trainer-foto-nota')
         : document.getElementById('foto-nota-input');
 
-      const pesoKg = pesoInput ? pesoInput.value : (st.perfil && st.perfil.pesoKg) || '';
+      const pesoRaw = pesoInput ? pesoInput.value.trim() : '';
+      const pesoKg = pesoRaw ? Engine.parseDecimal(pesoRaw, '') : ((st.perfil && st.perfil.pesoKg) || '');
       const nota = notaInput ? notaInput.value.trim() : '';
       const autor = targetUser ? 'Profesor' : 'Alumno';
 
@@ -6282,6 +6513,27 @@
     }
     render();
   });
+  // Seleccionar todo el contenido al enfocar un campo numérico para borrar o reemplazar sin reubicar el cursor
+  let justFocusedSelectEl = null;
+  document.addEventListener('focusin', e => {
+    const el = e.target;
+    if (!el || el.tagName !== 'INPUT') return;
+    if (!el.matches('.ej-val-input, [data-select-on-focus="1"]')) return;
+    justFocusedSelectEl = el;
+    const selectAll = () => {
+      if (document.activeElement !== el) return;
+      try { el.setSelectionRange(0, (el.value || '').length); } catch (_) { try { el.select(); } catch (__) {} }
+    };
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(selectAll);
+    else setTimeout(selectAll, 0);
+  });
+  document.addEventListener('mouseup', e => {
+    if (justFocusedSelectEl && e.target === justFocusedSelectEl) {
+      e.preventDefault();
+      justFocusedSelectEl = null;
+    }
+  });
+
   document.addEventListener('focusout', () => {
     if (!renderPendiente) return;
     setTimeout(() => {
@@ -6312,23 +6564,28 @@
     layoutMode = getAutoLayoutMode();
     render();
 
-    // Notificación automática al actualizarse la versión
+    // Notificación automática al actualizarse la versión (una única vez por carga/versión)
     const LAST_SEEN_VERSION_KEY = 'gimnasio_last_seen_version';
+    let updateToastShown = false;
+    function notifyAppUpdatedOnce() {
+      if (updateToastShown) return;
+      updateToastShown = true;
+      try { localStorage.setItem(LAST_SEEN_VERSION_KEY, APP_VERSION); } catch (_) {}
+      showToast(`✓ Fitness MiniApp actualizada a v${APP_VERSION}.`, { duration: 5000 });
+    }
     try {
       const lastVer = localStorage.getItem(LAST_SEEN_VERSION_KEY);
       if (lastVer !== APP_VERSION) {
         localStorage.setItem(LAST_SEEN_VERSION_KEY, APP_VERSION);
         if (lastVer) {
-          setTimeout(() => {
-            showToast(`Fitness MiniApp actualizada a v${APP_VERSION}.`, { duration: 5000 });
-          }, 800);
+          setTimeout(() => notifyAppUpdatedOnce(), 800);
         }
       }
     } catch (_) {}
 
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.addEventListener('controllerchange', () => {
-        showToast(`✓ ¡Fitness MiniApp actualizada a v${APP_VERSION}!`, { duration: 5000 });
+        notifyAppUpdatedOnce();
       });
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('./service-worker.js')
