@@ -19,7 +19,7 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '3.10.0';
+  const APP_VERSION = '3.11.0';
 
   /** Número válido o valor por defecto (a diferencia de `|| def`, respeta el 0: RIR 0 = serie al fallo). */
   const numOr = (v, def) => (Number.isFinite(v) ? v : def);

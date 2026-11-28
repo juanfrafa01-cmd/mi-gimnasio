@@ -557,9 +557,9 @@
       repsSugeridas: '12-15',
       descansoSugerido: 60,
       gifSlug: 'lat-pulldown',
-      gifUrl: './icons/gifs/lat-pulldown.gif',
-      startImgUrl: './icons/gifs/lat-pulldown-start.gif',
-      endImgUrl: './icons/gifs/lat-pulldown-end.gif',
+      gifUrl: './icons/gifs/ej-pullover-polea.gif',
+      startImgUrl: './icons/gifs/ej-pullover-polea-start.jpg',
+      endImgUrl: './icons/gifs/ej-pullover-polea-end.jpg',
       illustrationUrl: './icons/ejercicios/ej-pullover-polea.jpg',
       remoteGifUrl: 'https://fitnessprogramer.com/wp-content/uploads/2021/02/Straight-Arm-Pulldown.gif',
       notas: 'Codos casi extendidos pero no bloqueados. Bajar la barra en arco hacia los muslos apretando los dorsales.',
@@ -1112,9 +1112,10 @@
       repsSugeridas: '8-12',
       descansoSugerido: 75,
       gifSlug: 'rollout',
-      gifUrl: './icons/gifs/rollout.gif',
-      startImgUrl: './icons/gifs/rollout-start.gif',
-      endImgUrl: './icons/gifs/rollout-end.gif',
+      gifUrl: './icons/gifs/ej-rueda-abdominal.gif',
+      startImgUrl: './icons/gifs/ej-rueda-abdominal-start.jpg',
+      endImgUrl: './icons/gifs/ej-rueda-abdominal-end.jpg',
+      illustrationUrl: './icons/ejercicios/ej-rueda-abdominal.jpg',
       remoteGifUrl: 'https://fitnessprogramer.com/wp-content/uploads/2021/08/swiss-ball-rollout.gif',
       notas: 'Mantener retroversión pélvica sin dejar caer la cadera.',
       orden: 27
@@ -1295,9 +1296,10 @@
       seriesSugeridas: 2,
       repsSugeridas: '15',
       gifSlug: 'face-pull',
-      gifUrl: './icons/gifs/face-pull.gif',
-      startImgUrl: './icons/gifs/face-pull-start.gif',
-      endImgUrl: './icons/gifs/face-pull-end.gif',
+      gifUrl: './icons/gifs/ej-act-pull-apart.gif',
+      startImgUrl: './icons/gifs/ej-act-pull-apart-start.jpg',
+      endImgUrl: './icons/gifs/ej-act-pull-apart-end.jpg',
+      illustrationUrl: './icons/ejercicios/ej-act-pull-apart.jpg',
       remoteGifUrl: 'https://fitnessprogramer.com/wp-content/uploads/2021/02/Face-Pull.gif',
       notas: 'Brazos extendidos al frente, abrir la banda elástica juntando escápulas.',
       musculoActivo: 'Deltoides Posterior, Romboides y Trapecio Medio',
@@ -1527,9 +1529,10 @@
       tiempoTrabajoSeg: 40,
       tiempoDescansoSeg: 20,
       gifSlug: 'jump-squat',
-      gifUrl: './icons/gifs/jump-squat.gif',
-      startImgUrl: './icons/gifs/jump-squat-start.gif',
-      endImgUrl: './icons/gifs/jump-squat-end.gif',
+      gifUrl: './icons/gifs/ej-amrap-box-jumps.gif',
+      startImgUrl: './icons/gifs/ej-amrap-box-jumps-start.jpg',
+      endImgUrl: './icons/gifs/ej-amrap-box-jumps-end.jpg',
+      illustrationUrl: './icons/ejercicios/ej-amrap-box-jumps.jpg',
       remoteGifUrl: 'https://fitnessprogramer.com/wp-content/uploads/2023/03/Bulgarian-Jump-Squat.gif',
       notas: 'Salto explosivo amortiguando suave con toda la planta del pie arriba del cajón.',
       musculoActivo: 'Cuádriceps, Glúteos y Gemelos',
@@ -1614,10 +1617,10 @@
     { id: 'ej-curl-concentrado', nombre: 'Curl Concentrado Unilateral', grupoMuscular: 'brazos', equipo: 'mancuerna', seriesSugeridas: 3, repsSugeridas: '12 por lado', gifSlug: 'barbell-curl', notas: 'Codo apoyado en cara interna del muslo para aislar el pico del bíceps.', musculoActivo: 'Bíceps Braquial', orden: 83 },
     { id: 'ej-curl-polea-baja', nombre: 'Curl de Bíceps en Polea Baja con Barra', grupoMuscular: 'brazos', equipo: 'polea', seriesSugeridas: 3, repsSugeridas: '12-15', gifSlug: 'barbell-curl', notas: 'Tensión continua en todo el recorrido evitando balanceos.', musculoActivo: 'Bíceps Braquial', orden: 84 },
     { id: 'ej-curl-arana', nombre: 'Curl Araña en Banco Inclinado (Spider Curl)', grupoMuscular: 'brazos', equipo: 'mancuerna', seriesSugeridas: 3, repsSugeridas: '10-12', gifSlug: 'barbell-curl', notas: 'Pecho apoyado en banco a 45° dejando caer los brazos verticales para máxima tensión arriba.', musculoActivo: 'Cabeza Corta del Bíceps', orden: 85 },
-    { id: 'ej-triceps-barra-polea', nombre: 'Extensión de Tríceps en Polea con Barra', grupoMuscular: 'brazos', equipo: 'polea', seriesSugeridas: 3, repsSugeridas: '10-12', gifSlug: 'triceps-pushdown', notas: 'Codos fijos al torso empujando la barra recta o en V hasta extensión completa.', musculoActivo: 'Tríceps Lateral y Medial', orden: 86 },
-    { id: 'ej-triceps-trasnuca-manc', nombre: 'Extensión de Tríceps Tras Nuca con Mancuerna', grupoMuscular: 'brazos', equipo: 'mancuerna', seriesSugeridas: 3, repsSugeridas: '10-12', gifSlug: 'triceps-extension', notas: 'Codos apuntando arriba buscando máximo estiramiento detrás de la cabeza.', musculoActivo: 'Cabeza Larga del Tríceps', orden: 87 },
-    { id: 'ej-triceps-trasnuca-polea', nombre: 'Extensión de Tríceps Overhead en Polea con Soga', grupoMuscular: 'brazos', equipo: 'polea', seriesSugeridas: 3, repsSugeridas: '12-15', gifSlug: 'triceps-extension', notas: 'De espaldas a la polea, extender codos hacia adelante y arriba separando la soga.', musculoActivo: 'Cabeza Larga del Tríceps', orden: 88 },
-    { id: 'ej-patada-triceps', nombre: 'Patada de Tríceps (Mancuerna o Polea)', grupoMuscular: 'brazos', equipo: 'mancuerna', seriesSugeridas: 3, repsSugeridas: '12-15', gifSlug: 'triceps-extension', notas: 'Torso paralelo al suelo, brazo paralelo al tronco y extensión completa atrás.', musculoActivo: 'Tríceps Braquial', orden: 89 },
+    { id: 'ej-triceps-barra-polea', nombre: 'Extensión de Tríceps en Polea con Barra', grupoMuscular: 'brazos', equipo: 'polea', seriesSugeridas: 3, repsSugeridas: '10-12', gifSlug: 'triceps-pushdown', gifUrl: './icons/gifs/ej-triceps-barra-polea.gif', startImgUrl: './icons/gifs/ej-triceps-barra-polea-start.jpg', endImgUrl: './icons/gifs/ej-triceps-barra-polea-end.jpg', illustrationUrl: './icons/ejercicios/ej-triceps-barra-polea.jpg', notas: 'Codos fijos al torso empujando la barra recta o en V hasta extensión completa.', musculoActivo: 'Tríceps Lateral y Medial', orden: 86 },
+    { id: 'ej-triceps-trasnuca-manc', nombre: 'Extensión de Tríceps Tras Nuca con Mancuerna', grupoMuscular: 'brazos', equipo: 'mancuerna', seriesSugeridas: 3, repsSugeridas: '10-12', gifSlug: 'triceps-extension', gifUrl: './icons/gifs/ej-triceps-trasnuca-manc.gif', startImgUrl: './icons/gifs/ej-triceps-trasnuca-manc-start.jpg', endImgUrl: './icons/gifs/ej-triceps-trasnuca-manc-end.jpg', illustrationUrl: './icons/ejercicios/ej-triceps-trasnuca-manc.jpg', notas: 'Codos apuntando arriba buscando máximo estiramiento detrás de la cabeza.', musculoActivo: 'Cabeza Larga del Tríceps', orden: 87 },
+    { id: 'ej-triceps-trasnuca-polea', nombre: 'Extensión de Tríceps Overhead en Polea con Soga', grupoMuscular: 'brazos', equipo: 'polea', seriesSugeridas: 3, repsSugeridas: '12-15', gifSlug: 'triceps-extension', gifUrl: './icons/gifs/ej-triceps-trasnuca-polea.gif', startImgUrl: './icons/gifs/ej-triceps-trasnuca-polea-start.jpg', endImgUrl: './icons/gifs/ej-triceps-trasnuca-polea-end.jpg', illustrationUrl: './icons/ejercicios/ej-triceps-trasnuca-polea.jpg', notas: 'De espaldas a la polea, extender codos hacia adelante y arriba separando la soga.', musculoActivo: 'Cabeza Larga del Tríceps', orden: 88 },
+    { id: 'ej-patada-triceps', nombre: 'Patada de Tríceps (Mancuerna o Polea)', grupoMuscular: 'brazos', equipo: 'mancuerna', seriesSugeridas: 3, repsSugeridas: '12-15', gifSlug: 'triceps-extension', gifUrl: './icons/gifs/ej-patada-triceps.gif', startImgUrl: './icons/gifs/ej-patada-triceps-start.jpg', endImgUrl: './icons/gifs/ej-patada-triceps-end.jpg', illustrationUrl: './icons/ejercicios/ej-patada-triceps.jpg', notas: 'Torso paralelo al suelo, brazo paralelo al tronco y extensión completa atrás.', musculoActivo: 'Tríceps Braquial', orden: 89 },
 
     // --- CORE ---
     { id: 'ej-plancha-lateral', nombre: 'Plancha Lateral Isométrica (Side Plank)', grupoMuscular: 'core', equipo: 'corporal', seriesSugeridas: 3, repsSugeridas: '30-45 s por lado', gifSlug: 'plank', notas: 'Cuerpo alineado de pies a cabeza sin dejar caer la cadera.', musculoActivo: 'Oblicuos y Cuadrado Lumbar', orden: 96 },
@@ -1637,9 +1640,9 @@
   CATALOGO_EXTRA.forEach(item => {
     Engine.CATALOGO_EJERCICIOS.push({
       ...item,
-      gifUrl: `./icons/gifs/${item.gifSlug}.gif`,
-      startImgUrl: `./icons/gifs/${item.gifSlug}-start.gif`,
-      endImgUrl: `./icons/gifs/${item.gifSlug}-end.gif`
+      gifUrl: item.gifUrl || `./icons/gifs/${item.gifSlug}.gif`,
+      startImgUrl: item.startImgUrl || `./icons/gifs/${item.gifSlug}-start.gif`,
+      endImgUrl: item.endImgUrl || `./icons/gifs/${item.gifSlug}-end.gif`
     });
   });
 
@@ -1730,7 +1733,11 @@
     'ej-press-arnold': './icons/ejercicios/ej-press-arnold.jpg',
     'ej-elevaciones-piernas-colgado': './icons/ejercicios/ej-elevaciones-piernas-colgado.jpg',
     'ej-ab-crunch-declinado': './icons/ejercicios/ej-ab-crunch-declinado.jpg',
-    'ej-gemelos-pie': './icons/ejercicios/ej-gemelos-pie.jpg'
+    'ej-gemelos-pie': './icons/ejercicios/ej-gemelos-pie.jpg',
+    'ej-triceps-barra-polea': './icons/ejercicios/ej-triceps-barra-polea.jpg',
+    'ej-triceps-trasnuca-manc': './icons/ejercicios/ej-triceps-trasnuca-manc.jpg',
+    'ej-triceps-trasnuca-polea': './icons/ejercicios/ej-triceps-trasnuca-polea.jpg',
+    'ej-patada-triceps': './icons/ejercicios/ej-patada-triceps.jpg'
   };
 
   /**
